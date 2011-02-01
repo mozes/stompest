@@ -28,6 +28,7 @@ setup(
         "Development Status :: 5 - Production/Stable",
         "Framework :: Twisted",
         "Topic :: System :: Networking",
+        "Operating System :: OS Independent",
         "License :: OSI Approved :: Apache Software License",
     ],
 )
