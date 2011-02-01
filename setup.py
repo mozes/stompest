@@ -21,8 +21,8 @@ setup(
     install_requires = [
         'stomper',
         'twisted',
-        'mock',
     ],
+    tests_require = ['mock'],
     test_suite = 'stompest.tests',
     classifiers=[
         "Development Status :: 5 - Production/Stable",
