@@ -50,6 +50,5 @@ class Consumer(object):
     
 if __name__ == '__main__':
     logging.basicConfig(level=logging.DEBUG)
-    cnsmr = Consumer()
-    cnsmr.run()
+    Consumer().run()
     reactor.run()

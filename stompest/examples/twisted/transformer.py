@@ -52,6 +52,5 @@ class IncrementTransformer(object):
     
 if __name__ == '__main__':
     logging.basicConfig(level=logging.DEBUG)
-    trnsfrmr = IncrementTransformer()
-    trnsfrmr.run()
+    IncrementTransformer().run()
     reactor.run()
