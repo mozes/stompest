@@ -5,7 +5,7 @@ setup(
     author = "Roger Hoover",
     author_email = "roger.hoover@gmail.com",
     description = "No nonsense Python STOMP client",
-    license = 'BSD',
+    license = 'Apache License 2.0',
     packages = find_packages(),
     py_modules=["stompest"],
     include_package_data = True,
