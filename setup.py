@@ -1,10 +1,10 @@
 from setuptools import setup, find_packages
 setup(
     name = "stompest",
-    version = "0.2",
+    version = "0.1",
     author = "Roger Hoover",
     author_email = "roger.hoover@gmail.com",
-    description = "No nonsense Python STOMP client",
+    description = "A STOMP implementation for Python including both a synchronous and a Twisted implementation.",
     license = 'Apache License 2.0',
     packages = find_packages(),
     py_modules=["stompest"],
