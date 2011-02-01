@@ -31,6 +31,8 @@ setup(
         "Operating System :: OS Independent",
         "License :: OSI Approved :: Apache Software License",
         "Intended Audience :: Developers",
+        "Programming Language :: Python",
+        "Topic :: Software Development :: Libraries :: Python Modules",
     ],
 )
 
