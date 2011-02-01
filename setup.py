@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 setup(
     name = "stompest",
-    version = "0.1",
+    version = "0.2",
     author = "Roger Hoover",
     author_email = "roger.hoover@gmail.com",
     description = "No nonsense Python STOMP client",
