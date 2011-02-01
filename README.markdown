@@ -2,9 +2,9 @@ stomp, stomper, stompest!
 
 Stompest is a no-nonsense STOMP implementation for Python including both a synchronous and a Twisted implementation.
 
-Unlike other python STOMP implementations, the synchronous client does not assume anything about your concurrency model (thread vs process).  Modeled after the Perl Net::Stomp module, it mostly stays out of your way and lets you do what you want.
+The synchronous client does not assume anything about your concurrency model (thread vs process).  Modeled after the Perl Net::Stomp module, it mostly stays out of your way and lets you do what you want.
 
-The Twisted client builds additional functionality on top of the stomper library to provide a full-featured client.
+The Twisted client builds additional functionality on top of the [stomper](http://code.google.com/p/stomper/) library to provide a full-featured client.
 
 Examples
 ========
@@ -168,9 +168,22 @@ Twisted Consumer
 Features
 ========
 
-TODO - list them
+Simple
+------
+Basically the same as [Net::Stomp](http://search.cpan.org/dist/Net-Stomp/lib/Net/Stomp.pm)
+
+Twisted
+-------
+* Graceful shutdown - On disconnect or error, the client stops processing new messages and waits for all outstanding message handlers to finish before issuing the DISCONNECT command
+* Error handling - the client assumes that if an exception is not handled by a message handler, it's not necessarily safe to continue processing so it shutdowns down gracefully.  By passing the errorDestination parameter to the subscribe() method, it can be configured to send a copy of offending message to a configured destination.  This will allow you to avoid the "poison pill" scenario where the broker keeps redelivering a bad message infinitely.
+* Fully unit-tested including a simulated STOMP broker
+* Configurable connection timeout
+
 
 Caveats
 =======
+* Does not support binary data - support for the content-length header is not (yet) implemented
 
-TODO - list them
+Twisted
+-------
+* Written before the advent of defer.inlineCallbacks so it could be simpler
