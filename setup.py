@@ -6,13 +6,13 @@ def read(fname):
 
 setup(
     name = "stompest",
-    version = "1.0.0",
+    version = "1.0.2",
     author = "Roger Hoover",
     author_email = "roger.hoover@gmail.com",
     description = "STOMP client library for Python including both synchronous and Twisted implementations.",
     license = 'Apache License 2.0',
     packages = find_packages(),
-    long_description=read('README.markdown'),
+    long_description=read('README.txt'),
     keywords = "stomp twisted activemq",
     url = "https://github.com/mozes/stompest",
     py_modules=["stompest"],
