@@ -8,4 +8,4 @@ The Twisted client is a full-featured STOMP protocol client built on top of the 
 
 This module is thoroughly unit tested and production hardened for the functionality used by Mozes: persistent queueing on ActiveMQ.  Minor enhancements may be required to use this STOMP adapter with other brokers or certain feature sets like transactions or binary messages.
 
-See examples directory for sample usage.
+See http://github.com/mozes/stompest or examples directory for details.

@@ -6,7 +6,7 @@ def read(fname):
 
 setup(
     name = "stompest",
-    version = "1.0.2",
+    version = "1.0.3",
     author = "Roger Hoover",
     author_email = "roger.hoover@gmail.com",
     description = "STOMP client library for Python including both synchronous and Twisted implementations.",
