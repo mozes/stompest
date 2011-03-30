@@ -15,7 +15,7 @@ Note
 ----
 If you use ActiveMQ to run these examples, make sure you enable the Stomp connector in the ActiveMQ config file, activemq.xml.
    
-   <transportConnector name="stomp"  uri="stomp://0.0.0.0:61613"/>
+   &lt;transportConnector name="stomp"  uri="stomp://0.0.0.0:61613"/&gt;
    
 See http://activemq.apache.org/stomp.html for details.
 
