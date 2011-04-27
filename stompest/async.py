@@ -66,7 +66,11 @@ class StompClient(LineOnlyReceiver):
     def connectionLost(self, reason):
         """When TCP connection is lost, remove shutdown handler
         """
-        self.log.debug("Disconnected: %s" % reason)
+        if reason.type == ConnectionLost:
+            msg = 'Disconnected'
+        else:
+            msg = 'Disconnected: %s' % reason.getErrorMessage()
+        self.log.debug(msg)
             
         #Remove connect timeout if set
         if self.connectTimeoutDelayedCall is not None:
@@ -90,11 +94,11 @@ class StompClient(LineOnlyReceiver):
         #Callback for disconnect
         if self.disconnectedDeferred:
             if self.disconnectError:
-                self.log.debug("Calling disconnectedDeferred errback: %s" % self.disconnectError)
+                #self.log.debug("Calling disconnectedDeferred errback: %s" % self.disconnectError)
                 self.disconnectedDeferred.errback(self.disconnectError)
                 self.disconnectError = None
             else:
-                self.log.debug("Calling disconnectedDeferred callback")
+                #self.log.debug("Calling disconnectedDeferred callback")
                 self.disconnectedDeferred.callback(self)
             self.disconnectedDeferred = None
             
@@ -297,7 +301,6 @@ class StompClient(LineOnlyReceiver):
         """After finishing outstanding requests, send disconnect command and return Deferred for caller that will get trigger when disconnect is complete
         """
         if not self.disconnecting:
-            self.log.debug("Preparing to disconnect")
             self.disconnecting = True
             #Send disconnect command after outstanding messages are ack'ed
             defer.maybeDeferred(self.finishHandlers).addBoth(lambda result: self._disconnect())
