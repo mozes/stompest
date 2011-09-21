@@ -78,7 +78,10 @@ class Stomp(object):
         while (not parser.isDone()):
             buffer = list()
             while not buffer or not buffer[-1] == parser.FRAME_DELIMITER:
-                buffer.append(self.socket.recv(1))
+                next = self.socket.recv(1)
+                if next == "":
+                    raise Exception("Connection closed")
+                buffer.append(next)
             
             #Get rid of optional trailing newlines (which ActiveMQ adds)
             #now so that canRead() can be used to know if another frame is
