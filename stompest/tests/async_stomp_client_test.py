@@ -35,7 +35,7 @@ class AsyncStompClientTestCase(unittest.TestCase):
         return self.assertFailure(creator.getConnection(), error.DNSLookupError)
 
     def test_bad_port_tcp_error(self):
-        config = StompConfig('localhost', 987654321)
+        config = StompConfig('localhost', 65535)
         creator = StompCreator(config)
         return self.assertFailure(creator.getConnection(), error.ConnectionRefusedError)
           
