@@ -13,7 +13,6 @@ Copyright 2011 Mozes, Inc.
    See the License for the specific language governing permissions and
    limitations under the License.
 """
-import stomper
 from stompest.error import StompFrameError
 
 class StompFrameLineParser(object):
