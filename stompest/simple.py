@@ -77,7 +77,12 @@ class Stomp(object):
         self._checkConnected()
         parser = StompFrameLineParser()
         while (not parser.isDone()):
-            parser.processLine(self.sfile.readline()[:-1])
+            buffer = list()
+            while not buffer or not buffer[-1] == '\x00':
+                buffer.append(self.sfile.read(1))
+
+            for line in ''.join(buffer).lstrip('\n').split('\n'):
+                parser.processLine(line)
 
         return parser.getMessage()
 

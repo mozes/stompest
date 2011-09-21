@@ -34,6 +34,7 @@ LOG_CATEGORY="stompest.async"
 class StompClient(LineOnlyReceiver):
     """A Twisted implementation of a STOMP client"""
     MAX_LENGTH = sys.maxint
+    delimiter = StompFrameLineParser.frameDelimiter
 
     def __init__(self):
         self.log = logging.getLogger(LOG_CATEGORY)
@@ -109,15 +110,18 @@ class StompClient(LineOnlyReceiver):
            got a whole frame
         """
         # self.log.debug("Received line [%s]" % line)
+        # the delimiter was left off by LineOnlyReceiver, so add it back in
+        line = line + self.delimiter
         
-        self.parser.processLine(line)
-        if self.parser.isDone():
-            frame = self.parser.getMessage()
-            self.resetParser()
-            if frame['cmd'] in self.cmdMap:
-                self.cmdMap[frame['cmd']](frame)
-            else:
-                raise StompFrameError("Unknown STOMP command: %s" % str(frame))
+        for l in line.lstrip('\n').split('\n'):
+            self.parser.processLine(l)
+            if self.parser.isDone():
+                frame = self.parser.getMessage()
+                self.resetParser()
+                if frame['cmd'] in self.cmdMap:
+                    self.cmdMap[frame['cmd']](frame)
+                else:
+                    raise StompFrameError("Unknown STOMP command: %s" % str(frame))
 
     def lineLengthExceeded(self, line):
         errorMsg = "Stomp protocol implementation line length maximum (%s) was exceeded" % self.MAX_LENGTH
@@ -173,8 +177,6 @@ class StompClient(LineOnlyReceiver):
         """Stomp parser must be reset after each frame is received
         """
         self.parser = StompFrameLineParser()
-        #We need to override the default delimiter for LineOnlyReceiver
-        self.delimiter = self.parser.lineDelimiter
     
     def finishHandlers(self):
         """Return a Deferred to signal when all requests in process are complete
