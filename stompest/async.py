@@ -34,7 +34,7 @@ LOG_CATEGORY="stompest.async"
 class StompClient(LineOnlyReceiver):
     """A Twisted implementation of a STOMP client"""
     MAX_LENGTH = sys.maxint
-    delimiter = StompFrameLineParser.frameDelimiter
+    delimiter = StompFrameLineParser.FRAME_DELIMITER
 
     def __init__(self):
         self.log = logging.getLogger(LOG_CATEGORY)

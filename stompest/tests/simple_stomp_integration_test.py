@@ -18,19 +18,25 @@ import unittest
 from stompest.simple import Stomp
 
 class SimpleStompIntegrationTest(unittest.TestCase):
+    DEST = '/queue/stompUnitTest'
     
-    def test_integration(self):
-        dest = '/queue/stompUnitTest'
+    def setUp(self):
         stomp = Stomp('localhost', 61613)
         stomp.connect()
-        stomp.send(dest, 'test message1')
-        stomp.send(dest, 'test message2')
+        stomp.subscribe(self.DEST, {'ack': 'client'})
+        while (stomp.canRead(1)):
+            stomp.ack(stomp.receiveFrame())
+        
+    def test_integration(self):
+        stomp = Stomp('localhost', 61613)
+        stomp.connect()
+        stomp.send(self.DEST, 'test message1')
+        stomp.send(self.DEST, 'test message2')
         self.assertFalse(stomp.canRead(1))
-        stomp.subscribe(dest, {'ack': 'client'})
+        stomp.subscribe(self.DEST, {'ack': 'client'})
         self.assertTrue(stomp.canRead(1))
         frame = stomp.receiveFrame()
         stomp.ack(frame)
-        stomp.canRead(1)
         self.assertTrue(stomp.canRead(1))
         frame = stomp.receiveFrame()
         stomp.ack(frame)

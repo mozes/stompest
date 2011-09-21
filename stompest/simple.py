@@ -31,7 +31,6 @@ class Stomp(object):
         self.host = host
         self.port = port
         self.socket = None
-        self.sfile = None
     
     def connect(self, login='', passcode=''):
         self._socketConnect()
@@ -78,9 +77,21 @@ class Stomp(object):
         parser = StompFrameLineParser()
         while (not parser.isDone()):
             buffer = list()
-            while not buffer or not buffer[-1] == '\x00':
-                buffer.append(self.sfile.read(1))
-
+            while not buffer or not buffer[-1] == parser.FRAME_DELIMITER:
+                buffer.append(self.socket.recv(1))
+            
+            #Get rid of optional trailing newlines (which ActiveMQ adds)
+            #now so that canRead() can be used to know if another frame is
+            #ready to be read
+            self.socket.setblocking(0)
+            try:
+                while self.socket.recv(1, socket.MSG_PEEK) == parser.LINE_DELIMITER:
+                    self.socket.recv(1);
+            except:
+                pass
+            finally:
+                self.socket.setblocking(1)
+            
             for line in ''.join(buffer).lstrip('\n').split('\n'):
                 parser.processLine(line)
 
@@ -95,12 +106,9 @@ class Stomp(object):
         
     def _socketConnect(self):
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.sfile = self.socket.makefile()
         self.socket.connect((self.host, self.port))
         
     def _socketDisconnect(self):
-        self.sfile.close()
-        self.sfile = None
         self.socket.close()
         self.socket = None
     

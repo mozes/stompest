@@ -56,7 +56,7 @@ class BlackHoleStompServer(LineOnlyReceiver):
 
     def resetParser(self):
         self.parser = StompFrameLineParser()
-        self.delimiter = self.parser.lineDelimiter
+        self.delimiter = self.parser.LINE_DELIMITER
 
     def getFrame(self, cmd, headers, body):
         sFrame = stomper.Frame()

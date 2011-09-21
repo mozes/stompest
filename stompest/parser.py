@@ -34,9 +34,9 @@ class StompFrameLineParser(object):
               frame = parser.getMessage()
               break
     """
-    lineDelimiter = '\n'
-    frameDelimiter = '\x00'
-    headerDelimiter = ':'
+    LINE_DELIMITER = '\n'
+    FRAME_DELIMITER = '\x00'
+    HEADER_DELIMITER = ':'
 
     def __init__(self):
         self.message = dict(cmd='', headers={}, body='')
@@ -84,17 +84,17 @@ class StompFrameLineParser(object):
             self.transition('body')
             return
         try:
-            name, value = line.split(self.headerDelimiter, 1)
+            name, value = line.split(self.HEADER_DELIMITER, 1)
         except ValueError:
             raise StompFrameError('Invalid stomp header line: [%s], len [%d]' % (line, len(line)))
         self.message['headers'][name] = value
         
     def parseBodyLine(self, line):
-        if line.endswith(self.frameDelimiter):
+        if line.endswith(self.FRAME_DELIMITER):
             self.message['body'] += line[:-1]
             self.endFrame()
             return
-        self.message['body'] += line + self.lineDelimiter
+        self.message['body'] += line + self.LINE_DELIMITER
         
     def endFrame(self):
         self.done = True
