@@ -197,4 +197,4 @@ Twisted
 
 Changes
 =======
-* 1.0.4 - Bug fix thanks to Njal Karevoll (https://github.com/nkvoll).  No longer relies on newline after the null-byte frame separator.  Library is now compatible with RabbitMQ stomp adapter.
+* 1.0.4 - Bug fix thanks to [Njal Karevoll](https://github.com/nkvoll).  No longer relies on newline after the null-byte frame separator.  Library is now compatible with RabbitMQ stomp adapter.
