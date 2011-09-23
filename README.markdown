@@ -186,7 +186,6 @@ Twisted
 * Fully unit-tested including a simulated STOMP broker
 * Configurable connection timeout
 
-
 Caveats
 =======
 * Does not support binary data - support for the content-length header is not (yet) implemented
@@ -195,3 +194,7 @@ Caveats
 Twisted
 -------
 * Written before the advent of defer.inlineCallbacks so it could be simpler
+
+Changes
+=======
+* 1.0.4 - Bug fix thanks to Njal Karevoll (https://github.com/nkvoll).  No longer relies on newline after the null-byte frame separator.  Library is now compatible with RabbitMQ stomp adapter.
