@@ -57,9 +57,9 @@ class HandlerExceptionWithErrorQueueIntegrationTestCase(unittest.TestCase):
     msg2 = 'follow up message'
     queue = '/queue/asyncStompestHandlerExceptionWithErrorQueueUnitTest'
     errorQueue = '/queue/zzz.error.asyncStompestHandlerExceptionWithErrorQueueUnitTest'
-    disconnected = defer.Deferred()
-    disconnectedAgain = defer.Deferred()
-    disconnectedFromErrQ = defer.Deferred()
+    # disconnected = defer.Deferred()
+    # disconnectedAgain = defer.Deferred()
+    # disconnectedFromErrQ = defer.Deferred()
     ackMode = getClientAckMode()
         
     def cleanQueues(self):
@@ -76,62 +76,66 @@ class HandlerExceptionWithErrorQueueIntegrationTestCase(unittest.TestCase):
             print "Dequeued old message: %s" % frame
         stomp.disconnect()        
     
+    @defer.inlineCallbacks
     def test_onhandlerException_ackMessage_filterReservedHdrs_send2ErrorQ_and_errback(self):
         self.cleanQueues()
-        self.config = StompConfig('localhost', 61613)
-        self.creator = StompCreator(self.config)
-        deferConnected = self.creator.getConnection().addCallback(self._onConnected)
-        deferredTestErr = self.assertFailure(self.disconnected, StompestTestError).addCallback(self._reconnectAfterErr)
-        self.disconnectedAgain.addCallback(self._reconnectForErrQ)
-        self.disconnectedFromErrQ.addCallback(self._verifyErrMsg) #asserts err message content is correct
-        return defer.DeferredList([
-            deferredTestErr, #asserts that handler exception triggered disconnect and was propagated to disconnect deferred
-            self.disconnectedAgain, #asserts that message causing the exception was ack'ed to broker (otherwise, this message would not get delivered)
-            self.disconnectedFromErrQ, #asserts that we were able to read a message from the error queue
-            ]
-        )
         
-    def _onConnected(self, stomp):
-        stomp.getDisconnectedDeferred().addCallback(self.disconnected.callback).addErrback(self.disconnected.errback)
+        config = StompConfig('localhost', 61613)
+        creator = StompCreator(config)
+        
+        #Connect
+        stomp = yield creator.getConnection()
+        
+        #Enqueue two messages
         stomp.send(self.queue, self.msg1, self.msg1Hdrs)
         stomp.send(self.queue, self.msg2)
+        
+        #Barf on first message so it will get put in error queue
         #Use selector to guarantee message order.  AMQ doesn't not guarantee order by default
         stomp.subscribe(self.queue, self._saveMsgAndBarf, {'ack': self.ackMode, 'activemq.prefetchSize': 1, 'selector': "food = 'barf'"}, errorDestination=self.errorQueue)
         
+        #Client disconnected and returned error
+        try:
+            yield stomp.getDisconnectedDeferred()
+        except StompestTestError, e:
+            pass
+        else:
+            self.assertTrue(False)
+        
+        #Reconnect and subscribe again - consuming second message then disconnecting
+        stomp = yield creator.getConnection()
+        stomp.subscribe(self.queue, self._eatOneMsgAndDisconnect, {'ack': self.ackMode, 'activemq.prefetchSize': 1}, errorDestination=self.errorQueue)
+        
+        #Client disconnects without error
+        yield stomp.getDisconnectedDeferred()
+        
+        #Reconnect and subscribe to error queue
+        stomp = yield creator.getConnection()
+        stomp.subscribe(self.errorQueue, self._saveErrMsgAndDisconnect, {'ack': self.ackMode, 'activemq.prefetchSize': 1})
+        
+        #Wait for disconnect
+        yield stomp.getDisconnectedDeferred()
+        
+        #Verify that first message was in error queue
+        self.assertEquals(self.msg1, self.errQMsg['body'])
+        self.assertEquals(self.msg1Hdrs['food'], self.errQMsg['headers']['food'])
+        self.assertNotEquals(self.unhandledMsg['headers']['message-id'], self.errQMsg['headers']['message-id'])
+
     def _saveMsgAndBarf(self, stomp, msg):
         print 'Save message and barf'
         self.assertEquals(self.msg1, msg['body'])
         self.unhandledMsg = msg
         raise StompestTestError('this is a test')
         
-    def _reconnectAfterErr(self, result):
-        self.creator.getConnection().addCallback(self._onConnectedAgain)
-        
-    def _onConnectedAgain(self, stomp):
-        stomp.getDisconnectedDeferred().addCallback(self.disconnectedAgain.callback).addErrback(self.disconnectedAgain.errback)
-        stomp.subscribe(self.queue, self._eatOneMsgAndDisconnect, {'ack': self.ackMode, 'activemq.prefetchSize': 1}, errorDestination=self.errorQueue)
-        
     def _eatOneMsgAndDisconnect(self, stomp, msg):
         print 'Eat message and disconnect'
         self.assertEquals(self.msg2, msg['body'])
         stomp.disconnect()
-        
-    def _reconnectForErrQ(self, result):
-        self.creator.getConnection().addCallback(self._onConnectedForErrQ)
-        
-    def _onConnectedForErrQ(self, stomp):
-        stomp.getDisconnectedDeferred().addCallback(self.disconnectedFromErrQ.callback).addErrback(self.disconnectedFromErrQ.errback)
-        stomp.subscribe(self.errorQueue, self._saveErrMsgAndDisconnect, {'ack': self.ackMode, 'activemq.prefetchSize': 1})
-        
+                
     def _saveErrMsgAndDisconnect(self, stomp, msg):
         print 'Save error message and disconnect'
         self.errQMsg = msg
         stomp.disconnect()
-        
-    def _verifyErrMsg(self, result):
-        self.assertEquals(self.msg1, self.errQMsg['body'])
-        self.assertEquals(self.msg1Hdrs['food'], self.errQMsg['headers']['food'])
-        self.assertNotEquals(self.unhandledMsg['headers']['message-id'], self.errQMsg['headers']['message-id'])
 
 class GracefulDisconnectTestCase(unittest.TestCase):
     numMsgs = 5
