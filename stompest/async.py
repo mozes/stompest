@@ -312,7 +312,7 @@ class StompClient(LineOnlyReceiver):
     def subscribe(self, dest, handler, headers={}, **kwargs):
         """Subscribe to a destination and register a function handler to receive messages for that destination
         """
-        errorDestination = kwargs.get('errorDestination', None);
+        errorDestination = kwargs.get('errorDestination', None)
         # client-individual mode is only supported in AMQ >= 5.2
         # headers['ack'] = headers.get('ack', 'client-individual')
         headers['ack'] = headers.get('ack', 'client')
@@ -341,8 +341,8 @@ class StompClientFactory(ClientFactory):
     protocol = StompClient
 
     def __init__(self, **kwargs):
-        self.login = kwargs.get('login', '');
-        self.passcode = kwargs.get('passcode', '');
+        self.login = kwargs.get('login', '')
+        self.passcode = kwargs.get('passcode', '')
         self.buildProtocolDeferred = defer.Deferred()
         self.log = logging.getLogger(LOG_CATEGORY)
     
@@ -369,15 +369,15 @@ class StompConfig(object):
     def __init__(self, host, port, **kwargs):
         self.host = host
         self.port = port
-        self.login = kwargs.get('login', '');
-        self.passcode = kwargs.get('passcode', '');
+        self.login = kwargs.get('login', '')
+        self.passcode = kwargs.get('passcode', '')
         self.log = logging.getLogger(LOG_CATEGORY)
 
 class StompCreator(object):
 
     def __init__(self, config, **kwargs):
         self.config = config
-        self.connectTimeout = kwargs.get('connectTimeout', None);
+        self.connectTimeout = kwargs.get('connectTimeout', None)
         self.log = logging.getLogger(LOG_CATEGORY)
         self.stompConnectedDeferred = None
 

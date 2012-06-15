@@ -89,7 +89,7 @@ class Stomp(object):
             self.socket.setblocking(0)
             try:
                 while self.socket.recv(1, socket.MSG_PEEK) == parser.LINE_DELIMITER:
-                    self.socket.recv(1);
+                    self.socket.recv(1)
             except:
                 pass
             finally:
