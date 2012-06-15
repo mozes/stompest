@@ -135,7 +135,7 @@ class StompClient(LineOnlyReceiver):
         """Send connect command
         """
         self.log.debug("Sending connect command")
-        cmd = stomper.connect(self.factory.getLogin(), self.factory.getPasscode())
+        cmd = stomper.connect(self.factory.login, self.factory.passcode)
         # self.log.debug("Writing cmd: %s" % cmd)
         self.transport.write(cmd)
 
@@ -207,11 +207,13 @@ class StompClient(LineOnlyReceiver):
             errMsg = cloneStompMessageForErrorDest(msg)
             self.send(errDest, errMsg['body'], errMsg['headers'])
             self._ack(messageId)
-        #Set disconnect error
-        self.disconnectError = failure
-        #Disconnect
-        self.disconnect()
-        return failure
+        if self.factory.disconnectOnUnhandledMsg:
+            #Set disconnect error
+            self.disconnectError = failure
+            #Disconnect
+            self.disconnect()
+            return failure
+        return None
         
     def connectTimeout(self, timeout):
         self.log.error("Connect command timed out after %s seconds" % timeout)
@@ -343,15 +345,10 @@ class StompClientFactory(ClientFactory):
     def __init__(self, **kwargs):
         self.login = kwargs.get('login', '')
         self.passcode = kwargs.get('passcode', '')
+        self.disconnectOnUnhandledMsg = kwargs.get('disconnectOnUnhandledMsg', True)
         self.buildProtocolDeferred = defer.Deferred()
         self.log = logging.getLogger(LOG_CATEGORY)
     
-    def getLogin(self):
-        return self.login
-
-    def getPasscode(self):
-        return self.passcode
-
     def buildProtocol(self, addr):
         p = ClientFactory.buildProtocol(self, addr)
         #This is a sneaky way of passing the protocol instance back to the caller
@@ -378,6 +375,7 @@ class StompCreator(object):
     def __init__(self, config, **kwargs):
         self.config = config
         self.connectTimeout = kwargs.get('connectTimeout', None)
+        self.disconnectOnUnhandledMsg = kwargs.get('disconnectOnUnhandledMsg', True)
         self.log = logging.getLogger(LOG_CATEGORY)
         self.stompConnectedDeferred = None
 
