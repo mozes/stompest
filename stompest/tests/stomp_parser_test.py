@@ -41,6 +41,35 @@ class StompFrameLineParserTest(unittest.TestCase):
         self.assertEqual(msg, {'cmd': 'SEND', 
                                'headers': {'foo': 'bar', 'hello ': 'there-world with space ', 'empty-value':'', '':'empty-header', 'destination': '/queue/blah'},
                                'body': 'some stuff\nand more'})
+    
+    def test_frameParse_binary_body_succeeds(self):
+        frame = stomper.Frame()
+        frame.cmd = 'SEND'
+        frame.headers = {'content-length': 4}
+        frame.body = '\x00\n\x00\x00' + 'some more text'
+        cmd = frame.pack()
+        lines = cmd.split('\n')[:-1]
+        parser = StompFrameLineParser()
+        for line in lines:
+            parser.processLine(line)
+                
+        msg = parser.getMessage()
+        self.assertEqual(msg, {'cmd': 'SEND', 
+                               'headers': {'content-length': '4'},
+                               'body': '\x00\n\x00\x00' + 'some more text'})
+        
+    def test_frameParse_throws_FrameError_on_binary_body_with_too_short_content_length(self):
+        frame = stomper.Frame()
+        frame.cmd = 'SEND'
+        frame.headers = {'content-length': 1}
+        frame.body = '\x00\x00'
+        cmd = frame.pack()
+        lines = cmd.split('\n')[:-1]
+        parser = StompFrameLineParser()
+        for line in lines[:-1]:
+            parser.processLine(line)
+
+        self.assertRaises(StompFrameError, lambda: parser.processLine(lines[-1]))
         
     def test_frame_without_header_or_body_succeeds(self):
         cmd = stomper.disconnect()

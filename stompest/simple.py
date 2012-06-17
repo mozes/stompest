@@ -47,17 +47,19 @@ class Stomp(object):
     def canRead(self, timeout=None):
         self._checkConnected()
         if timeout is None:
-            readList, junk, junk = select.select([self.socket], [], [])
+            readList, _, _ = select.select([self.socket], [], [])
         else:
-            readList, junk, junk = select.select([self.socket], [], [], timeout)
+            readList, _, _ = select.select([self.socket], [], [], timeout)
         return len(readList) > 0
         
-    def send(self, dest, msg, headers={}):
+    def send(self, dest, msg, headers=None):
+        headers = headers or {}
         frame = {'cmd': 'SEND', 'headers': headers, 'body': msg}
         frame['headers']['destination'] = dest
         self.sendFrame(frame)
         
-    def subscribe(self, dest, headers={}):
+    def subscribe(self, dest, headers=None):
+        headers = headers or {}
         if not 'ack' in headers:
             headers['ack'] = 'auto'
         if not 'activemq.prefetchSize' in headers:
@@ -75,11 +77,11 @@ class Stomp(object):
     def receiveFrame(self):
         self._checkConnected()
         parser = StompFrameLineParser()
-        while (not parser.isDone()):
+        while not parser.isDone():
             buffer = list()
-            while not buffer or not buffer[-1] == parser.FRAME_DELIMITER:
+            while (not buffer) or not (buffer[-1] == parser.FRAME_DELIMITER):
                 next = self.socket.recv(1)
-                if next == "":
+                if next == '':
                     raise Exception("Connection closed")
                 buffer.append(next)
             
@@ -89,7 +91,7 @@ class Stomp(object):
             self.socket.setblocking(0)
             try:
                 while self.socket.recv(1, socket.MSG_PEEK) == parser.LINE_DELIMITER:
-                    self.socket.recv(1);
+                    self.socket.recv(1)
             except:
                 pass
             finally:
