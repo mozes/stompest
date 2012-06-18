@@ -31,7 +31,7 @@ class SimpleStompIntegrationTest(unittest.TestCase):
         stomp = Stomp('localhost', 61613)
         stomp.connect()
         stomp.send(self.DEST, 'test message1')
-        stomp.send(self.DEST, 'test message2')
+        stomp.send(self.DEST, '\x00\n', headers={'content-length': 2})
         self.assertFalse(stomp.canRead(1))
         stomp.subscribe(self.DEST, {'ack': 'client'})
         self.assertTrue(stomp.canRead(1))
