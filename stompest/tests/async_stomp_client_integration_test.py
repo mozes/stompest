@@ -118,11 +118,50 @@ class HandlerExceptionWithErrorQueueIntegrationTestCase(unittest.TestCase):
         self.assertEquals(self.msg1Hdrs['food'], self.errQMsg['headers']['food'])
         self.assertNotEquals(self.unhandledMsg['headers']['message-id'], self.errQMsg['headers']['message-id'])
 
+    @defer.inlineCallbacks
+    def test_onhandlerException_ackMessage_filterReservedHdrs_send2ErrorQ_and_no_disconnect(self):
+        self.cleanQueues()
+        
+        config = StompConfig('localhost', 61613)
+        creator = StompCreator(config, disconnectOnUnhandledMsg=False)
+        
+        #Connect
+        stomp = yield creator.getConnection()
+        
+        #Enqueue two messages
+        stomp.send(self.queue, self.msg1, self.msg1Hdrs)
+        stomp.send(self.queue, self.msg2)
+        
+        #Barf on first msg, disconnect on second msg
+        self.msgsHandled = 0
+        self.errQMsg = None
+        stomp.subscribe(self.queue, self._barfOneEatOneAndDisonnect, {'ack': self.ackMode, 'activemq.prefetchSize': 1}, errorDestination=self.errorQueue)
+        
+        #Client disconnects without error
+        yield stomp.getDisconnectedDeferred()
+        
+        #Reconnect and subscribe to error queue
+        stomp = yield creator.getConnection()
+        stomp.subscribe(self.errorQueue, self._saveErrMsgAndDisconnect, {'ack': self.ackMode, 'activemq.prefetchSize': 1})
+        
+        #Wait for disconnect
+        yield stomp.getDisconnectedDeferred()
+        
+        #Verify that one message was in error queue
+        self.assertNotEquals(None, self.errQMsg)
+        self.assertTrue(self.errQMsg['body'] in (self.msg1, self.msg2))
+
     def _saveMsgAndBarf(self, stomp, msg):
         print 'Save message and barf'
         self.assertEquals(self.msg1, msg['body'])
         self.unhandledMsg = msg
         raise StompestTestError('this is a test')
+        
+    def _barfOneEatOneAndDisonnect(self, stomp, msg):
+        self.msgsHandled += 1
+        if self.msgsHandled == 1:
+            raise StompestTestError('this is a test')
+        stomp.disconnect()
         
     def _eatOneMsgAndDisconnect(self, stomp, msg):
         print 'Eat message and disconnect'

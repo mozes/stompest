@@ -385,7 +385,7 @@ class StompCreator(object):
         return self.stompConnectedDeferred
 
     def connect(self):
-        factory = StompClientFactory(login=self.config.login, passcode=self.config.passcode)
+        factory = StompClientFactory(login=self.config.login, passcode=self.config.passcode, disconnectOnUnhandledMsg=self.disconnectOnUnhandledMsg)
         reactor.connectTCP(self.config.host, self.config.port, factory) 
         return factory.buildProtocolDeferred
         
