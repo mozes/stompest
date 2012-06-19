@@ -18,15 +18,17 @@ import stomper
 from twisted.internet.protocol import Protocol, Factory 
 from twisted.internet import reactor
 from twisted.protocols.basic import LineOnlyReceiver
-from stompest.parser import StompFrameLineParser
+
+from stompest.util import FRAME_DELIMITER
 
 LOG_CATEGORY="stompest.tests.broker_simulator"
 
 class BlackHoleStompServer(LineOnlyReceiver):
-
+    delimiter = FRAME_DELIMITER
+    
     def __init__(self):
         self.log = logging.getLogger(LOG_CATEGORY)
-        self.resetParser()
+        self.buffer = None
         self.cmdMap = {
             'CONNECT': self.handleConnect,
             'DISCONNECT': self.handleDisconnect,
@@ -36,6 +38,7 @@ class BlackHoleStompServer(LineOnlyReceiver):
         }
 
     def connectionMade(self):
+        self.setBuffer()
         self.log.debug('Connection made')
 
     def connectionLost(self, reason): 
@@ -44,20 +47,17 @@ class BlackHoleStompServer(LineOnlyReceiver):
             self.factory.disconnectDeferred.callback('Disconnected')
 
     def lineReceived(self, line):
-        self.parser.processLine(line)
-        if (self.parser.isDone()):
-            frame = self.parser.getMessage()
-            self.resetParser()
-            try:
-                self.log.debug("Received frame: %s" % frame)
-                self.cmdMap[frame['cmd']](frame)
-            except KeyError:
-                raise stomper.FrameError("Unknown STOMP command: %s" % str(frame))
+        self.buffer.appendData(line + self.delimiter)
+        message = self.buffer.getOneMessage()
+        if not message:
+            return
+        if message['cmd'] not in self.cmdMap:
+            raise stomper.FrameError("Unknown STOMP command: %s" % str(message))
+        self.cmdMap[message['cmd']](message)            
 
-    def resetParser(self):
-        self.parser = StompFrameLineParser()
-        self.delimiter = self.parser.LINE_DELIMITER
-
+    def setBuffer(self):
+        self.buffer = stomper.stompbuffer.StompBuffer()
+    
     def getFrame(self, cmd, headers, body):
         sFrame = stomper.Frame()
         sFrame.cmd = cmd

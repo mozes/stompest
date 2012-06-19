@@ -117,12 +117,9 @@ class SimpleStompTest(unittest.TestCase):
                            'body': ''}, sentFrame)
 
     def parseFrame(self, message):
-        from stompest.parser import StompFrameLineParser
-        parser = StompFrameLineParser()        
-        for line in message.split('\n')[:-1]:
-            parser.processLine(line)
-        self.assertTrue(parser.isDone())
-        return parser.getMessage()
+        buff = stomper.stompbuffer.StompBuffer()
+        buff.appendData(message)
+        return buff.getOneMessage()
 
     def getFrame(self, cmd, headers, body):
         sFrame = stomper.Frame()

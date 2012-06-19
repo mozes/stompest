@@ -25,17 +25,16 @@ from twisted.protocols.basic import LineOnlyReceiver
 from twisted.internet.protocol import ClientFactory
 from twisted.internet.error import ConnectionLost
 
-from stompest.parser import StompFrameLineParser
 from stompest.error import StompError, StompProtocolError, StompConnectTimeout, StompFrameError
-from stompest.util import cloneStompMessageForErrorDest
+from stompest.util import cloneStompMessageForErrorDest, FRAME_DELIMITER
 
 LOG_CATEGORY="stompest.async"
 
 class StompClient(LineOnlyReceiver):
     """A Twisted implementation of a STOMP client"""
     MAX_LENGTH = sys.maxint
-    delimiter = StompFrameLineParser.FRAME_DELIMITER
-
+    delimiter = FRAME_DELIMITER
+    
     def __init__(self):
         self.log = logging.getLogger(LOG_CATEGORY)
         self.cmdMap = {
@@ -54,7 +53,7 @@ class StompClient(LineOnlyReceiver):
         self.disconnecting = False
         self.disconnectError = None
         self.activeHandlers = {}
-        self.resetParser()
+        self.buffer = None
 
     #
     # Overriden methods from parent protocol class
@@ -62,6 +61,7 @@ class StompClient(LineOnlyReceiver):
     def connectionMade(self):
         """When TCP connection is made, register shutdown handler
         """
+        self.setBuffer()
         LineOnlyReceiver.connectionMade(self)
         
     def connectionLost(self, reason):
@@ -106,22 +106,19 @@ class StompClient(LineOnlyReceiver):
         LineOnlyReceiver.connectionLost(self, reason)
 
     def lineReceived(self, line):
-        """When a line is received, process it and dispatch when we've
-           got a whole frame
+        """When a frame is received, process it and dispatch
         """
-        # self.log.debug("Received line [%s]" % line)
         # the delimiter was left off by LineOnlyReceiver, so add it back in
-        line = line + self.delimiter
-        
-        for l in line.lstrip('\n').split('\n'):
-            self.parser.processLine(l)
-            if self.parser.isDone():
-                frame = self.parser.getMessage()
-                self.resetParser()
-                if frame['cmd'] in self.cmdMap:
-                    self.cmdMap[frame['cmd']](frame)
-                else:
-                    raise StompFrameError("Unknown STOMP command: %s" % str(frame))
+        frameBytes = line + self.delimiter
+        self.buffer.appendData(frameBytes)
+        message = self.buffer.getOneMessage()
+        if message is None:
+            errMsg = "Invalid frame received: %s" % frameBytes
+            self.log.critical(errMsg)
+            raise StompFrameError(errMsg)
+        if message['cmd'] not in self.cmdMap:
+            raise StompFrameError("Unknown STOMP command: %s" % str(message))
+        self.cmdMap[message['cmd']](message)            
 
     def lineLengthExceeded(self, line):
         errorMsg = "Stomp protocol implementation line length maximum (%s) was exceeded" % self.MAX_LENGTH
@@ -138,7 +135,7 @@ class StompClient(LineOnlyReceiver):
         cmd = stomper.connect(self.factory.login, self.factory.passcode)
         # self.log.debug("Writing cmd: %s" % cmd)
         self.transport.write(cmd)
-
+        
     def _disconnect(self):
         """Send disconnect command
         """
@@ -173,10 +170,10 @@ class StompClient(LineOnlyReceiver):
     #
     # Private helper methods
     #
-    def resetParser(self):
-        """Stomp parser must be reset after each frame is received
+    def setBuffer(self):
+        """Stomp buffer must be reset upon each connect
         """
-        self.parser = StompFrameLineParser()
+        self.buffer = stomper.stompbuffer.StompBuffer()
     
     def finishHandlers(self):
         """Return a Deferred to signal when all requests in process are complete
@@ -186,9 +183,7 @@ class StompClient(LineOnlyReceiver):
             return self.finishedHandlersDeferred
     
     def handlersInProgress(self):
-        if self.activeHandlers:
-            return True
-        return False
+        return bool(self.activeHandlers)
     
     def handlerFinished(self, messageId):
         del self.activeHandlers[messageId]
