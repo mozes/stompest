@@ -18,6 +18,9 @@ Copyright 2011 Mozes, Inc.
 """
 from copy import deepcopy
 
+LINE_DELIMITER = '\n'
+FRAME_DELIMITER = '\x00\n'
+
 reservedHeaders = ['message-id', 'timestamp', 'expires', 'priority', 'destination']
 
 def filterReservedHeaders(headers):

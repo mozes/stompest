@@ -38,14 +38,20 @@ class StompFrameLineParser(object):
     HEADER_DELIMITER = ':'
 
     def __init__(self):
-        self.message = dict(cmd='', headers={}, body='')
+        self.message = {
+            'cmd': '',
+            'headers': {},
+            'body': []
+        }
         self.state = 'cmd'
         self.done = False
         self.states = {
             'cmd': self.parseCommandLine,
             'headers': self.parseHeaderLine,
-            'body': self.parseBodyLine,
+            'body': self.parseBodyLine
         }
+        self.length = -1
+        self.read = 0
     
     def isDone(self):
         """Call this method after each line is processed to see if the frame is complete
@@ -55,14 +61,13 @@ class StompFrameLineParser(object):
     def getMessage(self):
         """When a complete frame has been parsed, call this method to get whole thing
         """
-        if (self.done):
+        if self.isDone():
             return self.message
-        return None
     
     def processLine(self, line):
         """Call this method for each line receive for the stomp frame
         """
-        if (self.done):
+        if self.isDone():
             raise StompFrameError('processLine() called after frame end')
         self.states[self.state](line)
 
@@ -73,27 +78,35 @@ class StompFrameLineParser(object):
         self.state = newState
     
     def parseCommandLine(self, line):
-        if (len(line) == 0):
-            raise StompFrameError("Empty stomp command line: %s" % line)
+        if not line:
+            raise StompFrameError('Empty stomp command line: %s' % line)
         self.message['cmd'] = line
         self.transition('headers')
         
     def parseHeaderLine(self, line):
-        if (len(line) == 0):
+        if not line:
             self.transition('body')
             return
         try:
             name, value = line.split(self.HEADER_DELIMITER, 1)
+            if name == 'content-length':
+                self.length = int(value)
         except ValueError:
             raise StompFrameError('Invalid stomp header line: [%s], len [%d]' % (line, len(line)))
         self.message['headers'][name] = value
         
     def parseBodyLine(self, line):
-        if line.endswith(self.FRAME_DELIMITER):
-            self.message['body'] += line[:-1]
+        frameDelimiterPosition = line.find(self.FRAME_DELIMITER, self.length - self.read)
+        if frameDelimiterPosition > -1:
+            if frameDelimiterPosition != len(line) - 1:
+                raise StompFrameError('Found body content after frame end: %s' % repr(line))
+            self.message['body'].append(line[:-1])
             self.endFrame()
             return
-        self.message['body'] += line + self.LINE_DELIMITER
-        
+        line += self.LINE_DELIMITER
+        self.read += len(line)
+        self.message['body'].append(line)
+    
     def endFrame(self):
+        self.message['body'] = ''.join(self.message['body'])
         self.done = True
