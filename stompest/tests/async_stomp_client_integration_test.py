@@ -57,9 +57,6 @@ class HandlerExceptionWithErrorQueueIntegrationTestCase(unittest.TestCase):
     msg2 = 'follow up message'
     queue = '/queue/asyncStompestHandlerExceptionWithErrorQueueUnitTest'
     errorQueue = '/queue/zzz.error.asyncStompestHandlerExceptionWithErrorQueueUnitTest'
-    # disconnected = defer.Deferred()
-    # disconnectedAgain = defer.Deferred()
-    # disconnectedFromErrQ = defer.Deferred()
     ackMode = getClientAckMode()
         
     def cleanQueues(self):
@@ -74,8 +71,8 @@ class HandlerExceptionWithErrorQueueIntegrationTestCase(unittest.TestCase):
             frame = stomp.receiveFrame()
             stomp.ack(frame)
             print "Dequeued old message: %s" % frame
-        stomp.disconnect()        
-    
+        stomp.disconnect()
+
     @defer.inlineCallbacks
     def test_onhandlerException_ackMessage_filterReservedHdrs_send2ErrorQ_and_errback(self):
         self.cleanQueues()
