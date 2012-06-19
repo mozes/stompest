@@ -139,28 +139,38 @@ class GracefulDisconnectTestCase(unittest.TestCase):
     msgCount = 0
     msg = 'test'
     queue = '/queue/aysncStompestGracefulDisconnectUnitTest'
-    disconnected = defer.Deferred()
-    disconnectedAgain = defer.Deferred()
     ackMode = getClientAckMode()
     
+    @defer.inlineCallbacks
     def test_onDisconnect_waitForOutstandingMessagesToFinish(self):
         self.config = StompConfig('localhost', 61613)
         self.creator = StompCreator(self.config)
-        deferConnected = self.creator.getConnection().addCallback(self._onConnected)
-        self.disconnected.addCallback(self._reconnect)
-        self.disconnectedAgain.addCallback(self._verifyAllMsgsAcked)
-        return defer.DeferredList([
-                self.disconnected,
-                self.disconnectedAgain,
-            ]
-        )
         
-    def _onConnected(self, stomp):
-        stomp.getDisconnectedDeferred().addCallback(self.disconnected.callback).addErrback(self.disconnected.errback)
+        config = StompConfig('localhost', 61613)
+        creator = StompCreator(config)
+        
+        #Connect
+        stomp = yield creator.getConnection()
+        
         for i in range(self.numMsgs):
             stomp.send(self.queue, self.msg)
         stomp.subscribe(self.queue, self._msgHandler, {'ack': self.ackMode, 'activemq.prefetchSize': self.numMsgs})
         
+        #Wait for disconnect
+        yield stomp.getDisconnectedDeferred()
+        
+        #Reconnect and subscribe again to make sure that all messages in the queue were ack'ed
+        stomp = yield creator.getConnection()
+        self.timeExpired = False
+        self.timeoutDelayedCall = reactor.callLater(1, self._timesUp, stomp)
+        stomp.subscribe(self.queue, self._eatOneMsgAndDisconnect, {'ack': self.ackMode, 'activemq.prefetchSize': self.numMsgs})
+
+        #Wait for disconnect
+        yield stomp.getDisconnectedDeferred()
+        
+        #Time should have expired if there were no messages left in the queue
+        self.assertTrue(self.timeExpired)
+                
     def _msgHandler(self, stomp, msg):
         self.msgCount += 1
         if self.msgCount < self.numMsgs:
@@ -170,15 +180,6 @@ class GracefulDisconnectTestCase(unittest.TestCase):
         else:
             stomp.disconnect()
             
-    def _reconnect(self, result):
-        self.creator.getConnection().addCallback(self._onReconnect)
-        
-    def _onReconnect(self, stomp):
-        stomp.getDisconnectedDeferred().addCallback(self.disconnectedAgain.callback).addErrback(self.disconnectedAgain.errback)
-        self.timeExpired = False
-        self.timeoutDelayedCall = reactor.callLater(1, self._timesUp, stomp)
-        stomp.subscribe(self.queue, self._eatOneMsgAndDisconnect, {'ack': self.ackMode, 'activemq.prefetchSize': self.numMsgs})
-
     def _timesUp(self, stomp):
         print "Times up!!!"
         self.timeExpired = True
@@ -187,11 +188,6 @@ class GracefulDisconnectTestCase(unittest.TestCase):
     def _eatOneMsgAndDisconnect(self, stomp, msg):
         self.timeoutDelayedCall.cancel()
         stomp.disconnect()
-        
-    def _verifyAllMsgsAcked(self, result):
-        print "VERIFY!"
-        self.assertTrue(self.timeExpired)
-        return result
 
 if __name__ == '__main__':
     import sys
