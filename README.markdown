@@ -195,6 +195,15 @@ Twisted
 -------
 * Written before the advent of defer.inlineCallbacks so it could be simpler
 
+Options
+=======
+
+Twisted
+-------
+* StompCreator
+** disconnectOnUnhandledMsg (defaults to True)
+*** Determined whether client disconnects on unhandled message.  If an error destination is not specified for all subscriptions, the client should disconnect on unhandled message as there is no mechanism in the STOMP protocol to "NACK" a message.  If an error destination has been given for all handlers, it's safe to set this to False. 
+
 Changes
 =======
 * 1.0.4 - Bug fix thanks to [Njal Karevoll](https://github.com/nkvoll).  No longer relies on newline after the null-byte frame separator.  Library is now compatible with RabbitMQ stomp adapter.
