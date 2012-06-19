@@ -106,15 +106,16 @@ class StompClient(LineOnlyReceiver):
         LineOnlyReceiver.connectionLost(self, reason)
 
     def lineReceived(self, line):
-        """When a line is received, process it and dispatch when we've
-           got a whole frame
+        """When a frame is received, process it and dispatch
         """
-        #self.log.debug("Received line [%s]" % line)
         # the delimiter was left off by LineOnlyReceiver, so add it back in
-        self.buffer.appendData(line + self.delimiter)
+        frameBytes = line + self.delimiter
+        self.buffer.appendData(frameBytes)
         message = self.buffer.getOneMessage()
-        if not message:
-            return
+        if message is None:
+            errMsg = "Invalid frame received: %s" % frameBytes
+            self.log.critical(errMsg)
+            raise StompFrameError(errMsg)
         if message['cmd'] not in self.cmdMap:
             raise StompFrameError("Unknown STOMP command: %s" % str(message))
         self.cmdMap[message['cmd']](message)            
