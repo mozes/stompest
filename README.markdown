@@ -201,8 +201,8 @@ Options
 Twisted
 -------
 * StompCreator
-** disconnectOnUnhandledMsg (defaults to True)
-*** Determined whether client disconnects on unhandled message.  If an error destination is not specified for all subscriptions, the client should disconnect on unhandled message as there is no mechanism in the STOMP protocol to "NACK" a message.  If an error destination has been given for all handlers, it's safe to set this to False. 
+    * disconnectOnUnhandledMsg (defaults to True)
+        * Determined whether client disconnects on unhandled message.  If an error destination is not specified for all subscriptions, the client should disconnect on unhandled message as there is no mechanism in the STOMP protocol to "NACK" a message.  If an error destination has been given for all handlers, it's safe to set this to False. 
 
 Changes
 =======
