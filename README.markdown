@@ -207,6 +207,7 @@ Twisted
     * alwaysDisconnectOnUnhandledMsg (defaults to False)
         * For backward-compatibility, you can set this option to True and the client will always disconnect in the case of an unhandled error in a message handler, even if an error destination has been
         configured.
+
 Changes
 =======
 * 1.0.4 - Bug fix thanks to [Njal Karevoll](https://github.com/nkvoll).  No longer relies on newline after the null-byte frame separator.  Library is now compatible with RabbitMQ stomp adapter.
