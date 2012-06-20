@@ -182,7 +182,10 @@ Basically the same as [Net::Stomp](http://search.cpan.org/dist/Net-Stomp/lib/Net
 Twisted
 -------
 * Graceful shutdown - On disconnect or error, the client stops processing new messages and waits for all outstanding message handlers to finish before issuing the DISCONNECT command
-* Error handling - the client assumes that if an exception is not handled by a message handler, it's not necessarily safe to continue processing so it shutdowns down gracefully.  By passing the errorDestination parameter to the subscribe() method, it can be configured to send a copy of offending message to a configured destination.  This will allow you to avoid the "poison pill" scenario where the broker keeps redelivering a bad message infinitely.
+* Error handling - STOMP 1.0 does not have a NACK command so you have two options for error handling:
+    * Client error handling - passing the errorDestination parameter to the subscribe() method will cause unhandled messages to be forwarded to that destination.
+    * Disconnecting - if you do not configure an errorDestination and an exception propagates up from a message handler, then the client will gracefully disconnect.  This is effectively a NACK for the message.
+    You can [configure ActiveMQ](http://activemq.apache.org/message-redelivery-and-dlq-handling.html) with a redelivery policy to avoid the "poison pill" scenario where the broker keeps redelivering a bad message infinitely.
 * Fully unit-tested including a simulated STOMP broker
 * Configurable connection timeout
 
@@ -201,9 +204,9 @@ Options
 Twisted
 -------
 * StompCreator
-    * disconnectOnUnhandledMsg (defaults to True)
-        * Determined whether client disconnects on unhandled message.  If an error destination is not specified for all subscriptions, the client should disconnect on unhandled message as there is no mechanism in the STOMP protocol to "NACK" a message.  If an error destination has been given for all handlers, it's safe to set this to False. 
-
+    * alwaysDisconnectOnUnhandledMsg (defaults to False)
+        * For backward-compatibility, you can set this option to True and the client will always disconnect in the case of an unhandled error in a message handler, even if an error destination has been
+        configured.
 Changes
 =======
 * 1.0.4 - Bug fix thanks to [Njal Karevoll](https://github.com/nkvoll).  No longer relies on newline after the null-byte frame separator.  Library is now compatible with RabbitMQ stomp adapter.
