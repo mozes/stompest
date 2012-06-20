@@ -202,12 +202,17 @@ class StompClient(LineOnlyReceiver):
     
     def messageHandlerFailed(self, failure, messageId, msg, errDest):
         self.log.error("Error in message handler: %s" % str(failure))
+        disconnect = False
         #Forward message to error queue if configured
         if errDest is not None:
             errMsg = cloneStompMessageForErrorDest(msg)
             self.send(errDest, errMsg['body'], errMsg['headers'])
             self._ack(messageId)
-        if self.factory.disconnectOnUnhandledMsg:
+            if self.factory.alwaysDisconnectOnUnhandledMsg:
+                disconnect = True
+        else:
+            disconnect = True
+        if disconnect:
             #Set disconnect error
             self.disconnectError = failure
             #Disconnect
@@ -345,7 +350,7 @@ class StompClientFactory(ClientFactory):
     def __init__(self, **kwargs):
         self.login = kwargs.get('login', '')
         self.passcode = kwargs.get('passcode', '')
-        self.disconnectOnUnhandledMsg = kwargs.get('disconnectOnUnhandledMsg', True)
+        self.alwaysDisconnectOnUnhandledMsg = kwargs.get('alwaysDisconnectOnUnhandledMsg', True)
         self.buildProtocolDeferred = defer.Deferred()
         self.log = logging.getLogger(LOG_CATEGORY)
     
@@ -375,7 +380,7 @@ class StompCreator(object):
     def __init__(self, config, **kwargs):
         self.config = config
         self.connectTimeout = kwargs.get('connectTimeout', None)
-        self.disconnectOnUnhandledMsg = kwargs.get('disconnectOnUnhandledMsg', True)
+        self.alwaysDisconnectOnUnhandledMsg = kwargs.get('alwaysDisconnectOnUnhandledMsg', False)
         self.log = logging.getLogger(LOG_CATEGORY)
         self.stompConnectedDeferred = None
 
@@ -385,7 +390,7 @@ class StompCreator(object):
         return self.stompConnectedDeferred
 
     def connect(self):
-        factory = StompClientFactory(login=self.config.login, passcode=self.config.passcode, disconnectOnUnhandledMsg=self.disconnectOnUnhandledMsg)
+        factory = StompClientFactory(login=self.config.login, passcode=self.config.passcode, alwaysDisconnectOnUnhandledMsg=self.alwaysDisconnectOnUnhandledMsg)
         reactor.connectTCP(self.config.host, self.config.port, factory) 
         return factory.buildProtocolDeferred
         

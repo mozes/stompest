@@ -72,13 +72,19 @@ class HandlerExceptionWithErrorQueueIntegrationTestCase(unittest.TestCase):
             stomp.ack(frame)
             print "Dequeued old message: %s" % frame
         stomp.disconnect()
+        
+    def setUp(self):
+        self.unhandledMsg = None
+        self.errQMsg = None
+        self.consumedMsg = None
+        self.msgsHandled = 0
 
     @defer.inlineCallbacks
-    def test_onhandlerException_ackMessage_filterReservedHdrs_send2ErrorQ_and_errback(self):
+    def test_onhandlerException_ackMessage_filterReservedHdrs_send2ErrorQ_and_disconnect(self):
         self.cleanQueues()
         
         config = StompConfig('localhost', 61613)
-        creator = StompCreator(config)
+        creator = StompCreator(config, alwaysDisconnectOnUnhandledMsg=True)
         
         #Connect
         stomp = yield creator.getConnection()
@@ -117,13 +123,16 @@ class HandlerExceptionWithErrorQueueIntegrationTestCase(unittest.TestCase):
         self.assertEquals(self.msg1, self.errQMsg['body'])
         self.assertEquals(self.msg1Hdrs['food'], self.errQMsg['headers']['food'])
         self.assertNotEquals(self.unhandledMsg['headers']['message-id'], self.errQMsg['headers']['message-id'])
+        
+        #Verify that second message was consumed
+        self.assertEquals(self.msg2, self.consumedMsg['body'])
 
     @defer.inlineCallbacks
     def test_onhandlerException_ackMessage_filterReservedHdrs_send2ErrorQ_and_no_disconnect(self):
         self.cleanQueues()
         
         config = StompConfig('localhost', 61613)
-        creator = StompCreator(config, disconnectOnUnhandledMsg=False)
+        creator = StompCreator(config)
         
         #Connect
         stomp = yield creator.getConnection()
@@ -133,8 +142,6 @@ class HandlerExceptionWithErrorQueueIntegrationTestCase(unittest.TestCase):
         stomp.send(self.queue, self.msg2)
         
         #Barf on first msg, disconnect on second msg
-        self.msgsHandled = 0
-        self.errQMsg = None
         stomp.subscribe(self.queue, self._barfOneEatOneAndDisonnect, {'ack': self.ackMode, 'activemq.prefetchSize': 1}, errorDestination=self.errorQueue)
         
         #Client disconnects without error
@@ -147,25 +154,60 @@ class HandlerExceptionWithErrorQueueIntegrationTestCase(unittest.TestCase):
         #Wait for disconnect
         yield stomp.getDisconnectedDeferred()
         
-        #Verify that one message was in error queue
+        #Verify that one message was in error queue (can't guarantee order)
         self.assertNotEquals(None, self.errQMsg)
         self.assertTrue(self.errQMsg['body'] in (self.msg1, self.msg2))
 
+    @defer.inlineCallbacks
+    def test_onhandlerException_disconnect(self):
+        self.cleanQueues()
+        
+        config = StompConfig('localhost', 61613)
+        creator = StompCreator(config)
+        
+        #Connect
+        stomp = yield creator.getConnection()
+        
+        #Enqueue a message
+        stomp.send(self.queue, self.msg1, self.msg1Hdrs)
+        
+        #Barf on first msg (implicit disconnect)
+        stomp.subscribe(self.queue, self._saveMsgAndBarf, {'ack': self.ackMode, 'activemq.prefetchSize': 1})
+        
+        #Client disconnected and returned error
+        try:
+            yield stomp.getDisconnectedDeferred()
+        except StompestTestError, e:
+            pass
+        else:
+            self.assertTrue(False)
+            
+        #Reconnect and subscribe again - consuming retried message and disconnecting
+        stomp = yield creator.getConnection()
+        stomp.subscribe(self.queue, self._eatOneMsgAndDisconnect, {'ack': self.ackMode, 'activemq.prefetchSize': 1})
+        
+        #Client disconnects without error
+        yield stomp.getDisconnectedDeferred()
+        
+        #Verify that message was retried
+        self.assertEquals(self.msg1, self.unhandledMsg['body'])
+        self.assertEquals(self.msg1, self.consumedMsg['body'])
+        self.assertEquals(self.unhandledMsg['headers']['message-id'], self.consumedMsg['headers']['message-id'])
+
     def _saveMsgAndBarf(self, stomp, msg):
         print 'Save message and barf'
-        self.assertEquals(self.msg1, msg['body'])
         self.unhandledMsg = msg
         raise StompestTestError('this is a test')
         
     def _barfOneEatOneAndDisonnect(self, stomp, msg):
         self.msgsHandled += 1
         if self.msgsHandled == 1:
-            raise StompestTestError('this is a test')
-        stomp.disconnect()
+            self._saveMsgAndBarf(stomp, msg)
+        self._eatOneMsgAndDisconnect(stomp, msg)
         
     def _eatOneMsgAndDisconnect(self, stomp, msg):
         print 'Eat message and disconnect'
-        self.assertEquals(self.msg2, msg['body'])
+        self.consumedMsg = msg
         stomp.disconnect()
                 
     def _saveErrMsgAndDisconnect(self, stomp, msg):
