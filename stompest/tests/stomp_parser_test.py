@@ -16,67 +16,54 @@ Copyright 2011 Mozes, Inc.
 import unittest                                 
 
 import stomper
-from stompest.parser import StompFrameLineParser
+from stompest.parser import StompParser
 from stompest.error import StompFrameError
+from stompest.util import createFrame
 
-class StompFrameLineParserTest(unittest.TestCase):
-    
+class StompParserTest(unittest.TestCase):
     def test_frameParse_succeeds(self):
-        frame = stomper.Frame()
-        frame.cmd = 'SEND'
-        frame.headers = {'foo': 'bar', 'hello ': 'there-world with space ', 'empty-value':'', '':'empty-header'}
-        frame.headers['destination'] = '/queue/blah'
-        frame.body = 'some stuff\nand more'
-        cmd = frame.pack()
-        lines = cmd.split('\n')[:-1]
-
-        parser = StompFrameLineParser()
-        self.assertFalse(parser.isDone())
-        for line in lines:
-            self.assertFalse(parser.isDone())
-            parser.processLine(line)
-        self.assertTrue(parser.isDone())
-                
-        msg = parser.getMessage()
-        self.assertEqual(msg, {'cmd': 'SEND', 
-                               'headers': {'foo': 'bar', 'hello ': 'there-world with space ', 'empty-value':'', '':'empty-header', 'destination': '/queue/blah'},
-                               'body': 'some stuff\nand more'})
+        message = {
+            'cmd': 'SEND',
+            'headers': {'foo': 'bar', 'hello ': 'there-world with space ', 'empty-value':'', '':'empty-header', 'destination': '/queue/blah'},
+            'body': 'some stuff\nand more'
+        }
+        frame = createFrame(message)
+        cmd = frame.pack()[:-1] # remove optional trailing newline which stomper adds to frames
+        
+        parser = StompParser()
+        parser.add(cmd)
+        self.assertEqual(parser.getMessage(), {'cmd': frame.cmd, 'headers': frame.headers, 'body': frame.body})
+        self.assertEqual(parser.getMessage(), None)
         
     def test_frame_without_header_or_body_succeeds(self):
-        cmd = stomper.disconnect()
-        lines = cmd.split('\n')[:-1]
-        parser = StompFrameLineParser()
-        for line in lines:
-            parser.processLine(line)
+        parser = StompParser()
+        parser.add(stomper.disconnect())
         msg = parser.getMessage()
         self.assertEqual(msg, {'cmd': 'DISCONNECT', 'headers': {}, 'body': ''})
 
+    def test_frames_with_optional_newlines_succeeds(self):
+        parser = StompParser()
+        frame = '\n%s\n' % stomper.disconnect()
+        parser.add(2 * frame)
+        for _ in xrange(2):
+            self.assertEqual(parser.getMessage(), {'cmd': 'DISCONNECT', 'headers': {}, 'body': ''})
+        self.assertEqual(parser.getMessage(), None)
+
     def test_getMessage_returns_None_if_not_done(self):
-        parser = StompFrameLineParser()
+        parser = StompParser()
         self.assertEqual(None, parser.getMessage())
-        parser.processLine('CONNECT')
+        parser.add('CONNECT')
         self.assertEqual(None, parser.getMessage())
         
-    def test_processLine_throws_FrameError_after_done(self):
-        cmd = stomper.connect('foo', 'bar')
-        lines = cmd.split('\n')[:-1]
-
-        parser = StompFrameLineParser()
-        for line in lines:
-            parser.processLine(line)
-            
-        self.assertTrue(parser.isDone())
-        self.assertRaises(StompFrameError, lambda: parser.processLine('SEND'))
-
-    def test_processLine_throws_FrameError_on_empty_command(self):
-        parser = StompFrameLineParser()
-        self.assertRaises(StompFrameError, lambda: parser.processLine(''))
+    def test_processLine_throws_FrameError_on_invalid_command(self):
+        parser = StompParser()
+        
+        self.assertRaises(StompFrameError, lambda: parser.add('HELLO\n'))
 
     def test_processLine_throws_FrameError_on_header_line_missing_separator(self):
-        parser = StompFrameLineParser()
-        parser.processLine('SEND')
-        self.assertRaises(StompFrameError, lambda: parser.processLine('no separator'))
+        parser = StompParser()
+        parser.add('SEND\n')
+        self.assertRaises(StompFrameError, lambda: parser.add('no separator\n'))
 
-                
 if __name__ == '__main__':
     unittest.main()

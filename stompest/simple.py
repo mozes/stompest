@@ -13,13 +13,15 @@ Copyright 2011 Mozes, Inc.
    See the License for the specific language governing permissions and
    limitations under the License.
 """
-import socket
-import select
-import stomper
 import logging
+import select
+import socket
 
-from stompest.parser import StompFrameLineParser
+import stomper
+
 from stompest.error import StompProtocolError
+from stompest.parser import StompParser
+from stompest.util import createFrame
 
 LOG_CATEGORY="stompest.simple"
 
@@ -31,9 +33,11 @@ class Stomp(object):
         self.host = host
         self.port = port
         self.socket = None
+        self._setParser()
     
     def connect(self, login='', passcode=''):
         self._socketConnect()
+        self._setParser()
         self._write(stomper.connect(login, passcode))
         frame = self.receiveFrame()
         if frame['cmd'] == 'CONNECTED':
@@ -47,18 +51,20 @@ class Stomp(object):
     def canRead(self, timeout=None):
         self._checkConnected()
         if timeout is None:
-            readList, junk, junk = select.select([self.socket], [], [])
+            readList, _, _ = select.select([self.socket], [], [])
         else:
-            readList, junk, junk = select.select([self.socket], [], [], timeout)
+            readList, _, _ = select.select([self.socket], [], [], timeout)
         return len(readList) > 0
         
-    def send(self, dest, msg, headers={}):
+    def send(self, dest, msg, headers=None):
+        headers = headers or {}
         frame = {'cmd': 'SEND', 'headers': headers, 'body': msg}
         frame['headers']['destination'] = dest
         self.sendFrame(frame)
         
-    def subscribe(self, dest, headers={}):
-        if not 'ack' in headers:
+    def subscribe(self, dest, headers=None):
+        headers = headers or {}
+        if 'ack' not in headers:
             headers['ack'] = 'auto'
         if not 'activemq.prefetchSize' in headers:
             headers['activemq.prefetchSize'] = 1
@@ -73,39 +79,24 @@ class Stomp(object):
         self._write(self.packFrame(frame))
     
     def receiveFrame(self):
-        self._checkConnected()
-        parser = StompFrameLineParser()
-        while (not parser.isDone()):
-            buffer = list()
-            while not buffer or not buffer[-1] == parser.FRAME_DELIMITER:
-                next = self.socket.recv(1)
-                if next == "":
-                    raise Exception("Connection closed")
-                buffer.append(next)
-            
-            #Get rid of optional trailing newlines (which ActiveMQ adds)
-            #now so that canRead() can be used to know if another frame is
-            #ready to be read
-            self.socket.setblocking(0)
+        while True:
             try:
-                while self.socket.recv(1, socket.MSG_PEEK) == parser.LINE_DELIMITER:
-                    self.socket.recv(1)
+                message = self.parser.getMessage()
             except:
-                pass
-            finally:
-                self.socket.setblocking(1)
-            
-            for line in ''.join(buffer).lstrip('\n').split('\n'):
-                parser.processLine(line)
-
-        return parser.getMessage()
-
-    def packFrame(self, frame):
-        sFrame = stomper.Frame()
-        sFrame.cmd = frame['cmd']
-        sFrame.headers = frame['headers']
-        sFrame.body = frame['body']
-        return sFrame.pack()
+                print self.parser.__dict__
+                raise
+            if message:
+                return message
+            data = self.socket.recv(4096)
+            if not data:
+                raise Exception('Connection closed')
+            self.parser.add(data)
+    
+    def packFrame(self, message):
+        return createFrame(message).pack()
+        
+    def _setParser(self):
+        self.parser = StompParser()
         
     def _socketConnect(self):
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

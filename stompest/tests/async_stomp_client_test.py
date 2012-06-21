@@ -14,14 +14,16 @@ Copyright 2011 Mozes, Inc.
    limitations under the License.
 """
 import logging
+
 import stomper
-from twisted.trial import unittest
-from stompest.async import StompConfig, StompCreator, StompClient
-from stompest.error import StompProtocolError, StompConnectTimeout
-from stompest.tests.broker_simulator import BlackHoleStompServer, ErrorOnConnectStompServer, ErrorOnSendStompServer
 from twisted.internet import error, reactor, defer
 from twisted.internet.protocol import Factory 
 from twisted.python import log
+from twisted.trial import unittest
+
+from stompest.async import StompConfig, StompCreator
+from stompest.error import StompProtocolError, StompConnectTimeout
+from stompest.tests.broker_simulator import BlackHoleStompServer, ErrorOnConnectStompServer, ErrorOnSendStompServer
 
 observer = log.PythonLoggingObserver()
 observer.start()
@@ -44,11 +46,7 @@ class AsyncStompClientTestCase(unittest.TestCase):
             stomp.lineReceived(line)
     
     def getFrame(self, cmd, headers, body):
-        sFrame = stomper.Frame()
-        sFrame.cmd = cmd
-        sFrame.headers = headers
-        sFrame.body = body
-        return sFrame.pack()
+        return StompParser.packFrame(cmd, headers, body)
 
 class AsyncClientBaseTestCase(unittest.TestCase):
     protocol = None

@@ -17,7 +17,6 @@ import unittest
 from stompest.util import filterReservedHeaders
 
 class UtilTest(unittest.TestCase):
-    
     def test_filterReservedHeaders(self):
         origHdrs = {'message-id': 'delete me', 'timestamp': 'delete me too', 'foo': 'bar'}
         filteredHdrs = filterReservedHeaders(origHdrs)
