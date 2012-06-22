@@ -24,7 +24,7 @@ from stompest.simple import Stomp
 from stompest.parser import StompParser
 from stompest.util import createFrame
 
-HOST = '10.241.220.91'
+HOST = 'fakeHost'
 PORT = 61613
 
 class SimpleStompTest(unittest.TestCase):
