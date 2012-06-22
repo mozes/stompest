@@ -85,8 +85,6 @@ class StompParser(object):
             headers[name] = value
             self._transition('headers')
         else:
-            if not headers:
-                raise StompFrameError('No headers found')
             self._length = int(self._message['headers'].get(self.CONTENT_LENGTH_HEADER, -1))
             self._transition('body')
         

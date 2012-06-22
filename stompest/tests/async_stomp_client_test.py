@@ -13,11 +13,11 @@ Copyright 2011 Mozes, Inc.
    See the License for the specific language governing permissions and
    limitations under the License.
 """
+import binascii
 import logging
 
-import stomper
 import mock
-import binascii
+import stomper
 from twisted.internet import error, reactor, defer
 from twisted.internet.protocol import Factory 
 from twisted.python import log
