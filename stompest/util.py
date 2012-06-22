@@ -18,8 +18,6 @@ Copyright 2011 Mozes, Inc.
 """
 from copy import deepcopy
 
-from stomper import Frame
-
 reservedHeaders = ['message-id', 'timestamp', 'expires', 'priority', 'destination']
 
 def filterReservedHeaders(headers):
@@ -35,9 +33,4 @@ def cloneStompMessageForErrorDest(msg):
     errMsg['headers']['persistent'] = 'true'
     return errMsg
 
-def createFrame(message):
-    frame = Frame()
-    frame.cmd = message['cmd']
-    frame.headers = message.get('headers', {})
-    frame.body = message.get('body', '')
-    return frame
+    

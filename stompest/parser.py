@@ -13,86 +13,87 @@ Copyright 2011 Mozes, Inc.
    See the License for the specific language governing permissions and
    limitations under the License.
 """
-import collections
-import cStringIO
-
-import stomper
 from stompest.error import StompFrameError
 
-class StompParser(object):
+class StompFrameLineParser(object):
+    """State machine for line-based parsing of STOMP frames.
+    
+    http://stomp.codehaus.org/Protocol
+    
+    Note: Although the protocol allows for null bytes in the body
+          in conjunction with the content-length header, it is not
+          implemented
+    
+    parser = StompFrameLineParser()
+    frame = None
+    while 1:
+        line = getNextLine()
+        parser.processLine(line)
+          if parser.isDone():
+              frame = parser.getMessage()
+              break
+    """
     LINE_DELIMITER = '\n'
     FRAME_DELIMITER = '\x00'
-    HEADER_SEPARATOR = ':'
-    
-    CONTENT_LENGTH_HEADER = 'content-length'
-    
+    HEADER_DELIMITER = ':'
+
     def __init__(self):
-        self._states = {
-            'cmd': self._parseCommand,
-            'headers': self._parseHeader,
-            'body': self._parseBody,
+        self.message = dict(cmd='', headers={}, body='')
+        self.state = 'cmd'
+        self.done = False
+        self.states = {
+            'cmd': self.parseCommandLine,
+            'headers': self.parseHeaderLine,
+            'body': self.parseBodyLine,
         }
-        self._messages = collections.deque()
-        self._flush()
-        self._next()
+    
+    def isDone(self):
+        """Call this method after each line is processed to see if the frame is complete
+        """
+        return self.done
         
     def getMessage(self):
-        if self._messages:
-            return self._messages.popleft()
+        """When a complete frame has been parsed, call this method to get whole thing
+        """
+        if (self.done):
+            return self.message
+        return None
     
-    def add(self, data):
-        for character in data: 
-            self._states[self._state](character)
-    
-    def _flush(self):
-        self._buffer = cStringIO.StringIO()
+    def processLine(self, line):
+        """Call this method for each line receive for the stomp frame
+        """
+        if (self.done):
+            raise StompFrameError('processLine() called after frame end')
+        self.states[self.state](line)
 
-    def _next(self):
-        self._message = {'cmd': '', 'headers': {}, 'body': ''}
-        self._length = -1
-        self._read = 0
-        self._transition('cmd')
+    #
+    # Internal methods
+    #
+    def transition(self, newState):
+        self.state = newState
     
-    def _transition(self, newState):
-        self._flush()
-        self._state = newState
+    def parseCommandLine(self, line):
+        if (len(line) == 0):
+            raise StompFrameError("Empty stomp command line: %s" % line)
+        self.message['cmd'] = line
+        self.transition('headers')
         
-    def _parseCommand(self, character):
-        if character == self.FRAME_DELIMITER:
+    def parseHeaderLine(self, line):
+        if (len(line) == 0):
+            self.transition('body')
             return
-        if character != self.LINE_DELIMITER:
-            self._buffer.write(character)
-            return
-        command = self._buffer.getvalue()
-        if not command:
-            return
-        if command not in stomper.VALID_COMMANDS:
-            raise StompFrameError('Invalid command: %s' % repr(command))
-        self._message['cmd'] = command
-        self._transition('headers')
+        try:
+            name, value = line.split(self.HEADER_DELIMITER, 1)
+        except ValueError:
+            raise StompFrameError('Invalid stomp header line: [%s], len [%d]' % (line, len(line)))
+        self.message['headers'][name] = value
         
-    def _parseHeader(self, character):
-        if character != self.LINE_DELIMITER:
-            self._buffer.write(character)
+    def parseBodyLine(self, line):
+        if line.endswith(self.FRAME_DELIMITER):
+            self.message['body'] += line[:-1]
+            self.endFrame()
             return
-        headers = self._message['headers']
-        header = self._buffer.getvalue()
-        if header:
-            try:
-                name, value = header.split(self.HEADER_SEPARATOR, 1)
-            except ValueError:
-                raise StompFrameError('No separator in header line: %s' % header)
-            headers[name] = value
-            self._transition('headers')
-        else:
-            self._length = int(self._message['headers'].get(self.CONTENT_LENGTH_HEADER, -1))
-            self._transition('body')
+        self.message['body'] += line + self.LINE_DELIMITER
         
-    def _parseBody(self, character):
-        self._read += 1
-        if (self._read <= self._length) or (character != self.FRAME_DELIMITER):
-            self._buffer.write(character)
-            return
-        self._message['body'] = self._buffer.getvalue()
-        self._messages.append(self._message)
-        self._next()
+    def endFrame(self):
+        self.done = True

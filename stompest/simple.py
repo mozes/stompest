@@ -13,33 +13,27 @@ Copyright 2011 Mozes, Inc.
    See the License for the specific language governing permissions and
    limitations under the License.
 """
-import logging
-import select
 import socket
-
+import select
 import stomper
+import logging
 
+from stompest.parser import StompFrameLineParser
 from stompest.error import StompProtocolError
-from stompest.parser import StompParser
-from stompest.util import createFrame as _createFrame
 
-LOG_CATEGORY = 'stompest.simple'
+LOG_CATEGORY="stompest.simple"
 
 class Stomp(object):
     """A simple implementation of a STOMP client"""
-    
-    READ_SIZE = 4096
     
     def __init__(self, host, port):
         self.log = logging.getLogger(LOG_CATEGORY)
         self.host = host
         self.port = port
         self.socket = None
-        self._setParser()
     
     def connect(self, login='', passcode=''):
         self._socketConnect()
-        self._setParser()
         self._write(stomper.connect(login, passcode))
         frame = self.receiveFrame()
         if frame['cmd'] == 'CONNECTED':
@@ -53,21 +47,21 @@ class Stomp(object):
     def canRead(self, timeout=None):
         self._checkConnected()
         if timeout is None:
-            readList, _, _ = select.select([self.socket], [], [])
+            readList, junk, junk = select.select([self.socket], [], [])
         else:
-            readList, _, _ = select.select([self.socket], [], [], timeout)
-        return bool(readList)
+            readList, junk, junk = select.select([self.socket], [], [], timeout)
+        return len(readList) > 0
         
-    def send(self, dest, msg, headers=None):
-        headers = headers or {}
-        headers['destination'] = dest
+    def send(self, dest, msg, headers={}):
         frame = {'cmd': 'SEND', 'headers': headers, 'body': msg}
+        frame['headers']['destination'] = dest
         self.sendFrame(frame)
         
-    def subscribe(self, dest, headers=None):
-        headers = headers or {}
-        headers.setdefault('ack', 'auto')
-        headers.setdefault('activemq.prefetchSize', 1)
+    def subscribe(self, dest, headers={}):
+        if not 'ack' in headers:
+            headers['ack'] = 'auto'
+        if not 'activemq.prefetchSize' in headers:
+            headers['activemq.prefetchSize'] = 1
         headers['destination'] = dest
         self.sendFrame({'cmd': 'SUBSCRIBE', 'headers': headers, 'body': ''})
         
@@ -79,25 +73,39 @@ class Stomp(object):
         self._write(self.packFrame(frame))
     
     def receiveFrame(self):
-        while True:
+        self._checkConnected()
+        parser = StompFrameLineParser()
+        while (not parser.isDone()):
+            buffer = list()
+            while not buffer or not buffer[-1] == parser.FRAME_DELIMITER:
+                next = self.socket.recv(1)
+                if next == "":
+                    raise Exception("Connection closed")
+                buffer.append(next)
+            
+            #Get rid of optional trailing newlines (which ActiveMQ adds)
+            #now so that canRead() can be used to know if another frame is
+            #ready to be read
+            self.socket.setblocking(0)
             try:
-                message = self.parser.getMessage()
-            except Exception, e:
-                self.log.exception(e)
-                self.log.error('Parser state: %s' % self.parser.__dict__)
-                raise
-            if message:
-                return message
-            data = self.socket.recv(self.READ_SIZE)
-            if not data:
-                raise Exception('Connection closed')
-            self.parser.add(data)
-    
-    def packFrame(self, message):
-        return _createFrame(message).pack()
-        
-    def _setParser(self):
-        self.parser = StompParser()
+                while self.socket.recv(1, socket.MSG_PEEK) == parser.LINE_DELIMITER:
+                    self.socket.recv(1)
+            except:
+                pass
+            finally:
+                self.socket.setblocking(1)
+            
+            for line in ''.join(buffer).lstrip('\n').split('\n'):
+                parser.processLine(line)
+
+        return parser.getMessage()
+
+    def packFrame(self, frame):
+        sFrame = stomper.Frame()
+        sFrame.cmd = frame['cmd']
+        sFrame.headers = frame['headers']
+        sFrame.body = frame['body']
+        return sFrame.pack()
         
     def _socketConnect(self):
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
