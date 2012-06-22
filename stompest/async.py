@@ -112,15 +112,7 @@ class StompClient(LineOnlyReceiver):
         # self.log.debug('Received line [%s]' % line)
         # the delimiter was left off by LineOnlyReceiver, so add it back in
         self.parser.add(line + self.delimiter)
-        
-        # message = self.parser.getMessage()
-        # if message:
-        #     try:
-        #         command = self.cmdMap[message['cmd']]
-        #     except KeyError:
-        #         raise StompFrameError('Unknown STOMP command: %s' % message)
-        #     command(message)
-        
+                
         while True:
             message = self.parser.getMessage()
             if not message:
