@@ -15,14 +15,12 @@ Copyright 2011 Mozes, Inc.
    See the License for the specific language governing permissions and
    limitations under the License.
 """
-import sys
 import logging
 
 import stomper
 
 from twisted.internet import reactor, defer
-from twisted.protocols.basic import LineOnlyReceiver
-from twisted.internet.protocol import ClientFactory
+from twisted.internet.protocol import Protocol, ClientFactory
 from twisted.internet.error import ConnectionLost
 
 from stompest.parser import StompParser
@@ -31,9 +29,8 @@ from stompest.util import cloneStompMessageForErrorDest
 
 LOG_CATEGORY = 'stompest.async'
 
-class StompClient(LineOnlyReceiver):
+class StompClient(Protocol):
     """A Twisted implementation of a STOMP client"""
-    MAX_LENGTH = sys.maxint
     delimiter = StompParser.FRAME_DELIMITER
 
     def __init__(self):
@@ -62,7 +59,7 @@ class StompClient(LineOnlyReceiver):
     def connectionMade(self):
         """When TCP connection is made, register shutdown handler
         """
-        LineOnlyReceiver.connectionMade(self)
+        Protocol.connectionMade(self)
         
     def connectionLost(self, reason):
         """When TCP connection is lost, remove shutdown handler
@@ -103,16 +100,10 @@ class StompClient(LineOnlyReceiver):
                 self.disconnectedDeferred.callback(self)
             self.disconnectedDeferred = None
             
-        LineOnlyReceiver.connectionLost(self, reason)
+        Protocol.connectionLost(self, reason)
 
-    def lineReceived(self, line):
-        """When a line is received, process it and dispatch when we've
-           got a whole frame
-        """
-        # self.log.debug('Received line [%s]' % line)
-        # the delimiter was left off by LineOnlyReceiver, so add it back in
-        self.parser.add(line)
-        self.parser.add(self.delimiter)
+    def dataReceived(self, data):
+        self.parser.add(data)
                 
         while True:
             message = self.parser.getMessage()
@@ -123,11 +114,6 @@ class StompClient(LineOnlyReceiver):
             except KeyError:
                 raise StompFrameError('Unknown STOMP command: %s' % message)
             command(message)
-            
-    def lineLengthExceeded(self, line):
-        errorMsg = 'Stomp protocol implementation line length maximum (%s) was exceeded' % self.MAX_LENGTH
-        self.log.critical(errorMsg)
-        raise Exception(errorMsg)
 
     #
     # Methods for sending raw STOMP commands

@@ -44,7 +44,7 @@ class AsyncStompClientTestCase(unittest.TestCase):
         creator = StompCreator(config)
         return self.assertFailure(creator.getConnection(), error.ConnectionRefusedError)
         
-    def test_lineReceived(self):
+    def test_dataReceived_multiple_messages(self):
         hdrs = {'foo': '1'}
         body = 'blah'
         frame = {'cmd': 'MESSAGE', 'headers': hdrs, 'body': body}
@@ -53,15 +53,28 @@ class AsyncStompClientTestCase(unittest.TestCase):
         stomp = StompClient()
         stomp.cmdMap[frame['cmd']] = mock.Mock()
         
-        self.assertTrue(frameBytes.endswith('\x00\n'))
-        
-        for line in frameBytes.split('\x00'):
-            stomp.lineReceived(line)
+        stomp.dataReceived(frameBytes)
                 
         self.assertEquals(2, stomp.cmdMap[frame['cmd']].call_count)
         stomp.cmdMap[frame['cmd']].assert_called_with({'cmd': frame['cmd'], 'headers': hdrs, 'body': body})
+
+    def test_dataReceived_partial_message(self):
+        hdrs = {'foo': '1'}
+        body = 'blah'
+        frame = {'cmd': 'MESSAGE', 'headers': hdrs, 'body': body}
+        frameBytes = createFrame(frame).pack()
+        split = 8
         
-    def test_lineReceived_binary(self):
+        stomp = StompClient()
+        stomp.cmdMap[frame['cmd']] = mock.Mock()
+        
+        stomp.dataReceived(frameBytes[:split])
+        stomp.dataReceived(frameBytes[split:])
+                
+        self.assertEquals(1, stomp.cmdMap[frame['cmd']].call_count)
+        stomp.cmdMap[frame['cmd']].assert_called_with({'cmd': frame['cmd'], 'headers': hdrs, 'body': body})
+        
+    def test_dataReceived_binary(self):
         body = binascii.a2b_hex('f0000a09')
         hdrs = {'foo': '1', 'content-length': str(len(body))}
         frame = {'cmd': 'MESSAGE', 'headers': hdrs, 'body': body}
@@ -70,25 +83,22 @@ class AsyncStompClientTestCase(unittest.TestCase):
         stomp = StompClient()
         stomp.cmdMap[frame['cmd']] = mock.Mock()
         
-        self.assertTrue(frameBytes.endswith('\x00\n'))
-        
-        for line in frameBytes.split('\x00'):
-            stomp.lineReceived(line)
-        
+        stomp.dataReceived(frameBytes)
+                
         self.assertEquals(1, stomp.cmdMap[frame['cmd']].call_count)
         stomp.cmdMap[frame['cmd']].assert_called_with({'cmd': frame['cmd'], 'headers': hdrs, 'body': body})
         
-    def test_lineReceived_unexpected_exception(self):
+    def test_dataReceived_unexpected_exception(self):
         class MyError(Exception):
             pass
         
         stomp = StompClient()
         stomp.cmdMap['DISCONNECT'] = mock.Mock(side_effect=MyError)
         
-        self.assertRaises(MyError, stomp.lineReceived, stomper.disconnect())
+        self.assertRaises(MyError, stomp.dataReceived, stomper.disconnect())
 
-    def test_lineReceived_bad_command(self):
-        self.assertRaises(StompFrameError, StompClient().lineReceived, 'BAD_CMD\n\n\x00\n')
+    def test_dataReceived_bad_command(self):
+        self.assertRaises(StompFrameError, StompClient().dataReceived, 'BAD_CMD\n\n\x00\n')
 
 class AsyncClientBaseTestCase(unittest.TestCase):
     protocol = None
