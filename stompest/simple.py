@@ -80,11 +80,7 @@ class Stomp(object):
     
     def receiveFrame(self):
         while True:
-            try:
-                message = self.parser.getMessage()
-            except:
-                print self.parser.__dict__
-                raise
+            message = self.parser.getMessage()
             if message:
                 return message
             data = self.socket.recv(4096)
