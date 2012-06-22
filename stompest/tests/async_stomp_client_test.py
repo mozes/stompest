@@ -48,7 +48,7 @@ class AsyncStompClientTestCase(unittest.TestCase):
         hdrs = {'foo': '1'}
         body = 'blah'
         frame = {'cmd': 'MESSAGE', 'headers': hdrs, 'body': body}
-        frameBytes = createFrame(frame).pack() 
+        frameBytes = createFrame(frame).pack() + createFrame(frame).pack()
         
         stomp = StompClient()
         stomp.cmdMap[frame['cmd']] = mock.Mock()
@@ -58,12 +58,6 @@ class AsyncStompClientTestCase(unittest.TestCase):
         for line in frameBytes.split('\x00'):
             stomp.lineReceived(line)
                 
-        self.assertEquals(1, stomp.cmdMap[frame['cmd']].call_count)
-        stomp.cmdMap[frame['cmd']].assert_called_with({'cmd': frame['cmd'], 'headers': hdrs, 'body': body})
-        
-        for line in frameBytes.split('\x00'):
-            stomp.lineReceived(line)
-
         self.assertEquals(2, stomp.cmdMap[frame['cmd']].call_count)
         stomp.cmdMap[frame['cmd']].assert_called_with({'cmd': frame['cmd'], 'headers': hdrs, 'body': body})
         

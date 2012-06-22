@@ -92,19 +92,22 @@ class SimpleStompTest(unittest.TestCase):
     def test_receiveFrame_multiple_frames_per_read(self):
         body1 = 'boo'
         body2 = 'hoo'
-        frameBytes = self.getFrame('MESSAGE', {}, body1)[:-1] + self.getFrame('MESSAGE', {}, body2)
+        hdrs = {'x': 'y'}
+        frameBytes = self.getFrame('MESSAGE', hdrs, body1)[:-1] + self.getFrame('MESSAGE', hdrs, body2)
 
         stomp = self._get_receive_mock(frameBytes)
         
         #Read first frame
         frame = stomp.receiveFrame()
         self.assertEquals('MESSAGE', frame['cmd'])
+        self.assertEquals(hdrs, frame['headers'])
         self.assertEquals(body1, frame['body'])
         self.assertEquals(1, stomp.socket.recv.call_count)
 
         #Read next frame
         frame = stomp.receiveFrame()
         self.assertEquals('MESSAGE', frame['cmd'])
+        self.assertEquals(hdrs, frame['headers'])
         self.assertEquals(body2, frame['body'])
         self.assertEquals(1, stomp.socket.recv.call_count)
     

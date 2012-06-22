@@ -33,7 +33,6 @@ class StompParser(object):
             'body': self._parseBody,
         }
         self._messages = collections.deque()
-        self._flush()
         self._next()
         
     def getMessage(self):
@@ -52,6 +51,7 @@ class StompParser(object):
         self._length = -1
         self._read = 0
         self._transition('cmd')
+        self._flush()
     
     def _transition(self, newState):
         self._flush()
