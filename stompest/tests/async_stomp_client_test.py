@@ -40,13 +40,6 @@ class AsyncStompClientTestCase(unittest.TestCase):
         config = StompConfig('localhost', 65535)
         creator = StompCreator(config)
         return self.assertFailure(creator.getConnection(), error.ConnectionRefusedError)
-          
-    def feedDataToStomp(self, stomp, data):
-        for line in data.split('\n')[:-1]:
-            stomp.lineReceived(line)
-    
-    def getFrame(self, cmd, headers, body):
-        return StompParser.packFrame(cmd, headers, body)
 
 class AsyncClientBaseTestCase(unittest.TestCase):
     protocol = None
