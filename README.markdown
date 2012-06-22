@@ -6,7 +6,7 @@ Modeled after the Perl [Net::Stomp](http://search.cpan.org/dist/Net-Stomp/lib/Ne
 
 The Twisted client is a full-featured STOMP protocol client built on top of the [stomper](http://code.google.com/p/stomper/) library.  It supports destination-specific message handlers, concurrent message processing, graceful shutdown, "poison pill" error handling, and connection timeout.
 
-This module is thoroughly unit tested and production hardened for the functionality used by [Mozes](http://www.mozes.com/): persistent queueing on [ActiveMQ](http://activemq.apache.org/).  Minor enhancements may be required to use this STOMP adapter with other brokers or certain feature sets like transactions or binary messages.
+This module is thoroughly unit tested and production hardened for the functionality used by [Mozes](http://www.mozes.com/): persistent queueing on [ActiveMQ](http://activemq.apache.org/).  Minor enhancements may be required to use this STOMP adapter with other brokers or certain feature sets like transactions.
 
 Examples
 ======== 
