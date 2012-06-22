@@ -61,6 +61,12 @@ class AsyncStompClientTestCase(unittest.TestCase):
         self.assertEquals(1, stomp.cmdMap[frame['cmd']].call_count)
         stomp.cmdMap[frame['cmd']].assert_called_with({'cmd': frame['cmd'], 'headers': hdrs, 'body': body})
         
+        for line in frameBytes.split('\x00'):
+            stomp.lineReceived(line)
+
+        self.assertEquals(2, stomp.cmdMap[frame['cmd']].call_count)
+        stomp.cmdMap[frame['cmd']].assert_called_with({'cmd': frame['cmd'], 'headers': hdrs, 'body': body})
+        
     def test_lineReceived_binary(self):
         body = binascii.a2b_hex('f0000a09')
         hdrs = {'foo': '1', 'content-length': str(len(body))}
