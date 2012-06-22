@@ -54,7 +54,6 @@ class AsyncStompClientTestCase(unittest.TestCase):
         stomp.cmdMap[frame['cmd']] = mock.Mock()
         
         self.assertTrue(frameBytes.endswith('\x00\n'))
-        
         for line in frameBytes.split('\x00'):
             stomp.lineReceived(line)
                 

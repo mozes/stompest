@@ -181,7 +181,7 @@ class HandlerExceptionWithErrorQueueIntegrationTestCase(unittest.TestCase):
         #Client disconnected and returned error
         try:
             yield stomp.getDisconnectedDeferred()
-        except StompestTestError, e:
+        except StompestTestError:
             pass
         else:
             self.assertTrue(False)
@@ -237,7 +237,7 @@ class GracefulDisconnectTestCase(unittest.TestCase):
         #Connect
         stomp = yield creator.getConnection()
         
-        for i in range(self.numMsgs):
+        for _ in range(self.numMsgs):
             stomp.send(self.queue, self.msg)
         stomp.subscribe(self.queue, self._msgHandler, {'ack': self.ackMode, 'activemq.prefetchSize': self.numMsgs})
         

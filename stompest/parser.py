@@ -58,6 +58,8 @@ class StompParser(object):
         self._state = newState
         
     def _parseCommand(self, character):
+        if character == self.FRAME_DELIMITER:
+            return
         if character != self.LINE_DELIMITER:
             self._buffer.write(character)
             return
@@ -73,15 +75,18 @@ class StompParser(object):
         if character != self.LINE_DELIMITER:
             self._buffer.write(character)
             return
+        headers = self._message['headers']
         header = self._buffer.getvalue()
         if header:
             try:
                 name, value = header.split(self.HEADER_SEPARATOR, 1)
             except ValueError:
                 raise StompFrameError('No separator in header line: %s' % header)
-            self._message['headers'][name] = value
+            headers[name] = value
             self._transition('headers')
         else:
+            if not headers:
+                raise StompFrameError('No headers found')
             self._length = int(self._message['headers'].get(self.CONTENT_LENGTH_HEADER, -1))
             self._transition('body')
         
