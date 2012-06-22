@@ -119,7 +119,7 @@ class StompClient(LineOnlyReceiver):
                 break
             try:
                 command = self.cmdMap[message['cmd']]
-            except:
+            except KeyError:
                 raise StompFrameError('Unknown STOMP command: %s' % message)
             command(message)
             
