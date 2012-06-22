@@ -26,6 +26,8 @@ from stompest.error import StompError
 LOG_CATEGORY = 'stompest.tests.broker_simulator'
 
 class BlackHoleStompServer(LineOnlyReceiver):
+    delimiter = StompParser.FRAME_DELIMITER
+    
     def __init__(self):
         self.log = logging.getLogger(LOG_CATEGORY)
         self.resetParser()
@@ -46,7 +48,7 @@ class BlackHoleStompServer(LineOnlyReceiver):
             self.factory.disconnectDeferred.callback('Disconnected')
 
     def lineReceived(self, line):
-        self.parser.add(line + self.parser.LINE_DELIMITER)
+        self.parser.add(line + self.delimiter)
         message = self.parser.getMessage()
         if not message:
             return
@@ -58,7 +60,6 @@ class BlackHoleStompServer(LineOnlyReceiver):
 
     def resetParser(self):
         self.parser = StompParser()
-        self.delimiter = self.parser.LINE_DELIMITER
 
     def getFrame(self, cmd, headers, body):
         sFrame = stomper.Frame()

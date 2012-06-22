@@ -28,6 +28,8 @@ LOG_CATEGORY = 'stompest.simple'
 class Stomp(object):
     """A simple implementation of a STOMP client"""
     
+    READ_SIZE = 4096
+    
     def __init__(self, host, port):
         self.log = logging.getLogger(LOG_CATEGORY)
         self.host = host
@@ -78,10 +80,15 @@ class Stomp(object):
     
     def receiveFrame(self):
         while True:
-            message = self.parser.getMessage()
+            try:
+                message = self.parser.getMessage()
+            except Exception, e:
+                self.log.exception(e)
+                self.log.error('Parser state: %s' % self.parser.__dict__)
+                raise
             if message:
                 return message
-            data = self.socket.recv(4096)
+            data = self.socket.recv(self.READ_SIZE)
             if not data:
                 raise Exception('Connection closed')
             self.parser.add(data)

@@ -15,8 +15,8 @@ Copyright 2011 Mozes, Inc.
    See the License for the specific language governing permissions and
    limitations under the License.
 """
-import logging
 import sys
+import logging
 
 import stomper
 
@@ -120,7 +120,7 @@ class StompClient(LineOnlyReceiver):
                 break
             try:
                 command = self.cmdMap[message['cmd']]
-            except:
+            except KeyError:
                 raise StompFrameError('Unknown STOMP command: %s' % message)
             command(message)
             

@@ -28,10 +28,14 @@ class StompParserTest(unittest.TestCase):
             'body': 'some stuff\nand more'
         }
         frame = createFrame(message)
-        cmd = frame.pack()[:-1] # remove optional trailing newline which stomper adds to frames
-        
         parser = StompParser()
-        parser.add(cmd)
+        
+        parser.add(frame.pack())
+        self.assertEqual(parser.getMessage(), {'cmd': frame.cmd, 'headers': frame.headers, 'body': frame.body})
+        self.assertEqual(parser.getMessage(), None)
+        
+        #This time remove optional trailing newline which stomper adds to frames
+        parser.add(frame.pack()[:-1])
         self.assertEqual(parser.getMessage(), {'cmd': frame.cmd, 'headers': frame.headers, 'body': frame.body})
         self.assertEqual(parser.getMessage(), None)
         
