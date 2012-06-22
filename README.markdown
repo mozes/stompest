@@ -181,6 +181,7 @@ Basically the same as [Net::Stomp](http://search.cpan.org/dist/Net-Stomp/lib/Net
 
 Twisted
 -------
+* Supports binary message bodies
 * Graceful shutdown - On disconnect or error, the client stops processing new messages and waits for all outstanding message handlers to finish before issuing the DISCONNECT command
 * Error handling - STOMP 1.0 does not have a NACK command so you have two options for error handling:
     * Client error handling - passing the errorDestination parameter to the subscribe() method will cause unhandled messages to be forwarded to that destination.
@@ -191,7 +192,6 @@ Twisted
 
 Caveats
 =======
-* Does not support binary data - support for the content-length header is not (yet) implemented
 * Tested with ActiveMQ versions 4.3 and above.  Mileage may vary with other STOMP implementations
 
 Twisted
@@ -211,3 +211,4 @@ Twisted
 Changes
 =======
 * 1.0.4 - Bug fix thanks to [Njal Karevoll](https://github.com/nkvoll).  No longer relies on newline after the null-byte frame separator.  Library is now compatible with RabbitMQ stomp adapter.
+* 1.1.1 - Thanks to [nikipore](https://github.com/nikipore) for adding support for binary messages.
