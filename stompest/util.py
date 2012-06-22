@@ -38,6 +38,6 @@ def cloneStompMessageForErrorDest(msg):
 def createFrame(message):
     frame = Frame()
     frame.cmd = message['cmd']
-    frame.headers = message['headers']
-    frame.body = message['body']
+    frame.headers = message.get('headers', {})
+    frame.body = message.get('body', '')
     return frame

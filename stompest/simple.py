@@ -21,9 +21,9 @@ import stomper
 
 from stompest.error import StompProtocolError
 from stompest.parser import StompParser
-from stompest.util import createFrame
+from stompest.util import createFrame as _createFrame
 
-LOG_CATEGORY="stompest.simple"
+LOG_CATEGORY = 'stompest.simple'
 
 class Stomp(object):
     """A simple implementation of a STOMP client"""
@@ -54,20 +54,18 @@ class Stomp(object):
             readList, _, _ = select.select([self.socket], [], [])
         else:
             readList, _, _ = select.select([self.socket], [], [], timeout)
-        return len(readList) > 0
+        return bool(readList)
         
     def send(self, dest, msg, headers=None):
         headers = headers or {}
+        headers['destination'] = dest
         frame = {'cmd': 'SEND', 'headers': headers, 'body': msg}
-        frame['headers']['destination'] = dest
         self.sendFrame(frame)
         
     def subscribe(self, dest, headers=None):
         headers = headers or {}
-        if 'ack' not in headers:
-            headers['ack'] = 'auto'
-        if not 'activemq.prefetchSize' in headers:
-            headers['activemq.prefetchSize'] = 1
+        headers.setdefault('ack', 'auto')
+        headers.setdefault('activemq.prefetchSize', 1)
         headers['destination'] = dest
         self.sendFrame({'cmd': 'SUBSCRIBE', 'headers': headers, 'body': ''})
         
@@ -89,7 +87,7 @@ class Stomp(object):
             self.parser.add(data)
     
     def packFrame(self, message):
-        return createFrame(message).pack()
+        return _createFrame(message).pack()
         
     def _setParser(self):
         self.parser = StompParser()

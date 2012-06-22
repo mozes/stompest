@@ -15,19 +15,20 @@ Copyright 2011 Mozes, Inc.
    See the License for the specific language governing permissions and
    limitations under the License.
 """
-import sys
 import logging
+import sys
 
 import stomper
 
 from twisted.internet import reactor, defer
-from twisted.protocols.basic import LineOnlyReceiver
-from twisted.internet.protocol import ClientFactory
 from twisted.internet.error import ConnectionLost
+from twisted.internet.protocol import ClientFactory
+from twisted.protocols.basic import LineOnlyReceiver
 
-from stompest.parser import StompParser
 from stompest.error import StompError, StompProtocolError, StompConnectTimeout, StompFrameError
-from stompest.util import cloneStompMessageForErrorDest
+from stompest.parser import StompParser
+from stompest.util import cloneStompMessageForErrorDest as _cloneStompMessageForErrorDest 
+from stompest.util import createFrame as _createFrame
 
 LOG_CATEGORY = 'stompest.async'
 
@@ -150,15 +151,11 @@ class StompClient(LineOnlyReceiver):
     def _subscribe(self, dest, headers):
         """Send subscribe command
         """
-        ack = headers.get('ack', None)
+        ack = headers.get('ack')
         self.log.debug('Sending subscribe command for destination %s with ack mode %s' % (dest, ack))
 
         headers['destination'] = dest
-                
-        frame = stomper.Frame()
-        frame.cmd = 'SUBSCRIBE'
-        frame.headers = headers
-        cmd = frame.pack()
+        cmd = _createFrame({'cmd': 'SUBSCRIBE', 'headers': headers}).pack()
         # self.log.debug('Writing cmd: %s' % cmd)
         self.transport.write(cmd)
 
@@ -205,7 +202,7 @@ class StompClient(LineOnlyReceiver):
         disconnect = False
         #Forward message to error queue if configured
         if errDest is not None:
-            errMsg = cloneStompMessageForErrorDest(msg)
+            errMsg = _cloneStompMessageForErrorDest(msg)
             self.send(errDest, errMsg['body'], errMsg['headers'])
             self._ack(messageId)
             if self.factory.alwaysDisconnectOnUnhandledMsg:
@@ -229,7 +226,7 @@ class StompClient(LineOnlyReceiver):
     def handleConnected(self, msg):
         """Handle STOMP CONNECTED commands
         """
-        sessionId = msg['headers'].get('session', None)
+        sessionId = msg['headers'].get('session')
         self.log.debug('Connected to stomp broker with session: %s' % sessionId)
         #Remove connect timeout if set
         if self.connectTimeoutDelayedCall is not None:
@@ -319,10 +316,10 @@ class StompClient(LineOnlyReceiver):
     def subscribe(self, dest, handler, headers=None, **kwargs):
         """Subscribe to a destination and register a function handler to receive messages for that destination
         """
-        errorDestination = kwargs.get('errorDestination', None)
+        errorDestination = kwargs.get('errorDestination')
+        headers = headers or {}
         # client-individual mode is only supported in AMQ >= 5.2
         # headers['ack'] = headers.get('ack', 'client-individual')
-        headers = headers or {}
         headers['ack'] = headers.get('ack', 'client')
         self.destMap[dest] = {'handler': handler, 'ack': headers['ack'], 'errorDestination': errorDestination}
         self._subscribe(dest, headers)
@@ -331,14 +328,10 @@ class StompClient(LineOnlyReceiver):
         """Do the send command to enqueue a message to a destination
         """
         headers = headers or {}
+        headers['destination'] = dest
         if self.log.isEnabledFor(logging.DEBUG):
             self.log.debug('Sending message to %s: [%s...]' % (dest, msg[:20]))
-        frame = stomper.Frame()
-        frame.cmd = 'SEND'
-        frame.headers = headers
-        frame.headers['destination'] = dest
-        frame.body = msg
-        cmd = frame.pack()
+        cmd = _createFrame({'cmd': 'SEND', 'headers': headers, 'body': msg}).pack()
         # self.log.debug('Writing cmd: %s' % cmd)
         self.transport.write(cmd)
         
@@ -378,7 +371,7 @@ class StompConfig(object):
 class StompCreator(object):
     def __init__(self, config, **kwargs):
         self.config = config
-        self.connectTimeout = kwargs.get('connectTimeout', None)
+        self.connectTimeout = kwargs.get('connectTimeout')
         self.alwaysDisconnectOnUnhandledMsg = kwargs.get('alwaysDisconnectOnUnhandledMsg', False)
         self.log = logging.getLogger(LOG_CATEGORY)
         self.stompConnectedDeferred = None
