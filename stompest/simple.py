@@ -13,6 +13,7 @@ Copyright 2011 Mozes, Inc.
    See the License for the specific language governing permissions and
    limitations under the License.
 """
+import contextlib
 import logging
 import select
 import socket
@@ -23,15 +24,12 @@ from stompest.error import StompProtocolError
 from stompest.parser import StompParser
 from stompest.util import createFrame
 
-LOG_CATEGORY="stompest.simple"
-
 class Stomp(object):
     """A simple implementation of a STOMP client"""
     
     READ_SIZE = 4096
     
     def __init__(self, host, port):
-        self.log = logging.getLogger(LOG_CATEGORY)
         self.host = host
         self.port = port
         self.socket = None
@@ -60,18 +58,39 @@ class Stomp(object):
         
     def send(self, dest, msg, headers=None):
         headers = headers or {}
+        headers['destination'] = dest
         frame = {'cmd': 'SEND', 'headers': headers, 'body': msg}
-        frame['headers']['destination'] = dest
         self.sendFrame(frame)
         
     def subscribe(self, dest, headers=None):
         headers = headers or {}
-        if 'ack' not in headers:
-            headers['ack'] = 'auto'
-        if not 'activemq.prefetchSize' in headers:
-            headers['activemq.prefetchSize'] = 1
         headers['destination'] = dest
+        headers.setdefault('ack', 'auto')
+        headers.setdefault('activemq.prefetchSize', 1)
         self.sendFrame({'cmd': 'SUBSCRIBE', 'headers': headers, 'body': ''})
+        
+    def unsubscribe(self, dest, headers=None):
+        headers = headers or {}
+        headers['destination'] = dest
+        self.sendFrame({'cmd': 'UNSUBSCRIBE', 'headers': headers, 'body': ''})
+    
+    def begin(self, transactionId):
+        self.sendFrame({'cmd': 'BEGIN', 'headers': {'transaction': transactionId}, 'body': ''})
+        
+    def commit(self, transactionId):
+        self.sendFrame({'cmd': 'COMMIT', 'headers': {'transaction': transactionId}, 'body': ''})
+        
+    def abort(self, transactionId):
+        self.sendFrame({'cmd': 'ABORT', 'headers': {'transaction': transactionId}, 'body': ''})
+    
+    @contextlib.contextmanager
+    def transaction(self, transactionId):
+        self.begin(transactionId)
+        try:
+            yield
+            self.commit(transactionId)
+        except:
+            self.abort(transactionId)
         
     def ack(self, frame):
         messageId = frame['headers']['message-id']
@@ -82,12 +101,7 @@ class Stomp(object):
     
     def receiveFrame(self):
         while True:
-            try:
-                message = self.parser.getMessage()
-            except Exception, e:
-                self.log.exception(e)
-                self.log.error('Parser state: %s' % self.parser.__dict__)
-                raise
+            message = self.parser.getMessage()
             if message:
                 return message
             data = self.socket.recv(self.READ_SIZE)
