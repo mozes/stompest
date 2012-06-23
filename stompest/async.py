@@ -15,26 +15,23 @@ Copyright 2011 Mozes, Inc.
    See the License for the specific language governing permissions and
    limitations under the License.
 """
-import sys
 import logging
+
 import stomper
 
-from twisted.python import usage, log
 from twisted.internet import reactor, defer
-from twisted.protocols.basic import LineOnlyReceiver
-from twisted.internet.protocol import ClientFactory
+from twisted.internet.protocol import Protocol, ClientFactory
 from twisted.internet.error import ConnectionLost
 
-from stompest.parser import StompFrameLineParser
+from stompest.parser import StompParser
 from stompest.error import StompError, StompProtocolError, StompConnectTimeout, StompFrameError
 from stompest.util import cloneStompMessageForErrorDest
 
-LOG_CATEGORY="stompest.async"
+LOG_CATEGORY = 'stompest.async'
 
-class StompClient(LineOnlyReceiver):
+class StompClient(Protocol):
     """A Twisted implementation of a STOMP client"""
-    MAX_LENGTH = sys.maxint
-    delimiter = StompFrameLineParser.FRAME_DELIMITER
+    delimiter = StompParser.FRAME_DELIMITER
 
     def __init__(self):
         self.log = logging.getLogger(LOG_CATEGORY)
@@ -62,7 +59,7 @@ class StompClient(LineOnlyReceiver):
     def connectionMade(self):
         """When TCP connection is made, register shutdown handler
         """
-        LineOnlyReceiver.connectionMade(self)
+        Protocol.connectionMade(self)
         
     def connectionLost(self, reason):
         """When TCP connection is lost, remove shutdown handler
@@ -75,58 +72,48 @@ class StompClient(LineOnlyReceiver):
             
         #Remove connect timeout if set
         if self.connectTimeoutDelayedCall is not None:
-            self.log.debug("Cancelling connect timeout after TCP connection was lost")
+            self.log.debug('Cancelling connect timeout after TCP connection was lost')
             self.connectTimeoutDelayedCall.cancel()
             self.connectTimeoutDelayedCall = None
         
         #Callback for failed connect
         if self.connectedDeferred:
             if self.connectError:
-                self.log.debug("Calling connectedDeferred errback: %s" % self.connectError)
+                self.log.debug('Calling connectedDeferred errback: %s' % self.connectError)
                 self.connectedDeferred.errback(self.connectError)
                 self.connectError = None
             else:
-                self.log.error("Connection lost with outstanding connectedDeferred")
-                error = StompError("Unexpected connection loss")
-                self.log.debug("Calling connectedDeferred errback: %s" % error)
+                self.log.error('Connection lost with outstanding connectedDeferred')
+                error = StompError('Unexpected connection loss')
+                self.log.debug('Calling connectedDeferred errback: %s' % error)
                 self.connectedDeferred.errback(error)                
             self.connectedDeferred = None
         
         #Callback for disconnect
         if self.disconnectedDeferred:
             if self.disconnectError:
-                #self.log.debug("Calling disconnectedDeferred errback: %s" % self.disconnectError)
+                #self.log.debug('Calling disconnectedDeferred errback: %s' % self.disconnectError)
                 self.disconnectedDeferred.errback(self.disconnectError)
                 self.disconnectError = None
             else:
-                #self.log.debug("Calling disconnectedDeferred callback")
+                #self.log.debug('Calling disconnectedDeferred callback')
                 self.disconnectedDeferred.callback(self)
             self.disconnectedDeferred = None
             
-        LineOnlyReceiver.connectionLost(self, reason)
+        Protocol.connectionLost(self, reason)
 
-    def lineReceived(self, line):
-        """When a line is received, process it and dispatch when we've
-           got a whole frame
-        """
-        # self.log.debug("Received line [%s]" % line)
-        # the delimiter was left off by LineOnlyReceiver, so add it back in
-        line = line + self.delimiter
-        
-        for l in line.lstrip('\n').split('\n'):
-            self.parser.processLine(l)
-            if self.parser.isDone():
-                frame = self.parser.getMessage()
-                self.resetParser()
-                if frame['cmd'] in self.cmdMap:
-                    self.cmdMap[frame['cmd']](frame)
-                else:
-                    raise StompFrameError("Unknown STOMP command: %s" % str(frame))
-
-    def lineLengthExceeded(self, line):
-        errorMsg = "Stomp protocol implementation line length maximum (%s) was exceeded" % self.MAX_LENGTH
-        self.log.critical(errorMsg)
-        raise Exception(errorMsg)
+    def dataReceived(self, data):
+        self.parser.add(data)
+                
+        while True:
+            message = self.parser.getMessage()
+            if not message:
+                break
+            try:
+                command = self.cmdMap[message['cmd']]
+            except KeyError:
+                raise StompFrameError('Unknown STOMP command: %s' % message)
+            command(message)
 
     #
     # Methods for sending raw STOMP commands
@@ -134,24 +121,24 @@ class StompClient(LineOnlyReceiver):
     def _connect(self):
         """Send connect command
         """
-        self.log.debug("Sending connect command")
+        self.log.debug('Sending connect command')
         cmd = stomper.connect(self.factory.login, self.factory.passcode)
-        # self.log.debug("Writing cmd: %s" % cmd)
+        # self.log.debug('Writing cmd: %s' % cmd)
         self.transport.write(cmd)
 
     def _disconnect(self):
         """Send disconnect command
         """
-        self.log.debug("Sending disconnect command")
+        self.log.debug('Sending disconnect command')
         cmd = stomper.disconnect()
-        # self.log.debug("Writing cmd: %s" % cmd)
+        # self.log.debug('Writing cmd: %s' % cmd)
         self.transport.write(cmd)
 
     def _subscribe(self, dest, headers):
         """Send subscribe command
         """
         ack = headers.get('ack', None)
-        self.log.debug("Sending subscribe command for destination %s with ack mode %s" % (dest, ack))
+        self.log.debug('Sending subscribe command for destination %s with ack mode %s' % (dest, ack))
 
         headers['destination'] = dest
                 
@@ -159,15 +146,15 @@ class StompClient(LineOnlyReceiver):
         frame.cmd = 'SUBSCRIBE'
         frame.headers = headers
         cmd = frame.pack()
-        # self.log.debug("Writing cmd: %s" % cmd)
+        # self.log.debug('Writing cmd: %s' % cmd)
         self.transport.write(cmd)
 
     def _ack(self, messageId):
         """Send ack command
         """
-        self.log.debug("Sending ack command for message: %s" % messageId)
+        self.log.debug('Sending ack command for message: %s' % messageId)
         cmd = stomper.ack(messageId)
-        # self.log.debug("Writing cmd: %s" % cmd)
+        # self.log.debug('Writing cmd: %s' % cmd)
         self.transport.write(cmd)
 
     #
@@ -176,7 +163,7 @@ class StompClient(LineOnlyReceiver):
     def resetParser(self):
         """Stomp parser must be reset after each frame is received
         """
-        self.parser = StompFrameLineParser()
+        self.parser = StompParser()
     
     def finishHandlers(self):
         """Return a Deferred to signal when all requests in process are complete
@@ -192,16 +179,16 @@ class StompClient(LineOnlyReceiver):
     
     def handlerFinished(self, messageId):
         del self.activeHandlers[messageId]
-        self.log.debug("Handler complete for message: %s" % messageId)
+        self.log.debug('Handler complete for message: %s' % messageId)
 
     def handlerStarted(self, messageId):
         if messageId in self.activeHandlers:
             raise StompProtocolError('Duplicate message received. Message id %s is already in progress' % messageId)
         self.activeHandlers[messageId] = None
-        self.log.debug("Handler started for message: %s" % messageId)
+        self.log.debug('Handler started for message: %s' % messageId)
     
     def messageHandlerFailed(self, failure, messageId, msg, errDest):
-        self.log.error("Error in message handler: %s" % str(failure))
+        self.log.error('Error in message handler: %s' % str(failure))
         disconnect = False
         #Forward message to error queue if configured
         if errDest is not None:
@@ -221,19 +208,19 @@ class StompClient(LineOnlyReceiver):
         return None
         
     def connectTimeout(self, timeout):
-        self.log.error("Connect command timed out after %s seconds" % timeout)
+        self.log.error('Connect command timed out after %s seconds' % timeout)
         self.connectTimeoutDelayedCall = None
-        self.connectError = StompConnectTimeout("Connect command timed out after %s seconds" % timeout)
+        self.connectError = StompConnectTimeout('Connect command timed out after %s seconds' % timeout)
         self.transport.loseConnection()
         
     def handleConnected(self, msg):
         """Handle STOMP CONNECTED commands
         """
         sessionId = msg['headers'].get('session', None)
-        self.log.debug("Connected to stomp broker with session: %s" % sessionId)
+        self.log.debug('Connected to stomp broker with session: %s' % sessionId)
         #Remove connect timeout if set
         if self.connectTimeoutDelayedCall is not None:
-            self.log.debug("Cancelling connect timeout after sucessfully connecting")
+            self.log.debug('Cancelling connect timeout after sucessfully connecting')
             self.connectTimeoutDelayedCall.cancel()
             self.connectTimeoutDelayedCall = None
         self.disconnectedDeferred = defer.Deferred()
@@ -250,11 +237,11 @@ class StompClient(LineOnlyReceiver):
 
         #Do not process any more messages if we're disconnecting
         if self.disconnecting:
-            self.log.debug("Disconnecting...ignoring stomp message: %s at destination: %s" % (messageId, dest))
+            self.log.debug('Disconnecting...ignoring stomp message: %s at destination: %s' % (messageId, dest))
             return
 
         if self.log.isEnabledFor(logging.DEBUG):
-            self.log.debug("Received stomp message %s from destination %s: [%s...].  Headers: %s" % (messageId, dest, msg['body'][:20], msg['headers']))
+            self.log.debug('Received stomp message %s from destination %s: [%s...].  Headers: %s' % (messageId, dest, msg['body'][:20], msg['headers']))
         
         #Call message handler (can return deferred to be async)
         self.handlerStarted(messageId)        
@@ -275,24 +262,24 @@ class StompClient(LineOnlyReceiver):
     def handleError(self, msg):
         """Handle STOMP ERROR commands
         """
-        self.log.info("Received stomp error: %s" % msg)
+        self.log.info('Received stomp error: %s' % msg)
         if self.connectedDeferred is not None:
             self.transport.loseConnection()
-            self.connectError = StompProtocolError("STOMP error message received while trying to connect: %s" % msg)
+            self.connectError = StompProtocolError('STOMP error message received while trying to connect: %s' % msg)
         else:
             #Work around for AMQ < 5.2
             if 'message' in msg['headers'] and msg['headers']['message'].find('Unexpected ACK received for message-id') >= 0:
                 self.log.debug('AMQ brokers < 5.2 do not support client-individual mode.')
             else:
                 #Set disconnect error
-                self.disconnectError = StompProtocolError("STOMP error message received: %s" % msg)
+                self.disconnectError = StompProtocolError('STOMP error message received: %s' % msg)
                 #Disconnect
                 self.disconnect()
         
     def handleReceipt(self, msg):
         """Handle STOMP RECEIPT commands
         """
-        self.log.info("Received stomp receipt: %s" % msg)
+        self.log.info('Received stomp receipt: %s' % msg)
     
     #
     # Public functions
@@ -316,35 +303,36 @@ class StompClient(LineOnlyReceiver):
 
         return self.disconnectedDeferred
     
-    def subscribe(self, dest, handler, headers={}, **kwargs):
+    def subscribe(self, dest, handler, headers=None, **kwargs):
         """Subscribe to a destination and register a function handler to receive messages for that destination
         """
         errorDestination = kwargs.get('errorDestination', None)
         # client-individual mode is only supported in AMQ >= 5.2
         # headers['ack'] = headers.get('ack', 'client-individual')
+        headers = headers or {}
         headers['ack'] = headers.get('ack', 'client')
         self.destMap[dest] = {'handler': handler, 'ack': headers['ack'], 'errorDestination': errorDestination}
         self._subscribe(dest, headers)
     
-    def send(self, dest, msg, headers={}):
+    def send(self, dest, msg, headers=None):
         """Do the send command to enqueue a message to a destination
         """
+        headers = headers or {}
         if self.log.isEnabledFor(logging.DEBUG):
-            self.log.debug("Sending message to %s: [%s...]" % (dest, msg[:20]))
+            self.log.debug('Sending message to %s: [%s...]' % (dest, msg[:20]))
         frame = stomper.Frame()
         frame.cmd = 'SEND'
         frame.headers = headers
         frame.headers['destination'] = dest
         frame.body = msg
         cmd = frame.pack()
-        # self.log.debug("Writing cmd: %s" % cmd)
+        # self.log.debug('Writing cmd: %s' % cmd)
         self.transport.write(cmd)
         
     def getDisconnectedDeferred(self):
         return self.disconnectedDeferred
     
 class StompClientFactory(ClientFactory):
-
     protocol = StompClient
 
     def __init__(self, **kwargs):
@@ -355,19 +343,18 @@ class StompClientFactory(ClientFactory):
         self.log = logging.getLogger(LOG_CATEGORY)
     
     def buildProtocol(self, addr):
-        p = ClientFactory.buildProtocol(self, addr)
+        protocol = ClientFactory.buildProtocol(self, addr)
         #This is a sneaky way of passing the protocol instance back to the caller
-        reactor.callLater(0, self.buildProtocolDeferred.callback, p)
-        return p
+        reactor.callLater(0, self.buildProtocolDeferred.callback, protocol)
+        return protocol
     
     def clientConnectionFailed(self, connector, reason):
         """Connection failed
         """
-        self.log.error("Connection failed. Reason: %s" % str(reason))
+        self.log.error('Connection failed. Reason: %s' % str(reason))
         self.buildProtocolDeferred.errback(reason)
 
 class StompConfig(object):
-
     def __init__(self, host, port, **kwargs):
         self.host = host
         self.port = port
@@ -376,7 +363,6 @@ class StompConfig(object):
         self.log = logging.getLogger(LOG_CATEGORY)
 
 class StompCreator(object):
-
     def __init__(self, config, **kwargs):
         self.config = config
         self.connectTimeout = kwargs.get('connectTimeout', None)

@@ -14,14 +14,19 @@ Copyright 2011 Mozes, Inc.
    limitations under the License.
 """
 import logging
+
 import stomper
-from twisted.trial import unittest
-from stompest.async import StompConfig, StompCreator, StompClient
-from stompest.error import StompProtocolError, StompConnectTimeout
-from stompest.tests.broker_simulator import BlackHoleStompServer, ErrorOnConnectStompServer, ErrorOnSendStompServer
+import mock
+import binascii
 from twisted.internet import error, reactor, defer
 from twisted.internet.protocol import Factory 
 from twisted.python import log
+from twisted.trial import unittest
+
+from stompest.util import createFrame
+from stompest.async import StompConfig, StompCreator, StompClient
+from stompest.error import StompProtocolError, StompConnectTimeout, StompFrameError
+from stompest.tests.broker_simulator import BlackHoleStompServer, ErrorOnConnectStompServer, ErrorOnSendStompServer
 
 observer = log.PythonLoggingObserver()
 observer.start()
@@ -38,17 +43,62 @@ class AsyncStompClientTestCase(unittest.TestCase):
         config = StompConfig('localhost', 65535)
         creator = StompCreator(config)
         return self.assertFailure(creator.getConnection(), error.ConnectionRefusedError)
-          
-    def feedDataToStomp(self, stomp, data):
-        for line in data.split('\n')[:-1]:
-            stomp.lineReceived(line)
-    
-    def getFrame(self, cmd, headers, body):
-        sFrame = stomper.Frame()
-        sFrame.cmd = cmd
-        sFrame.headers = headers
-        sFrame.body = body
-        return sFrame.pack()
+        
+    def test_dataReceived_multiple_messages(self):
+        hdrs = {'foo': '1'}
+        body = 'blah'
+        frame = {'cmd': 'MESSAGE', 'headers': hdrs, 'body': body}
+        frameBytes = createFrame(frame).pack() + createFrame(frame).pack()
+        
+        stomp = StompClient()
+        stomp.cmdMap[frame['cmd']] = mock.Mock()
+        
+        stomp.dataReceived(frameBytes)
+                
+        self.assertEquals(2, stomp.cmdMap[frame['cmd']].call_count)
+        stomp.cmdMap[frame['cmd']].assert_called_with({'cmd': frame['cmd'], 'headers': hdrs, 'body': body})
+
+    def test_dataReceived_partial_message(self):
+        hdrs = {'foo': '1'}
+        body = 'blah'
+        frame = {'cmd': 'MESSAGE', 'headers': hdrs, 'body': body}
+        frameBytes = createFrame(frame).pack()
+        split = 8
+        
+        stomp = StompClient()
+        stomp.cmdMap[frame['cmd']] = mock.Mock()
+        
+        stomp.dataReceived(frameBytes[:split])
+        stomp.dataReceived(frameBytes[split:])
+                
+        self.assertEquals(1, stomp.cmdMap[frame['cmd']].call_count)
+        stomp.cmdMap[frame['cmd']].assert_called_with({'cmd': frame['cmd'], 'headers': hdrs, 'body': body})
+        
+    def test_dataReceived_binary(self):
+        body = binascii.a2b_hex('f0000a09')
+        hdrs = {'foo': '1', 'content-length': str(len(body))}
+        frame = {'cmd': 'MESSAGE', 'headers': hdrs, 'body': body}
+        frameBytes = createFrame(frame).pack() 
+        
+        stomp = StompClient()
+        stomp.cmdMap[frame['cmd']] = mock.Mock()
+        
+        stomp.dataReceived(frameBytes)
+                
+        self.assertEquals(1, stomp.cmdMap[frame['cmd']].call_count)
+        stomp.cmdMap[frame['cmd']].assert_called_with({'cmd': frame['cmd'], 'headers': hdrs, 'body': body})
+        
+    def test_dataReceived_unexpected_exception(self):
+        class MyError(Exception):
+            pass
+        
+        stomp = StompClient()
+        stomp.cmdMap['DISCONNECT'] = mock.Mock(side_effect=MyError)
+        
+        self.assertRaises(MyError, stomp.dataReceived, stomper.disconnect())
+
+    def test_dataReceived_bad_command(self):
+        self.assertRaises(StompFrameError, StompClient().dataReceived, 'BAD_CMD\n\n\x00\n')
 
 class AsyncClientBaseTestCase(unittest.TestCase):
     protocol = None

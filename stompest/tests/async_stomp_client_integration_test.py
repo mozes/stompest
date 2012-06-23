@@ -14,14 +14,18 @@ Copyright 2011 Mozes, Inc.
    limitations under the License.
 """
 import logging
+
 import stomper
 from twisted.trial import unittest
+
 from stompest.simple import Stomp
-from stompest.async import StompConfig, StompCreator, StompClient
-from stompest.error import StompError
-from twisted.internet import error, reactor, defer
+from stompest.async import StompConfig, StompCreator
+from twisted.internet import reactor, defer
 
 logging.basicConfig(level=logging.DEBUG)
+
+HOST = 'localhost'
+PORT = 61613
 
 class StompestTestError(Exception):
     pass
@@ -35,7 +39,7 @@ def getClientAckMode():
 def supportsClientIndividual():
     supported = False
     queue = '/queue/testClientAckMode'
-    stomp = Stomp('localhost', 61613)
+    stomp = Stomp(HOST, PORT)
     stomp.connect()
     stomp.send(queue, 'test')
     stomp.subscribe(queue, {'ack': 'client-individual'})
@@ -64,7 +68,7 @@ class HandlerExceptionWithErrorQueueIntegrationTestCase(unittest.TestCase):
         self.cleanQueue(self.errorQueue)
     
     def cleanQueue(self, queue):
-        stomp = Stomp('localhost', 61613)
+        stomp = Stomp(HOST, PORT)
         stomp.connect()
         stomp.subscribe(queue, {'ack': 'client'})
         while stomp.canRead(1):
@@ -83,7 +87,7 @@ class HandlerExceptionWithErrorQueueIntegrationTestCase(unittest.TestCase):
     def test_onhandlerException_ackMessage_filterReservedHdrs_send2ErrorQ_and_disconnect(self):
         self.cleanQueues()
         
-        config = StompConfig('localhost', 61613)
+        config = StompConfig(HOST, PORT)
         creator = StompCreator(config, alwaysDisconnectOnUnhandledMsg=True)
         
         #Connect
@@ -100,7 +104,7 @@ class HandlerExceptionWithErrorQueueIntegrationTestCase(unittest.TestCase):
         #Client disconnected and returned error
         try:
             yield stomp.getDisconnectedDeferred()
-        except StompestTestError, e:
+        except StompestTestError:
             pass
         else:
             self.assertTrue(False)
@@ -131,7 +135,7 @@ class HandlerExceptionWithErrorQueueIntegrationTestCase(unittest.TestCase):
     def test_onhandlerException_ackMessage_filterReservedHdrs_send2ErrorQ_and_no_disconnect(self):
         self.cleanQueues()
         
-        config = StompConfig('localhost', 61613)
+        config = StompConfig(HOST, PORT)
         creator = StompCreator(config)
         
         #Connect
@@ -162,7 +166,7 @@ class HandlerExceptionWithErrorQueueIntegrationTestCase(unittest.TestCase):
     def test_onhandlerException_disconnect(self):
         self.cleanQueues()
         
-        config = StompConfig('localhost', 61613)
+        config = StompConfig(HOST, PORT)
         creator = StompCreator(config)
         
         #Connect
@@ -224,10 +228,10 @@ class GracefulDisconnectTestCase(unittest.TestCase):
     
     @defer.inlineCallbacks
     def test_onDisconnect_waitForOutstandingMessagesToFinish(self):
-        self.config = StompConfig('localhost', 61613)
+        self.config = StompConfig(HOST, PORT)
         self.creator = StompCreator(self.config)
         
-        config = StompConfig('localhost', 61613)
+        config = StompConfig(HOST, PORT)
         creator = StompCreator(config)
         
         #Connect
