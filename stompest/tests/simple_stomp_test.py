@@ -198,6 +198,50 @@ class SimpleStompTest(unittest.TestCase):
         sentFrame = self.parseFrame(args[0])
         self.assertEquals({'cmd': 'ACK', 'headers': {'message-id': id_}, 'body': ''}, sentFrame)
 
+    def test_transaction_writes_correct_frames(self):
+        transactionId = '4711'
+        stomp = Stomp(HOST, PORT)
+        stomp._checkConnected = Mock()
+        stomp._write = Mock()
+        for (method, cmd) in [(stomp.begin, 'BEGIN'), (stomp.commit, 'COMMIT'), (stomp.abort, 'ABORT')]:
+            method(transactionId)
+            args, _ = stomp._write.call_args
+            sentFrame = self.parseFrame(args[0])
+            self.assertEquals({
+                'cmd': cmd,
+                'headers': {'transaction': transactionId},
+                'body': ''
+            }, sentFrame)
+            
+        with stomp.transaction(transactionId):
+            args, _ = stomp._write.call_args
+            sentFrame = self.parseFrame(args[0])
+            self.assertEquals({
+                'cmd': 'BEGIN',
+                'headers': {'transaction': transactionId},
+                'body': ''
+            }, sentFrame)
+            
+        args, _ = stomp._write.call_args
+        sentFrame = self.parseFrame(args[0])
+        self.assertEquals({
+            'cmd': 'COMMIT',
+            'headers': {'transaction': transactionId},
+            'body': ''
+        }, sentFrame)
+            
+        try:
+            with stomp.transaction(transactionId):
+                raise
+        except:
+            args, _ = stomp._write.call_args
+            sentFrame = self.parseFrame(args[0])
+            self.assertEquals({
+                'cmd': 'ABORT',
+                'headers': {'transaction': transactionId},
+                'body': ''
+            }, sentFrame)
+
     def parseFrame(self, message):
         parser = StompParser()        
         parser.add(message)
