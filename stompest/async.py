@@ -153,7 +153,13 @@ class StompClient(Protocol):
         """Send ack command
         """
         self.log.debug('Sending ack command for message: %s' % messageId)
-        cmd = stomper.ack(messageId)
+        #NOTE: cannot use stomper.ack(messageId) with ActiveMQ 5.6.0
+        #       b/c stomper adds a space to the header and AMQ no longer accepts it
+        frame = stomper.Frame()
+        frame.cmd = 'ACK'
+        frame.headers = {'message-id': messageId}
+        cmd = frame.pack()
+        #cmd = stomper.ack(messageId)
         # self.log.debug('Writing cmd: %s' % cmd)
         self.transport.write(cmd)
 
