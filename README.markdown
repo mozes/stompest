@@ -212,3 +212,4 @@ Changes
 =======
 * 1.0.4 - Bug fix thanks to [Njal Karevoll](https://github.com/nkvoll).  No longer relies on newline after the null-byte frame separator.  Library is now compatible with RabbitMQ stomp adapter.
 * 1.1.1 - Thanks to [nikipore](https://github.com/nikipore) for adding support for binary messages.
+* 1.1.2 - Fixed issue with stomper adding a space in ACK message-id header.  AMQ 5.6.0 no longer tolerates this.
