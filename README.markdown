@@ -1,6 +1,6 @@
 stomp, stomper, stompest!
 
-Stompest is a no-nonsense [STOMP](http://stomp.codehaus.org/) implementation for Python including both synchronous and [Twisted](http://twistedmatrix.com/) clients.
+Stompest is a no-nonsense [STOMP 1.0](http://stomp.github.com/) implementation for Python including both synchronous and [Twisted](http://twistedmatrix.com/) clients.
 
 Modeled after the Perl [Net::Stomp](http://search.cpan.org/dist/Net-Stomp/lib/Net/Stomp.pm) module, the synchronous client is dead simple.  It does not assume anything about your concurrency model (thread vs process) or force you to use it any particular way. It gets out of your way and lets you do what you want.
 
