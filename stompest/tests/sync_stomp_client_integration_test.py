@@ -53,7 +53,7 @@ class SimpleStompIntegrationTest(unittest.TestCase):
         initialReconnectDelay = .01
         
         stomp = Stomp('failover:(tcp://localhost:61614,tcp://localhost:61615)?startupMaxReconnectAttempts=2,backOffMultiplier=3')
-        expectedTimeout = time.time() + 40 / 1000.0
+        expectedTimeout = time.time() + 40 / 1000.0 # 40 ms = 10 ms + 3 * 10 ms
         self.assertRaises(StompConnectionError, stomp.connect)
         self.assertTrue(abs(time.time() - expectedTimeout) < 2 * initialReconnectDelay)
         
@@ -61,6 +61,11 @@ class SimpleStompIntegrationTest(unittest.TestCase):
         expectedTimeout = time.time() + timeout / 1000.0
         self.assertRaises(StompConnectionError, stomp.connect)
         self.assertTrue(abs(time.time() - expectedTimeout) < tolerance)
+
+        stomp = Stomp('failover:(tcp://localhost:61614,tcp://localhost:61613)?randomize=false') # default is startupMaxReconnectAttempts = 0
+        expectedTimeout = time.time() + 0
+        self.assertRaises(StompConnectionError, stomp.connect)
+        self.assertTrue(abs(time.time() - expectedTimeout) < 2 * initialReconnectDelay)
 
         stomp = Stomp('failover:(tcp://localhost:61614,tcp://localhost:61613)?startupMaxReconnectAttempts=1,randomize=false')
         stomp.connect()
