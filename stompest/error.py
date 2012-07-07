@@ -28,3 +28,7 @@ class StompProtocolError(StompError):
 class StompConnectTimeout(StompError):
     """Raised for timeout waiting for connect response from broker
     """
+
+class StompConnectionError(StompError):
+    """Raised for nonexistent connection
+    """

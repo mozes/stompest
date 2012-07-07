@@ -14,13 +14,12 @@ Copyright 2011 Mozes, Inc.
    limitations under the License.
 """
 import contextlib
-import logging
 import select
 import socket
 
 import stomper
 
-from stompest.error import StompProtocolError
+from stompest.error import StompProtocolError, StompConnectionError
 from stompest.parser import StompParser
 from stompest.util import createFrame
 
@@ -104,9 +103,13 @@ class Stomp(object):
             message = self.parser.getMessage()
             if message:
                 return message
-            data = self.socket.recv(self.READ_SIZE)
-            if not data:
-                raise Exception('Connection closed')
+            try:
+                data = self.socket.recv(self.READ_SIZE)
+                if not data:
+                    raise StompConnectionError('no more data')
+            except (IOError, StompConnectionError) as e:
+                self.socket = None
+                raise StompConnectionError('Connection closed [%s]' % e)
             self.parser.add(data)
     
     def packFrame(self, message):
@@ -117,7 +120,10 @@ class Stomp(object):
         
     def _socketConnect(self):
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.socket.connect((self.host, self.port))
+        try:
+            self.socket.connect((self.host, self.port))
+        except IOError as e:
+            raise StompConnectionError('Could not establish socket connection [%s]' % e)
         
     def _socketDisconnect(self):
         self.socket.close()
@@ -128,8 +134,11 @@ class Stomp(object):
         
     def _checkConnected(self):
         if not self._connected():
-            raise Exception('Not connected')
+            raise StompConnectionError('Not connected')
        
     def _write(self, data):
         self._checkConnected()
-        self.socket.sendall(data)
+        try:
+            self.socket.sendall(data)
+        except IOError as e:
+            raise StompConnectionError('Could not write to socket [%s]' % e)
