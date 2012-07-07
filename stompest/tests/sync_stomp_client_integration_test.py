@@ -13,11 +13,14 @@ Copyright 2011 Mozes, Inc.
    See the License for the specific language governing permissions and
    limitations under the License.
 """
+import logging
 import time
 import unittest
 
 from stompest.error import StompConnectionError
 from stompest.sync import Stomp
+
+logging.basicConfig(level=logging.DEBUG)
 
 class SimpleStompIntegrationTest(unittest.TestCase):
     DEST = '/queue/stompUnitTest'
@@ -33,28 +36,33 @@ class SimpleStompIntegrationTest(unittest.TestCase):
     def test_1_integration(self):
         stomp = Stomp('tcp://localhost:61613')
         stomp.connect()
-        stomp.send(self.DEST, 'test message1')
-        stomp.send(self.DEST, 'test message2')
+        stomp.send(self.DEST, 'test message 1')
+        stomp.send(self.DEST, 'test message 2')
         self.assertFalse(stomp.canRead(1))
         stomp.subscribe(self.DEST, {'ack': 'client'})
         self.assertTrue(stomp.canRead(1))
-        frame = stomp.receiveFrame()
-        stomp.ack(frame)
+        stomp.ack(stomp.receiveFrame())
         self.assertTrue(stomp.canRead(1))
-        frame = stomp.receiveFrame()
-        stomp.ack(frame)
+        stomp.ack(stomp.receiveFrame())
         self.assertFalse(stomp.canRead(1))
         stomp.disconnect()
 
     def test_2_timeout(self):
-        timeout = 1000
+        timeout = 150
+        tolerance = .005
+        initialReconnectDelay = .01
         
-        stomp = Stomp('failover:(tcp://localhost:61614,tcp://localhost:61615)?startupMaxReconnectAttempts=5000,maxReconnectDelay=%d' % timeout)
+        stomp = Stomp('failover:(tcp://localhost:61614,tcp://localhost:61615)?startupMaxReconnectAttempts=2,backOffMultiplier=3')
+        expectedTimeout = time.time() + 40 / 1000.0
+        self.assertRaises(StompConnectionError, stomp.connect)
+        self.assertTrue(abs(time.time() - expectedTimeout) < 2 * initialReconnectDelay)
+        
+        stomp = Stomp('failover:(tcp://localhost:61614,tcp://localhost:61615)?startupMaxReconnectAttempts=5,maxReconnectDelay=%d,useExponentialBackOff=false,initialReconnectDelay=30,reconnectDelayJitter=5' % timeout)
         expectedTimeout = time.time() + timeout / 1000.0
         self.assertRaises(StompConnectionError, stomp.connect)
-        self.assertTrue(abs(time.time() - expectedTimeout) < .005)
+        self.assertTrue(abs(time.time() - expectedTimeout) < tolerance)
 
-        stomp = Stomp('failover:(tcp://localhost:61614,tcp://localhost:61613)?startupMaxReconnectAttempts=5000,maxReconnectDelay=%d' % timeout)
+        stomp = Stomp('failover:(tcp://localhost:61614,tcp://localhost:61613)?startupMaxReconnectAttempts=1,randomize=false')
         stomp.connect()
         stomp.disconnect()
         

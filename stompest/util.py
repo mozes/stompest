@@ -53,9 +53,9 @@ class StompConfiguration(object):
         socket.gethostname(),
         socket.getfqdn(socket.gethostname())
     ])
-        
+    
     _configurationOption = namedtuple('_configurationOption', ['parser', 'default'])
-    _bool = lambda x: {'true': True, 'false': False}[x]
+    _bool = {'true': True, 'false': False}.__getitem__
     
     _FAILOVER_PREFIX = 'failover:'
     _REGEX_URI = compile('^(?P<protocol>tcp)://(?P<host>[^:]+):(?P<port>\d+)$')

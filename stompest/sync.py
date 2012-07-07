@@ -36,33 +36,48 @@ class Stomp(object):
         self._stomp = None
     
     def connect(self):
-        try: # preserve existing connection
-            self._stomp.canRead(0)
-            return
-        except:
-            pass
-        
         options = self._config.options
+        maxReconnectAttempts = options['maxReconnectAttempts'] if self._stomp else options['startupMaxReconnectAttempts']
+        if self._stomp:
+            try: # preserve existing connection
+                self._stomp.canRead(0)
+                return
+            except:
+                if not maxReconnectAttempts:
+                    raise
+                self.log.warning('connection lost. reconnecting ... [%s:%d]' % (self._stomp.host, self._stomp.port))
+        
         reconnectDelay = options['initialReconnectDelay'] / 1000.0
         reconnectDelayJitter = options['reconnectDelayJitter'] / 1000.0
         backOffMultiplier = options['backOffMultiplier'] if options['useExponentialBackOff'] else 1
         cutoff = time.time() + options['maxReconnectDelay'] / 1000.0
-        maxReconnectAttempts = options['maxReconnectAttempts'] if self._stomp else options['startupMaxReconnectAttempts']
         reconnectAttempts = 0
         while True:
             self._stomp = self._stomps.next()
             try:
+                self.log.debug('connecting ... [%s:%d]' % (self._stomp.host, self._stomp.port))
                 self._stomp.connect(self._config.login, self._config.passcode)
+                self.log.info('connection established [%s:%d]' % (self._stomp.host, self._stomp.port))
                 return
             except StompConnectionError as e:
-                reconnectAttempts += 1
                 remainingTime = cutoff - time.time()
+                error = None
                 if (reconnectAttempts >= maxReconnectAttempts):
-                    raise StompConnectionError('Reconnect timeout: %d attempts [%s]'  % (maxReconnectAttempts, e))                    
+                    error = StompConnectionError('Reconnect timeout: %d attempts [%s]'  % (maxReconnectAttempts, e))                    
                 if remainingTime <= 0:
-                    raise StompConnectionError('Reconnect timeout: %d ms [%s]'  % (options['maxReconnectDelay'], e))
-                time.sleep(min(reconnectDelay + random() * reconnectDelayJitter, remainingTime))
-                reconnectDelay *= backOffMultiplier
+                    error = StompConnectionError('Reconnect timeout: %d ms [%s]'  % (options['maxReconnectDelay'], e))
+                if error:
+                    self.log.error(error)
+                    raise error
+                reconnectAttempts += 1
+                sleep = min(reconnectDelay + random() * reconnectDelayJitter, remainingTime)
+                if sleep:
+                    self.log.debug('delaying reconnect attempt for %d ms' % int(sleep * 1000))
+                    time.sleep(sleep)
+                if backOffMultiplier != 1:
+                    reconnectDelay *= backOffMultiplier
+                    self.log.debug('backed off [multiplier=%d]' % backOffMultiplier)
+                
     
     def disconnect(self):
         return self._stomp.disconnect()
