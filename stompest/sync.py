@@ -45,40 +45,25 @@ class Stomp(object):
             except:
                 if not maxReconnectAttempts:
                     raise
-                self.log.warning('connection lost. reconnecting ... [%s:%d]' % (self._stomp.host, self._stomp.port))
+                self.log.warning('connection lost. trying to reconnect to %s:%d ...' % (self._stomp.host, self._stomp.port))
         
         reconnectDelay = options['initialReconnectDelay'] / 1000.0
-        reconnectDelayJitter = options['reconnectDelayJitter'] / 1000.0
-        backOffMultiplier = options['backOffMultiplier'] if options['useExponentialBackOff'] else 1
-        cutoff = time.time() + options['maxReconnectDelay'] / 1000.0
+        cutoff = None
         reconnectAttempts = 0
         while True:
             self._stomp = self._stomps.next()
             try:
-                self.log.debug('connecting ... [%s:%d]' % (self._stomp.host, self._stomp.port))
-                self._stomp.connect(self._config.login, self._config.passcode)
-                self.log.info('connection established [%s:%d]' % (self._stomp.host, self._stomp.port))
-                return
-            except StompConnectionError as e:
-                remainingTime = cutoff - time.time()
-                error = None
-                if (reconnectAttempts >= maxReconnectAttempts):
-                    error = StompConnectionError('Reconnect timeout: %d attempts [%s]'  % (maxReconnectAttempts, e))                    
-                if remainingTime <= 0:
-                    error = StompConnectionError('Reconnect timeout: %d ms [%s]'  % (options['maxReconnectDelay'], e))
-                if error:
-                    self.log.error(error)
-                    raise error
-                reconnectAttempts += 1
-                sleep = min(reconnectDelay + random() * reconnectDelayJitter, remainingTime)
-                if sleep:
-                    self.log.debug('delaying reconnect attempt for %d ms' % int(sleep * 1000))
-                    time.sleep(sleep)
-                if backOffMultiplier != 1:
-                    reconnectDelay *= backOffMultiplier
-                    self.log.debug('backed off [multiplier=%d]' % backOffMultiplier)
+                return self._connect()
+            except StompConnectionError as connectError:
+                if cutoff is None:
+                    cutoff = time.time() + (options['maxReconnectDelay'] / 1000.0)
+                try:
+                    reconnectDelay = self._wait(maxReconnectAttempts, reconnectAttempts, cutoff, reconnectDelay)
+                    reconnectAttempts += 1
+                except StompConnectionError as reconnectError:
+                    self.log.error('%s [%s]' % (reconnectError, connectError))
+                    raise reconnectError
                 
-    
     def disconnect(self):
         return self._stomp.disconnect()
 
@@ -117,3 +102,25 @@ class Stomp(object):
     
     def packFrame(self, message):
         return self._stomp.packFrame(message)
+
+    def _connect(self):
+        self.log.debug('connecting to %s:%d ...' % (self._stomp.host, self._stomp.port))
+        result = self._stomp.connect(self._config.login, self._config.passcode)
+        self.log.info('connection established to %s:%d' % (self._stomp.host, self._stomp.port))
+        return result
+    
+    def _wait(self, maxReconnectAttempts, reconnectAttempts, cutoff, reconnectDelay):
+        options = self._config.options
+        if reconnectAttempts >= maxReconnectAttempts:
+            raise StompConnectionError('Reconnect timeout: %d attempts'  % maxReconnectAttempts)
+        
+        remainingTime = cutoff - time.time()
+        if remainingTime <= 0:
+            raise StompConnectionError('Reconnect timeout: %d ms'  % options['maxReconnectDelay'])
+        
+        sleep = min(reconnectDelay + (random() * options['reconnectDelayJitter'] / 1000.0), remainingTime)
+        if sleep:
+            self.log.debug('delaying reconnect attempt for %d ms' % int(sleep * 1000))
+            time.sleep(sleep)
+            
+        return reconnectDelay * (options['backOffMultiplier'] if options['useExponentialBackOff'] else 1)
