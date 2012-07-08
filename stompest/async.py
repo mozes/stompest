@@ -25,13 +25,15 @@ from twisted.internet.error import ConnectionLost
 
 from stompest.parser import StompParser
 from stompest.error import StompError, StompProtocolError, StompConnectTimeout, StompFrameError
-from stompest.util import cloneStompMessageForErrorDest
+from stompest.util import cloneStompMessageForErrorDest as _cloneStompMessageForErrorDest
+from stompest.util import createFrame as _createFrame
 
 LOG_CATEGORY = 'stompest.async'
 
 class StompClient(Protocol):
     """A Twisted implementation of a STOMP client"""
     delimiter = StompParser.FRAME_DELIMITER
+    MESSAGE_INFO_LENGTH = 20
 
     def __init__(self):
         self.log = logging.getLogger(LOG_CATEGORY)
@@ -123,31 +125,24 @@ class StompClient(Protocol):
         """
         self.log.debug('Sending connect command')
         cmd = stomper.connect(self.factory.login, self.factory.passcode)
-        # self.log.debug('Writing cmd: %s' % cmd)
-        self.transport.write(cmd)
+        self._write(cmd)
 
     def _disconnect(self):
         """Send disconnect command
         """
         self.log.debug('Sending disconnect command')
         cmd = stomper.disconnect()
-        # self.log.debug('Writing cmd: %s' % cmd)
-        self.transport.write(cmd)
+        self._write(cmd)
 
     def _subscribe(self, dest, headers):
         """Send subscribe command
         """
         ack = headers.get('ack', None)
         self.log.debug('Sending subscribe command for destination %s with ack mode %s' % (dest, ack))
-
         headers['destination'] = dest
-                
-        frame = stomper.Frame()
-        frame.cmd = 'SUBSCRIBE'
-        frame.headers = headers
-        cmd = frame.pack()
-        # self.log.debug('Writing cmd: %s' % cmd)
-        self.transport.write(cmd)
+        # TODO: Roger, please add a comment why you used self.packFrame instead of stomper
+        cmd = self.packFrame({'cmd': 'SUBSCRIBE', 'headers': headers})
+        self._write(cmd)
 
     def _ack(self, messageId):
         """Send ack command
@@ -155,17 +150,20 @@ class StompClient(Protocol):
         self.log.debug('Sending ack command for message: %s' % messageId)
         #NOTE: cannot use stomper.ack(messageId) with ActiveMQ 5.6.0
         #       b/c stomper adds a space to the header and AMQ no longer accepts it
-        frame = stomper.Frame()
-        frame.cmd = 'ACK'
-        frame.headers = {'message-id': messageId}
-        cmd = frame.pack()
-        #cmd = stomper.ack(messageId)
-        # self.log.debug('Writing cmd: %s' % cmd)
-        self.transport.write(cmd)
+        cmd = self.packFrame({'cmd': 'ACK', 'headers': {'message-id': messageId}})
+        self._write(cmd)
+    
+    def _write(self, frame):
+        #self.log.debug('sending frame:\n%s' % frame)
+        self.transport.write(frame)
 
     #
     # Private helper methods
     #
+    @classmethod
+    def packFrame(cls, message):
+        return _createFrame(message).pack()
+        
     def resetParser(self):
         """Stomp parser must be reset after each frame is received
         """
@@ -198,7 +196,7 @@ class StompClient(Protocol):
         disconnect = False
         #Forward message to error queue if configured
         if errDest is not None:
-            errMsg = cloneStompMessageForErrorDest(msg)
+            errMsg = _cloneStompMessageForErrorDest(msg)
             self.send(errDest, errMsg['body'], errMsg['headers'])
             self._ack(messageId)
             if self.factory.alwaysDisconnectOnUnhandledMsg:
@@ -247,7 +245,7 @@ class StompClient(Protocol):
             return
 
         if self.log.isEnabledFor(logging.DEBUG):
-            self.log.debug('Received stomp message %s from destination %s: [%s...].  Headers: %s' % (messageId, dest, msg['body'][:20], msg['headers']))
+            self.log.debug('Received stomp message %s from destination %s: [%s...].  Headers: %s' % (messageId, dest, msg['body'][:self.MESSAGE_INFO_LENGTH], msg['headers']))
         
         #Call message handler (can return deferred to be async)
         self.handlerStarted(messageId)        
@@ -325,15 +323,10 @@ class StompClient(Protocol):
         """
         headers = headers or {}
         if self.log.isEnabledFor(logging.DEBUG):
-            self.log.debug('Sending message to %s: [%s...]' % (dest, msg[:20]))
-        frame = stomper.Frame()
-        frame.cmd = 'SEND'
-        frame.headers = headers
-        frame.headers['destination'] = dest
-        frame.body = msg
-        cmd = frame.pack()
-        # self.log.debug('Writing cmd: %s' % cmd)
-        self.transport.write(cmd)
+            self.log.debug('Sending message to %s: [%s...]' % (dest, msg[:self.MESSAGE_INFO_LENGTH]))
+        headers['destination'] = dest
+        cmd = self.packFrame({'cmd': 'SEND', 'headers': headers, 'body': msg})
+        self._write(cmd)
         
     def getDisconnectedDeferred(self):
         return self.disconnectedDeferred

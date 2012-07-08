@@ -21,7 +21,7 @@ import stomper
 
 from stompest.error import StompProtocolError, StompConnectionError
 from stompest.parser import StompParser
-from stompest.util import createFrame
+from stompest.util import createFrame as _createFrame
 
 class Stomp(object):
     """A simple implementation of a STOMP client"""
@@ -29,7 +29,7 @@ class Stomp(object):
     
     @classmethod
     def packFrame(cls, message):
-        return createFrame(message).pack()
+        return _createFrame(message).pack()
         
     def __init__(self, host, port):
         self.host = host

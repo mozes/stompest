@@ -42,7 +42,7 @@ def createFrame(message):
     frame = Frame()
     frame.cmd = message['cmd']
     frame.headers = message['headers']
-    frame.body = message['body']
+    frame.body = message.get('body', '')
     return frame
 
 class StompConfiguration(object):

@@ -21,7 +21,7 @@ from random import choice, random
 
 from stompest.error import StompConnectionError, StompConnectTimeout
 from stompest.simple import Stomp as _Stomp
-from stompest.util import createFrame
+from stompest.util import createFrame  as _createFrame
 from stompest.util import StompConfiguration as _StompConfiguration
 
 LOG_CATEGORY = 'stompest.sync'
@@ -30,7 +30,7 @@ class Stomp(object):
     """A less simple implementation of a failover STOMP session with potentially more than one client"""
     @classmethod
     def packFrame(cls, message):
-        return createFrame(message).pack()
+        return _createFrame(message).pack()
     
     def __init__(self, uri):
         self.log = logging.getLogger(LOG_CATEGORY)
