@@ -19,21 +19,26 @@ import time
 from itertools import cycle
 from random import choice, random
 
+from stompest.error import StompConnectionError, StompConnectTimeout
 from stompest.simple import Stomp as _Stomp
+from stompest.util import createFrame
 from stompest.util import StompConfiguration as _StompConfiguration
-from stompest.error import StompConnectionError
-from contextlib import contextmanager
 
 LOG_CATEGORY = 'stompest.sync'
 
 class Stomp(object):
     """A less simple implementation of a failover STOMP session with potentially more than one client"""
+    @classmethod
+    def packFrame(cls, message):
+        return createFrame(message).pack()
+    
     def __init__(self, uri):
         self.log = logging.getLogger(LOG_CATEGORY)
         self._config = _StompConfiguration(uri) # syntax of uri: cf. stompest.util
         stomps = [_Stomp(broker['host'], broker['port']) for broker in self._config.brokers]
         self._stomps = ((choice(stomps) if self._config.options['randomize'] else stomp) for stomp in cycle(stomps))
         self._stomp = None
+        self._subscriptions = []
     
     def connect(self):
         options = self._config.options
@@ -65,6 +70,7 @@ class Stomp(object):
                     raise reconnectError
                 
     def disconnect(self):
+        self._subscriptions = []
         return self._stomp.disconnect()
 
     def canRead(self, timeout=None):
@@ -74,53 +80,69 @@ class Stomp(object):
         return self._stomp.send(dest, msg, headers)
         
     def subscribe(self, dest, headers=None):
-        return self._stomp.subscribe(dest, headers)
+        headers = dict(headers or {})
+        self._subscribe(dest, headers)
+        self._stomp.subscribe(dest, headers)
         
     def unsubscribe(self, dest, headers=None):
-        return self._stomp.unsubscribe(dest, headers)
+        headers = dict(headers or {})
+        self._unsubscribe(dest, headers)
+        self._stomp.unsubscribe(dest, headers)
     
     def begin(self, transactionId):
-        return self._stomp.begin(transactionId)
+        self._stomp.begin(transactionId)
         
     def commit(self, transactionId):
-        return self._stomp.commit(transactionId)
+        self._stomp.commit(transactionId)
         
     def abort(self, transactionId):
-        return self._stomp.abort(transactionId)
+        self._stomp.abort(transactionId)
     
     def transaction(self, transactionId):
-        return self._stomp.transaction(transactionId)
+        self._stomp.transaction(transactionId)
         
     def ack(self, frame):
-        return self._stomp.ack(frame)
+        self._stomp.ack(frame)
     
     def sendFrame(self, frame):
-        return self._stomp.sendFrame(frame)
+        self._stomp.sendFrame(frame)
     
     def receiveFrame(self):
         return self._stomp.receiveFrame()
     
-    def packFrame(self, message):
-        return self._stomp.packFrame(message)
-
     def _connect(self):
         self.log.debug('connecting to %s:%d ...' % (self._stomp.host, self._stomp.port))
         result = self._stomp.connect(self._config.login, self._config.passcode)
+        subscriptions, self._subscriptions = self._subscriptions, []
+        for (dest, headers) in subscriptions:
+            self.log.debug('replaying subscription %s to %s' % (dict(headers), dest))
+            self.subscribe(dest, headers)
         self.log.info('connection established to %s:%d' % (self._stomp.host, self._stomp.port))
         return result
+    
+    def _subscribe(self, dest, headers):
+        subscription = self._subscription(dest, headers)
+        if subscription not in self._subscriptions:
+            self._subscriptions.append(subscription)
+    
+    def _unsubscribe(self, dest, headers):
+        try:
+            self._subscriptions.remove(self._subscription(dest, headers))
+        except ValueError:
+            self.log.warning('trying to unsubscribe from an unknown subscription: %s' % headers)
+        
+    def _subscription(self, dest, headers):
+        return (dest, tuple(sorted(headers.items())))
     
     def _wait(self, maxReconnectAttempts, reconnectAttempts, cutoff, reconnectDelay):
         options = self._config.options
         if reconnectAttempts >= maxReconnectAttempts:
-            raise StompConnectionError('Reconnect timeout: %d attempts'  % maxReconnectAttempts)
-        
+            raise StompConnectTimeout('Reconnect timeout: %d attempts'  % maxReconnectAttempts)
         remainingTime = cutoff - time.time()
         if remainingTime <= 0:
-            raise StompConnectionError('Reconnect timeout: %d ms'  % options['maxReconnectDelay'])
-        
+            raise StompConnectTimeout('Reconnect timeout: %d ms'  % options['maxReconnectDelay'])
         sleep = min(reconnectDelay + (random() * options['reconnectDelayJitter'] / 1000.0), remainingTime)
         if sleep:
             self.log.debug('delaying reconnect attempt for %d ms' % int(sleep * 1000))
             time.sleep(sleep)
-            
         return reconnectDelay * (options['backOffMultiplier'] if options['useExponentialBackOff'] else 1)

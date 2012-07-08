@@ -17,7 +17,7 @@ class StompError(Exception):
     """Base class for STOMP errors
     """
 
-class StompFrameError(Exception):
+class StompFrameError(StompError):
     """Raised for error parsing STOMP frames
     """
 
@@ -25,10 +25,10 @@ class StompProtocolError(StompError):
     """Raised for STOMP protocol errors
     """
     
-class StompConnectTimeout(StompError):
-    """Raised for timeout waiting for connect response from broker
-    """
-
 class StompConnectionError(StompError):
     """Raised for nonexistent connection
+    """
+
+class StompConnectTimeout(StompConnectionError):
+    """Raised for timeout waiting for connect response from broker
     """

@@ -25,9 +25,12 @@ from stompest.util import createFrame
 
 class Stomp(object):
     """A simple implementation of a STOMP client"""
-    
     READ_SIZE = 4096
     
+    @classmethod
+    def packFrame(cls, message):
+        return createFrame(message).pack()
+        
     def __init__(self, host, port):
         self.host = host
         self.port = port
@@ -53,7 +56,7 @@ class Stomp(object):
             readList, _, _ = select.select([self.socket], [], [])
         else:
             readList, _, _ = select.select([self.socket], [], [], timeout)
-        return len(readList) > 0
+        return bool(readList)
         
     def send(self, dest, msg, headers=None):
         headers = headers or {}
@@ -106,15 +109,12 @@ class Stomp(object):
             try:
                 data = self.socket.recv(self.READ_SIZE)
                 if not data:
-                    raise StompConnectionError('no more data')
+                    raise StompConnectionError('No more data')
             except (IOError, StompConnectionError) as e:
-                self.socket = None
+                self._socketDisconnect()
                 raise StompConnectionError('Connection closed [%s]' % e)
             self.parser.add(data)
     
-    def packFrame(self, message):
-        return createFrame(message).pack()
-        
     def _setParser(self):
         self.parser = StompParser()
         
@@ -123,11 +123,15 @@ class Stomp(object):
         try:
             self.socket.connect((self.host, self.port))
         except IOError as e:
-            raise StompConnectionError('Could not establish socket connection [%s]' % e)
+            raise StompConnectionError('Could not establish connection [%s]' % e)
         
     def _socketDisconnect(self):
-        self.socket.close()
-        self.socket = None
+        try:
+            self.socket.close()
+        except IOError as e:
+            raise StompConnectionError('Could not close connection cleanly [%s]' % e)
+        finally:
+            self.socket = None
     
     def _connected(self):
         return self.socket is not None
@@ -141,4 +145,4 @@ class Stomp(object):
         try:
             self.socket.sendall(data)
         except IOError as e:
-            raise StompConnectionError('Could not write to socket [%s]' % e)
+            raise StompConnectionError('Could not send to connection [%s]' % e)

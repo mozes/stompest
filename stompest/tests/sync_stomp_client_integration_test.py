@@ -70,6 +70,18 @@ class SimpleStompIntegrationTest(unittest.TestCase):
         stomp = Stomp('failover:(tcp://localhost:61614,tcp://localhost:61613)?startupMaxReconnectAttempts=1,randomize=false')
         stomp.connect()
         stomp.disconnect()
-        
+    
+    def test_3_socket_failure_and_replay(self):
+        stomp = Stomp('tcp://localhost:61613')
+        stomp.connect()
+        stomp.send(self.DEST, 'test message 1')
+        stomp.subscribe(self.DEST, {'ack': 'client'})
+        self.assertEqual(stomp._subscriptions, [(self.DEST, (('ack', 'client'),))])
+        stomp._stomp.socket.close()
+        self.assertRaises(StompConnectionError, stomp.receiveFrame)
+        stomp.connect()
+        stomp.ack(stomp.receiveFrame())
+        stomp.disconnect()
+
 if __name__ == '__main__':
     unittest.main()
