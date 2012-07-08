@@ -46,28 +46,14 @@ class Stomp(object):
         if self._stomp:
             try: # preserve existing connection
                 self._stomp.canRead(0)
+                self.log.warning('already connected to %s:%d' % (self._stomp.host, self._stomp.port))
                 return
             except:
-                if not maxReconnectAttempts:
-                    raise
-                self.log.warning('connection lost. trying to reconnect to %s:%d ...' % (self._stomp.host, self._stomp.port))
-        
-        reconnectDelay = options['initialReconnectDelay'] / 1000.0
-        cutoff = None
-        reconnectAttempts = 0
-        while True:
-            self._stomp = self._stomps.next()
-            try:
-                return self._connect()
-            except StompConnectionError as connectError:
-                if cutoff is None:
-                    cutoff = time.time() + (options['maxReconnectDelay'] / 1000.0)
-                try:
-                    reconnectDelay = self._wait(maxReconnectAttempts, reconnectAttempts, cutoff, reconnectDelay)
-                    reconnectAttempts += 1
-                except StompConnectionError as reconnectError:
-                    self.log.error('%s [%s]' % (reconnectError, connectError))
-                    raise reconnectError
+                pass
+            if not maxReconnectAttempts:
+                raise
+            self.log.warning('connection lost. trying to reconnect to %s:%d ...' % (self._stomp.host, self._stomp.port))
+        self._reconnect(maxReconnectAttempts)
                 
     def disconnect(self):
         self._subscriptions = []
@@ -120,6 +106,26 @@ class Stomp(object):
         self.log.info('connection established to %s:%d' % (self._stomp.host, self._stomp.port))
         return result
     
+    def _reconnect(self, maxReconnectAttempts):
+        options = self._config.options
+        reconnectDelay = options['initialReconnectDelay'] / 1000.0
+        cutoff = None
+        reconnectAttempts = 0
+        while True:
+            self._stomp = self._stomps.next()
+            try:
+                return self._connect()
+            except StompConnectionError as connectError:
+                pass
+            if cutoff is None:
+                cutoff = time.time() + (options['maxReconnectDelay'] / 1000.0)
+            try:
+                reconnectDelay = self._wait(maxReconnectAttempts, reconnectAttempts, cutoff, reconnectDelay)
+                reconnectAttempts += 1
+            except StompConnectionError as reconnectError:
+                self.log.error('%s [%s]' % (reconnectError, connectError))
+                raise reconnectError
+
     def _subscribe(self, dest, headers):
         subscription = self._subscription(dest, headers)
         if subscription not in self._subscriptions:
