@@ -147,7 +147,7 @@ class Stomp(object):
         remainingTime = cutoff - time.time()
         if remainingTime <= 0:
             raise StompConnectTimeout('Reconnect timeout: %d ms'  % options['maxReconnectDelay'])
-        sleep = min(reconnectDelay + (random() * options['reconnectDelayJitter'] / 1000.0), remainingTime)
+        sleep = abs(min(reconnectDelay + (random() * options['reconnectDelayJitter'] / 1000.0), remainingTime))
         if sleep:
             self.log.debug('delaying reconnect attempt for %d ms' % int(sleep * 1000))
             time.sleep(sleep)
