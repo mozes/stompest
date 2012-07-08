@@ -313,7 +313,7 @@ class StompClient(Protocol):
         errorDestination = kwargs.get('errorDestination')
         # client-individual mode is only supported in AMQ >= 5.2
         # headers['ack'] = headers.get('ack', 'client-individual')
-        headers = headers or {}
+        headers = dict(headers or {})
         headers['ack'] = headers.get('ack', 'client')
         self.destMap[dest] = {'handler': handler, 'ack': headers['ack'], 'errorDestination': errorDestination}
         self._subscribe(dest, headers)
@@ -321,7 +321,7 @@ class StompClient(Protocol):
     def send(self, dest, msg, headers=None):
         """Do the send command to enqueue a message to a destination
         """
-        headers = headers or {}
+        headers = dict(headers or {})
         if self.log.isEnabledFor(logging.DEBUG):
             self.log.debug('Sending message to %s: [%s...]' % (dest, msg[:self.MESSAGE_INFO_LENGTH]))
         headers['destination'] = dest

@@ -10,14 +10,36 @@ from re import compile
 from stompest.error import StompConnectTimeout
 
 class StompSession(object):
-    def __init__(self, uri, stompFactory):
-        self.subscriptions = []
+    SUPPORTED_VERSIONS = ['1.0']
+    DEFAULT_VERSION = '1.0'
+    
+    def __init__(self, uri, stompFactory, version=None):
+        self.version = version or self.DEFAULT_VERSION
+        self._subscriptions = []
         self._maxReconnectAttempts = None
         self._config = StompConfiguration(uri) # syntax of uri: cf. stompest.util
         stomps = [stompFactory(broker['host'], broker['port']) for broker in self._config.brokers]
         self._stomps = ((choice(stomps) if self._config.options['randomize'] else stomp) for stomp in cycle(stomps))
     
     def connections(self):
+        self._reset()
+        while True:
+            yield self._stomps.next(), self._delay()
+
+    def replay(self):
+        subscriptions, self._subscriptions = self._subscriptions, []
+        return subscriptions
+
+    def subscribe(self, headers):
+        self._subscriptions.append(dict(headers))
+    
+    def unsubscribe(self, headers):
+        if 'id' in headers:
+            self._subscriptions = [h for h in self._subscriptions if h.get('id') != headers['id']]
+        else:
+            self._subscriptions = [h for h in self._subscriptions if h['destination'] != headers['destination']]
+    
+    def _reset(self):
         options = self._config.options
         self._cutoff = time.time() + (options['maxReconnectDelay'] / 1000.0)
         self._reconnectDelay = self._reconnectDelay = options['initialReconnectDelay'] / 1000.0
@@ -26,28 +48,18 @@ class StompSession(object):
         else:
             self._maxReconnectAttempts = options['maxReconnectAttempts']
         self._reconnectAttempts = -1
-        while True:
-            yield self._stomps.next(), self._delay()
-
-    def subscribe(self, dest, headers):
-        subscription = (dest, dict(headers))
-        if subscription not in self.subscriptions:
-            self.subscriptions.append(subscription)
-    
-    def unsubscribe(self, dest, headers):
-        self.subscriptions.remove((dest, dict(headers)))
         
     def _delay(self):
         options = self._config.options
-        if (self._maxReconnectAttempts != -1) and (self._reconnectAttempts >= self._maxReconnectAttempts):
-            raise StompConnectTimeout('Reconnect timeout: %d attempts'  % self._maxReconnectAttempts)
         self._reconnectAttempts += 1
         if self._reconnectAttempts == 0:
             return 0
+        if (self._maxReconnectAttempts != -1) and (self._reconnectAttempts > self._maxReconnectAttempts):
+            raise StompConnectTimeout('Reconnect timeout: %d attempts'  % self._maxReconnectAttempts)
         remainingTime = self._cutoff - time.time()
         if remainingTime <= 0:
             raise StompConnectTimeout('Reconnect timeout: %d ms'  % options['maxReconnectDelay'])
-        delay = abs(min(self._reconnectDelay + (random() * options['reconnectDelayJitter'] / 1000.0), remainingTime))
+        delay = max(0, (min(self._reconnectDelay + (random() * options['reconnectDelayJitter'] / 1000.0), remainingTime)))
         self._reconnectDelay *= (options['backOffMultiplier'] if options['useExponentialBackOff'] else 1)
         return delay
     

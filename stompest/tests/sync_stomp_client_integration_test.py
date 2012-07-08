@@ -28,7 +28,8 @@ class SimpleStompIntegrationTest(unittest.TestCase):
     def test_0_integration(self):
         stomp = Stomp('tcp://localhost:61613')
         stomp.connect()
-        stomp.subscribe(self.DEST, {'ack': 'client'})
+        stomp.subscribe({'destination': self.DEST, 'ack': 'client'})
+        stomp.subscribe({'destination': self.DEST, 'id': 'bla', 'ack': 'client'})
         while stomp.canRead(1):
             stomp.ack(stomp.receiveFrame())
         stomp.disconnect()
@@ -39,7 +40,7 @@ class SimpleStompIntegrationTest(unittest.TestCase):
         stomp.send(self.DEST, 'test message 1')
         stomp.send(self.DEST, 'test message 2')
         self.assertFalse(stomp.canRead(1))
-        stomp.subscribe(self.DEST, {'ack': 'client'})
+        stomp.subscribe({'destination': self.DEST, 'ack': 'client-individual'})
         self.assertTrue(stomp.canRead(1))
         stomp.ack(stomp.receiveFrame())
         self.assertTrue(stomp.canRead(1))
@@ -76,13 +77,25 @@ class SimpleStompIntegrationTest(unittest.TestCase):
         stomp = Stomp('tcp://localhost:61613')
         stomp.connect()
         stomp.send(self.DEST, 'test message 1')
-        headers = {'ack': 'client'}
-        stomp.subscribe(self.DEST, headers)
-        self.assertEqual(stomp._session.subscriptions, [(self.DEST, headers)])
+        headers = {'destination': self.DEST, 'ack': 'client-individual'}
+        stomp.subscribe(headers)
+        self.assertEqual(stomp._session._subscriptions, [headers])
         stomp._stomp.socket.close()
         self.assertRaises(StompConnectionError, stomp.receiveFrame)
         stomp.connect()
         stomp.ack(stomp.receiveFrame())
+        stomp.unsubscribe({'destination': self.DEST})
+        self.assertEqual(stomp._session._subscriptions, [])
+        stomp.send(self.DEST, 'test message 2')
+        headers = {'destination': self.DEST, 'id': 'bla', 'ack': 'client-individual'}
+        stomp.subscribe(headers)
+        self.assertEqual(stomp._session._subscriptions, [headers])
+        stomp._stomp.socket.close()
+        self.assertRaises(StompConnectionError, stomp.receiveFrame)
+        stomp.connect()
+        stomp.ack(stomp.receiveFrame())
+        stomp.unsubscribe({'id': 'bla'})
+        self.assertEqual(stomp._session._subscriptions, [])
         stomp.disconnect()
 
 if __name__ == '__main__':

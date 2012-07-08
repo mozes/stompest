@@ -61,10 +61,9 @@ class Stomp(object):
     def _connect(self):
         self.log.debug('connecting to %s:%d ...' % (self._stomp.host, self._stomp.port))
         result = self._stomp.connect(self._login, self._passcode)
-        subscriptions, self._session.subscriptions = self._session.subscriptions, []
-        for (dest, headers) in subscriptions:
-            self.log.debug('replaying subscription %s to %s' % (dict(headers), dest))
-            self.subscribe(dest, headers)
+        for headers in self._session.replay():
+            self.log.debug('replaying subscription %s' % headers)
+            self.subscribe(headers)
         self.log.info('connection established to %s:%d' % (self._stomp.host, self._stomp.port))
         return result
     
@@ -78,18 +77,15 @@ class Stomp(object):
     def send(self, dest, msg, headers=None):
         return self._stomp.send(dest, msg, headers)
         
-    def subscribe(self, dest, headers=None):
-        headers = dict(headers or {})
-        self._session.subscribe(dest, headers)
-        self._stomp.subscribe(dest, headers)
+    def subscribe(self, headers):
+        headers = dict(headers)
+        self._stomp.subscribe(headers=headers)
+        self._session.subscribe(headers)
         
-    def unsubscribe(self, dest, headers=None):
-        headers = dict(headers or {})
-        try:
-            self._session.unsubscribe(dest, headers)
-        except ValueError:
-            self.log.warning('trying to unsubscribe from an unknown subscription %s to %s' % (headers, dest))
-        self._stomp.unsubscribe(dest, headers)
+    def unsubscribe(self, headers):
+        headers = dict(headers)
+        self._stomp.unsubscribe(headers=headers)
+        self._session.unsubscribe(headers)
     
     def begin(self, transactionId):
         self._stomp.begin(transactionId)

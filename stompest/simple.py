@@ -59,21 +59,25 @@ class Stomp(object):
         return bool(readList)
         
     def send(self, dest, msg, headers=None):
-        headers = headers or {}
+        headers = dict(headers or {})
         headers['destination'] = dest
         frame = {'cmd': 'SEND', 'headers': headers, 'body': msg}
         self.sendFrame(frame)
         
-    def subscribe(self, dest, headers=None):
-        headers = headers or {}
-        headers['destination'] = dest
+    def subscribe(self, dest=None, headers=None):
+        # made dest parameter optional since it is better to just specify the destination in the headers (see unsubscribe)
+        headers = dict(headers or {})
+        headers['destination'] = dest or headers['destination']
         headers.setdefault('ack', 'auto')
         headers.setdefault('activemq.prefetchSize', 1)
         self.sendFrame({'cmd': 'SUBSCRIBE', 'headers': headers, 'body': ''})
         
-    def unsubscribe(self, dest, headers=None):
-        headers = headers or {}
-        headers['destination'] = dest
+    def unsubscribe(self, dest=None, headers=None):
+        # made dest parameter optional since an unsubscribe frame with 'id' header precludes a 'destination' header
+        if 'id' in headers:
+            headers = {'id': headers['id']}
+        else:
+            headers = {'headers': dest or headers['destination']}
         self.sendFrame({'cmd': 'UNSUBSCRIBE', 'headers': headers, 'body': ''})
     
     def begin(self, transactionId):
