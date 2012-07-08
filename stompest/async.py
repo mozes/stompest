@@ -137,7 +137,7 @@ class StompClient(Protocol):
     def _subscribe(self, dest, headers):
         """Send subscribe command
         """
-        ack = headers.get('ack', None)
+        ack = headers.get('ack')
         self.log.debug('Sending subscribe command for destination %s with ack mode %s' % (dest, ack))
         headers['destination'] = dest
         # TODO: Roger, please add a comment why you used self.packFrame instead of stomper
@@ -220,7 +220,7 @@ class StompClient(Protocol):
     def handleConnected(self, msg):
         """Handle STOMP CONNECTED commands
         """
-        sessionId = msg['headers'].get('session', None)
+        sessionId = msg['headers'].get('session')
         self.log.debug('Connected to stomp broker with session: %s' % sessionId)
         #Remove connect timeout if set
         if self.connectTimeoutDelayedCall is not None:
@@ -310,7 +310,7 @@ class StompClient(Protocol):
     def subscribe(self, dest, handler, headers=None, **kwargs):
         """Subscribe to a destination and register a function handler to receive messages for that destination
         """
-        errorDestination = kwargs.get('errorDestination', None)
+        errorDestination = kwargs.get('errorDestination')
         # client-individual mode is only supported in AMQ >= 5.2
         # headers['ack'] = headers.get('ack', 'client-individual')
         headers = headers or {}
@@ -364,7 +364,7 @@ class StompConfig(object):
 class StompCreator(object):
     def __init__(self, config, **kwargs):
         self.config = config
-        self.connectTimeout = kwargs.get('connectTimeout', None)
+        self.connectTimeout = kwargs.get('connectTimeout')
         self.alwaysDisconnectOnUnhandledMsg = kwargs.get('alwaysDisconnectOnUnhandledMsg', False)
         self.log = logging.getLogger(LOG_CATEGORY)
         self.stompConnectedDeferred = None

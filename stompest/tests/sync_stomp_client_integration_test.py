@@ -25,7 +25,7 @@ logging.basicConfig(level=logging.DEBUG)
 class SimpleStompIntegrationTest(unittest.TestCase):
     DEST = '/queue/stompUnitTest'
     
-    def setUp(self):
+    def test_0_integration(self):
         stomp = Stomp('tcp://localhost:61613')
         stomp.connect()
         stomp.subscribe(self.DEST, {'ack': 'client'})
@@ -49,35 +49,36 @@ class SimpleStompIntegrationTest(unittest.TestCase):
 
     def test_2_timeout(self):
         timeout = 150
-        tolerance = .005
         initialReconnectDelay = .01
+        tolerance = initialReconnectDelay
         
         stomp = Stomp('failover:(tcp://localhost:61614,tcp://localhost:61615)?startupMaxReconnectAttempts=2,backOffMultiplier=3')
         expectedTimeout = time.time() + 40 / 1000.0 # 40 ms = 10 ms + 3 * 10 ms
         self.assertRaises(StompConnectionError, stomp.connect)
-        self.assertTrue(abs(time.time() - expectedTimeout) < initialReconnectDelay)
+        self.assertTrue(abs(time.time() - expectedTimeout) < tolerance)
         
         stomp = Stomp('failover:(tcp://localhost:61614,tcp://localhost:61615)?startupMaxReconnectAttempts=5,maxReconnectDelay=%d,useExponentialBackOff=false,initialReconnectDelay=30,reconnectDelayJitter=5' % timeout)
         expectedTimeout = time.time() + timeout / 1000.0
         self.assertRaises(StompConnectionError, stomp.connect)
         self.assertTrue(abs(time.time() - expectedTimeout) < tolerance)
-
+        
         stomp = Stomp('failover:(tcp://localhost:61614,tcp://localhost:61613)?randomize=false') # default is startupMaxReconnectAttempts = 0
         expectedTimeout = time.time() + 0
         self.assertRaises(StompConnectionError, stomp.connect)
-        self.assertTrue(abs(time.time() - expectedTimeout) < initialReconnectDelay)
+        self.assertTrue(abs(time.time() - expectedTimeout) < tolerance)
 
         stomp = Stomp('failover:(tcp://localhost:61614,tcp://localhost:61613)?startupMaxReconnectAttempts=1,randomize=false')
         stomp.connect()
         stomp.connect()
         stomp.disconnect()
-    
+        
     def test_3_socket_failure_and_replay(self):
         stomp = Stomp('tcp://localhost:61613')
         stomp.connect()
         stomp.send(self.DEST, 'test message 1')
-        stomp.subscribe(self.DEST, {'ack': 'client'})
-        self.assertEqual(stomp._subscriptions, [(self.DEST, (('ack', 'client'),))])
+        headers = {'ack': 'client'}
+        stomp.subscribe(self.DEST, headers)
+        self.assertEqual(stomp._session.subscriptions, [(self.DEST, headers)])
         stomp._stomp.socket.close()
         self.assertRaises(StompConnectionError, stomp.receiveFrame)
         stomp.connect()
