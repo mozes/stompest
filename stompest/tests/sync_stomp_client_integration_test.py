@@ -97,6 +97,6 @@ class SimpleStompIntegrationTest(unittest.TestCase):
         stomp.unsubscribe({'id': 'bla'})
         self.assertEqual(stomp._session._subscriptions, [])
         stomp.disconnect()
-
+        
 if __name__ == '__main__':
     unittest.main()

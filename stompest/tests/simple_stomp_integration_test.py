@@ -16,6 +16,7 @@ Copyright 2011 Mozes, Inc.
 import unittest
 
 from stompest.simple import Stomp
+import time
 
 class SimpleStompIntegrationTest(unittest.TestCase):
     DEST = '/queue/stompUnitTest'
@@ -27,7 +28,7 @@ class SimpleStompIntegrationTest(unittest.TestCase):
         while (stomp.canRead(1)):
             stomp.ack(stomp.receiveFrame())
         
-    def test_integration(self):
+    def test_integration_1(self):
         stomp = Stomp('localhost', 61613)
         stomp.connect()
         stomp.send(self.DEST, 'test message1')
@@ -42,6 +43,30 @@ class SimpleStompIntegrationTest(unittest.TestCase):
         stomp.ack(frame)
         self.assertFalse(stomp.canRead(1))
         stomp.disconnect()
+
+    def test_integration_2(self):
+        stomp = Stomp('localhost', 61613)
+        stomp.connect()
+        stomp.send(self.DEST, 'test message1')
+        stomp.send(self.DEST, 'test message2')
+        stomp.send(self.DEST, 'test message3')
+        self.assertFalse(stomp.canRead(0))
+        stomp.subscribe(self.DEST, {'ack': 'client-individual', 'activemq.prefetchSize': 2})
+        time.sleep(1)
+        self.assertTrue(stomp.canRead(0))
+        frame1 = stomp.receiveFrame()
+        self.assertTrue(stomp.canRead(0))
+        frame2 = stomp.receiveFrame()
+        self.assertFalse(stomp.canRead(0))
+        stomp.ack(frame2)
+        self.assertTrue(stomp.canRead(1))
+        frame3 = stomp.receiveFrame()
+        self.assertFalse(stomp.canRead(0))
+        stomp.ack(frame3)
+        stomp.ack(frame1)
+        self.assertFalse(stomp.canRead(0))
+        stomp.disconnect()
+
 
 if __name__ == '__main__':
     unittest.main()

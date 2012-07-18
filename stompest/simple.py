@@ -52,6 +52,8 @@ class Stomp(object):
 
     def canRead(self, timeout=None):
         self._checkConnected()
+        if self.parser.canRead():
+            return True
         if timeout is None:
             readList, _, _ = select.select([self.socket], [], [])
         else:

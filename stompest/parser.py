@@ -34,9 +34,12 @@ class StompParser(object):
         }
         self._messages = collections.deque()
         self._next()
-        
+    
+    def canRead(self):
+        return bool(self._messages)
+    
     def getMessage(self):
-        if self._messages:
+        if self.canRead():
             return self._messages.popleft()
     
     def add(self, data):
