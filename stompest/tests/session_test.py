@@ -1,5 +1,6 @@
+# -*- coding: iso-8859-1 -*-
 """
-Copyright 2011 Mozes, Inc.
+Copyright 2012 Mozes, Inc.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -14,7 +15,8 @@ Copyright 2011 Mozes, Inc.
    limitations under the License.
 """
 import unittest
-from stompest.session import StompConfiguration
+
+from stompest.protocol.session import StompConfiguration
 
 class SessionTest(unittest.TestCase):
     def test_configuration(self):

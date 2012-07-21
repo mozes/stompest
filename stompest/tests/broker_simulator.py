@@ -1,5 +1,6 @@
+# -*- coding: iso-8859-1 -*-
 """
-Copyright 2011 Mozes, Inc.
+Copyright 2012 Mozes, Inc.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -15,18 +16,19 @@ Copyright 2011 Mozes, Inc.
 """
 import logging
 
-import stomper
 from twisted.internet import reactor
 from twisted.internet.protocol import Factory 
 from twisted.protocols.basic import LineOnlyReceiver
 
-from stompest.parser import StompParser
-from stompest.error import StompError
+from stompest.error import StompFrameError
+from stompest.protocol.frame import StompFrame
+from stompest.protocol.parser import StompParser
+from stompest.protocol.spec import StompSpec
 
 LOG_CATEGORY = 'stompest.tests.broker_simulator'
 
 class BlackHoleStompServer(LineOnlyReceiver):
-    delimiter = StompParser.FRAME_DELIMITER
+    delimiter = StompSpec.FRAME_DELIMITER
     
     def __init__(self):
         self.log = logging.getLogger(LOG_CATEGORY)
@@ -52,6 +54,7 @@ class BlackHoleStompServer(LineOnlyReceiver):
         message = self.parser.getMessage()
         if not message:
             return
+        message = message.__dict__
         try:
             self.log.debug('Received frame: %s' % message)
             self.cmdMap[message['cmd']](message)
@@ -62,11 +65,7 @@ class BlackHoleStompServer(LineOnlyReceiver):
         self.parser = StompParser()
 
     def getFrame(self, cmd, headers, body):
-        sFrame = stomper.Frame()
-        sFrame.cmd = cmd
-        sFrame.headers = headers
-        sFrame.body = body
-        return sFrame.pack()
+        return StompFrame(cmd, headers, body).pack()
         
     def handleConnect(self, msg):
         pass

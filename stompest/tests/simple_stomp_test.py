@@ -1,5 +1,6 @@
+# -*- coding: iso-8859-1 -*-
 """
-Copyright 2011 Mozes, Inc.
+Copyright 2012 Mozes, Inc.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -17,12 +18,11 @@ import binascii
 import unittest
 
 from mock import Mock
-import stomper
 
 from stompest.error import StompProtocolError
+from stompest.protocol.frame import StompFrame
+from stompest.protocol.parser import StompParser
 from stompest.simple import Stomp
-from stompest.parser import StompParser
-from stompest.util import createFrame
 
 HOST = 'fakeHost'
 PORT = 61613
@@ -52,7 +52,7 @@ class SimpleStompTest(unittest.TestCase):
         hdrs = {'x': 'y'}
         body = 'testing 1 2 3'
         frameBytes = self.getFrame('MESSAGE', hdrs, body)
-        self.assertTrue(frameBytes.endswith('\x00\n'))
+        self.assertTrue(frameBytes.endswith('\x00'))
         
         stomp = self._get_receive_mock(frameBytes)
         frame = stomp.receiveFrame()
@@ -65,7 +65,7 @@ class SimpleStompTest(unittest.TestCase):
     def test_receiveFrame_no_newline(self):
         hdrs = {'x': 'y'}
         body = 'testing 1 2 3'
-        frameBytes = self.getFrame('MESSAGE', hdrs, body)[:-1]
+        frameBytes = self.getFrame('MESSAGE', hdrs, body)
         self.assertTrue(frameBytes.endswith('\x00'))
         
         stomp = self._get_receive_mock(frameBytes)
@@ -93,7 +93,7 @@ class SimpleStompTest(unittest.TestCase):
         body1 = 'boo'
         body2 = 'hoo'
         hdrs = {'x': 'y'}
-        frameBytes = self.getFrame('MESSAGE', hdrs, body1)[:-1] + self.getFrame('MESSAGE', hdrs, body2)
+        frameBytes = self.getFrame('MESSAGE', hdrs, body1) + self.getFrame('MESSAGE', hdrs, body2)
 
         stomp = self._get_receive_mock(frameBytes)
         
@@ -245,10 +245,11 @@ class SimpleStompTest(unittest.TestCase):
     def parseFrame(self, message):
         parser = StompParser()        
         parser.add(message)
-        return parser.getMessage()
+        message = parser.getMessage()
+        return message and message.__dict__
 
     def getFrame(self, cmd, headers, body):
-        return createFrame({'cmd': cmd, 'headers': headers, 'body': body}).pack()
+        return StompFrame(cmd, headers, body).pack()
         
 if __name__ == '__main__':
     unittest.main()

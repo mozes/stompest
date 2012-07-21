@@ -17,11 +17,10 @@ import contextlib
 import select
 import socket
 
-import stomper
-
-from stompest.error import StompProtocolError, StompConnectionError
-from stompest.parser import StompParser
-from stompest.util import createFrame as _createFrame
+from stompest.error import StompConnectionError, StompProtocolError
+from stompest.protocol import commands
+from stompest.protocol.frame import StompFrame
+from stompest.protocol.parser import StompParser
 
 class Stomp(object):
     """A simple implementation of a STOMP client"""
@@ -29,7 +28,7 @@ class Stomp(object):
     
     @classmethod
     def packFrame(cls, message):
-        return _createFrame(message).pack()
+        return StompFrame(**message).pack()
         
     def __init__(self, host, port):
         self.host = host
@@ -40,14 +39,14 @@ class Stomp(object):
     def connect(self, login='', passcode=''):
         self._socketConnect()
         self._setParser()
-        self._write(stomper.connect(login, passcode))
+        self._write(commands.connect(login, passcode).pack())
         frame = self.receiveFrame()
         if frame['cmd'] == 'CONNECTED':
             return frame
         raise StompProtocolError('Unexpected frame received: %s' % frame)
         
     def disconnect(self):
-        self._write(stomper.disconnect())
+        self._write(commands.disconnect().pack())
         self._socketDisconnect()
 
     def canRead(self, timeout=None):
@@ -111,7 +110,7 @@ class Stomp(object):
         while True:
             message = self.parser.getMessage()
             if message:
-                return message
+                return message.__dict__
             try:
                 data = self.socket.recv(self.READ_SIZE)
                 if not data:

@@ -14,18 +14,14 @@ Copyright 2012 Mozes, Inc.
    See the License for the specific language governing permissions and
    limitations under the License.
 """
-import unittest
-from stompest.util import filterReservedHeaders
+from .spec import StompSpec
 
-class UtilTest(unittest.TestCase):
-    def test_filterReservedHeaders(self):
-        origHdrs = {'message-id': 'delete me', 'timestamp': 'delete me too', 'foo': 'bar'}
-        filteredHdrs = filterReservedHeaders(origHdrs)
-        self.assertTrue('message-id' in origHdrs)
-        self.assertTrue('foo' in origHdrs)
-        self.assertFalse('message-id' in filteredHdrs)
-        self.assertFalse('timestamp' in filteredHdrs)
-        self.assertTrue('foo' in filteredHdrs)
-
-if __name__ == '__main__':
-    unittest.main()
+class StompFrame(object):    
+    def __init__(self, cmd='', headers=None, body=''):
+        self.cmd = cmd
+        self.headers = {} if (headers is None) else headers
+        self.body = body
+    
+    def pack(self):
+        headers = ''.join('%s:%s%s' % (key, value, StompSpec.LINE_DELIMITER) for (key, value) in self.headers.iteritems())
+        return StompSpec.LINE_DELIMITER.join([self.cmd, headers, '%s%s' % (self.body, StompSpec.FRAME_DELIMITER)]) 

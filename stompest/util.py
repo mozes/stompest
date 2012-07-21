@@ -1,7 +1,6 @@
+# -*- coding: iso-8859-1 -*-
 """
-Util functions
-
-Copyright 2011 Mozes, Inc.
+Copyright 2012 Mozes, Inc.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -14,30 +13,22 @@ Copyright 2011 Mozes, Inc.
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either expressed or implied.
    See the License for the specific language governing permissions and
    limitations under the License.
-
 """
 from copy import deepcopy
 
-from stomper import Frame
-
-reservedHeaders = ['message-id', 'timestamp', 'expires', 'priority', 'destination']
+_RESERVED_HEADERS = ['message-id', 'timestamp', 'expires', 'priority', 'destination']
 
 def filterReservedHeaders(headers):
     filtered = headers.copy()
-    for hdr in reservedHeaders:
+    for hdr in _RESERVED_HEADERS:
         if hdr in filtered:
             del filtered[hdr]
     return filtered
     
-def cloneStompMessageForErrorDest(msg):
-    errMsg = deepcopy(msg)
-    errMsg['headers'] = filterReservedHeaders(msg['headers'])
-    errMsg['headers']['persistent'] = 'true'
-    return errMsg
-
-def createFrame(message):
-    frame = Frame()
-    frame.cmd = message['cmd']
-    frame.headers = message['headers']
-    frame.body = message.get('body', '')
-    return frame
+def cloneStompMessage(msg, persistent=None):
+    msg = deepcopy(msg)
+    headers = filterReservedHeaders(msg['headers'])
+    if persistent is not None:
+        headers['persistent'] = str(bool(persistent)).lower()
+    msg['headers'] = headers
+    return msg

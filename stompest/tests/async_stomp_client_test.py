@@ -1,5 +1,6 @@
+# -*- coding: iso-8859-1 -*-
 """
-Copyright 2011 Mozes, Inc.
+Copyright 2012 Mozes, Inc.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -13,19 +14,19 @@ Copyright 2011 Mozes, Inc.
    See the License for the specific language governing permissions and
    limitations under the License.
 """
-import logging
-
-import stomper
-import mock
 import binascii
+import logging
+import mock
+
 from twisted.internet import error, reactor, defer
 from twisted.internet.protocol import Factory 
 from twisted.python import log
 from twisted.trial import unittest
 
-from stompest.util import createFrame
-from stompest.async import StompConfig, StompCreator, StompClient
-from stompest.error import StompProtocolError, StompConnectTimeout, StompFrameError
+from stompest.async import StompClient, StompConfig, StompCreator
+from stompest.error import StompConnectTimeout, StompFrameError, StompProtocolError
+from stompest.protocol import commands
+from stompest.protocol.frame import StompFrame
 from stompest.tests.broker_simulator import BlackHoleStompServer, ErrorOnConnectStompServer, ErrorOnSendStompServer
 
 observer = log.PythonLoggingObserver()
@@ -48,13 +49,13 @@ class AsyncStompClientTestCase(unittest.TestCase):
         hdrs = {'foo': '1'}
         body = 'blah'
         frame = {'cmd': 'MESSAGE', 'headers': hdrs, 'body': body}
-        frameBytes = createFrame(frame).pack() + createFrame(frame).pack()
+        frameBytes = StompFrame(**frame).pack() + StompFrame(**frame).pack()
         
         stomp = StompClient()
         stomp.cmdMap[frame['cmd']] = mock.Mock()
         
         stomp.dataReceived(frameBytes)
-                
+        
         self.assertEquals(2, stomp.cmdMap[frame['cmd']].call_count)
         stomp.cmdMap[frame['cmd']].assert_called_with({'cmd': frame['cmd'], 'headers': hdrs, 'body': body})
 
@@ -62,7 +63,7 @@ class AsyncStompClientTestCase(unittest.TestCase):
         hdrs = {'foo': '1'}
         body = 'blah'
         frame = {'cmd': 'MESSAGE', 'headers': hdrs, 'body': body}
-        frameBytes = createFrame(frame).pack()
+        frameBytes = StompFrame(**frame).pack()
         split = 8
         
         stomp = StompClient()
@@ -78,7 +79,7 @@ class AsyncStompClientTestCase(unittest.TestCase):
         body = binascii.a2b_hex('f0000a09')
         hdrs = {'foo': '1', 'content-length': str(len(body))}
         frame = {'cmd': 'MESSAGE', 'headers': hdrs, 'body': body}
-        frameBytes = createFrame(frame).pack() 
+        frameBytes = StompFrame(**frame).pack() 
         
         stomp = StompClient()
         stomp.cmdMap[frame['cmd']] = mock.Mock()
@@ -95,7 +96,7 @@ class AsyncStompClientTestCase(unittest.TestCase):
         stomp = StompClient()
         stomp.cmdMap['DISCONNECT'] = mock.Mock(side_effect=MyError)
         
-        self.assertRaises(MyError, stomp.dataReceived, stomper.disconnect())
+        self.assertRaises(MyError, stomp.dataReceived, commands.disconnect().pack())
 
     def test_dataReceived_bad_command(self):
         self.assertRaises(StompFrameError, StompClient().dataReceived, 'BAD_CMD\n\n\x00\n')

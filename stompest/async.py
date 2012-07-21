@@ -17,22 +17,19 @@ Copyright 2011 Mozes, Inc.
 """
 import logging
 
-import stomper
-
-from twisted.internet import reactor, defer
-from twisted.internet.protocol import Protocol, ClientFactory
+from twisted.internet import defer, reactor
+from twisted.internet.protocol import ClientFactory, Protocol
 from twisted.internet.error import ConnectionLost
 
-from stompest.parser import StompParser
-from stompest.error import StompError, StompProtocolError, StompConnectTimeout, StompFrameError
-from stompest.util import cloneStompMessageForErrorDest as _cloneStompMessageForErrorDest
-from stompest.util import createFrame as _createFrame
+from stompest.protocol import commands
+from stompest.error import StompConnectTimeout, StompError, StompFrameError, StompProtocolError
+from stompest.protocol.parser import StompParser
+from stompest.util import cloneStompMessage as _cloneStompMessage
 
 LOG_CATEGORY = 'stompest.async'
 
 class StompClient(Protocol):
     """A Twisted implementation of a STOMP client"""
-    delimiter = StompParser.FRAME_DELIMITER
     MESSAGE_INFO_LENGTH = 20
 
     def __init__(self):
@@ -111,6 +108,7 @@ class StompClient(Protocol):
             message = self.parser.getMessage()
             if not message:
                 break
+            message = message.__dict__
             try:
                 command = self.cmdMap[message['cmd']]
             except KeyError:
@@ -124,14 +122,14 @@ class StompClient(Protocol):
         """Send connect command
         """
         self.log.debug('Sending connect command')
-        cmd = stomper.connect(self.factory.login, self.factory.passcode)
+        cmd = commands.connect(self.factory.login, self.factory.passcode).pack()
         self._write(cmd)
 
     def _disconnect(self):
         """Send disconnect command
         """
         self.log.debug('Sending disconnect command')
-        cmd = stomper.disconnect()
+        cmd = commands.disconnect().pack()
         self._write(cmd)
 
     def _subscribe(self, dest, headers):
@@ -140,17 +138,14 @@ class StompClient(Protocol):
         ack = headers.get('ack')
         self.log.debug('Sending subscribe command for destination %s with ack mode %s' % (dest, ack))
         headers['destination'] = dest
-        # TODO: Roger, please add a comment why you used self.packFrame instead of stomper
-        cmd = self.packFrame({'cmd': 'SUBSCRIBE', 'headers': headers})
+        cmd = commands.subscribe(headers).pack()
         self._write(cmd)
 
     def _ack(self, messageId):
         """Send ack command
         """
         self.log.debug('Sending ack command for message: %s' % messageId)
-        #NOTE: cannot use stomper.ack(messageId) with ActiveMQ 5.6.0
-        #       b/c stomper adds a space to the header and AMQ no longer accepts it
-        cmd = self.packFrame({'cmd': 'ACK', 'headers': {'message-id': messageId}})
+        cmd = commands.ack({'message-id': messageId}).pack()
         self._write(cmd)
     
     def _write(self, frame):
@@ -160,10 +155,6 @@ class StompClient(Protocol):
     #
     # Private helper methods
     #
-    @classmethod
-    def packFrame(cls, message):
-        return _createFrame(message).pack()
-        
     def resetParser(self):
         """Stomp parser must be reset after each frame is received
         """
@@ -196,7 +187,7 @@ class StompClient(Protocol):
         disconnect = False
         #Forward message to error queue if configured
         if errDest is not None:
-            errMsg = _cloneStompMessageForErrorDest(msg)
+            errMsg = _cloneStompMessage(msg, persistent=True)
             self.send(errDest, errMsg['body'], errMsg['headers'])
             self._ack(messageId)
             if self.factory.alwaysDisconnectOnUnhandledMsg:
@@ -318,14 +309,12 @@ class StompClient(Protocol):
         self.destMap[dest] = {'handler': handler, 'ack': headers['ack'], 'errorDestination': errorDestination}
         self._subscribe(dest, headers)
     
-    def send(self, dest, msg, headers=None):
+    def send(self, dest, msg='', headers=None):
         """Do the send command to enqueue a message to a destination
         """
         headers = dict(headers or {})
-        if self.log.isEnabledFor(logging.DEBUG):
-            self.log.debug('Sending message to %s: [%s...]' % (dest, msg[:self.MESSAGE_INFO_LENGTH]))
-        headers['destination'] = dest
-        cmd = self.packFrame({'cmd': 'SEND', 'headers': headers, 'body': msg})
+        self.log.debug('Sending message to %s: [%s...]' % (dest, msg[:self.MESSAGE_INFO_LENGTH]))
+        cmd = commands.send(dest, msg, headers).pack()
         self._write(cmd)
         
     def getDisconnectedDeferred(self):

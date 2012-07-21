@@ -14,18 +14,13 @@ Copyright 2012 Mozes, Inc.
    See the License for the specific language governing permissions and
    limitations under the License.
 """
-import unittest
-from stompest.util import filterReservedHeaders
-
-class UtilTest(unittest.TestCase):
-    def test_filterReservedHeaders(self):
-        origHdrs = {'message-id': 'delete me', 'timestamp': 'delete me too', 'foo': 'bar'}
-        filteredHdrs = filterReservedHeaders(origHdrs)
-        self.assertTrue('message-id' in origHdrs)
-        self.assertTrue('foo' in origHdrs)
-        self.assertFalse('message-id' in filteredHdrs)
-        self.assertFalse('timestamp' in filteredHdrs)
-        self.assertTrue('foo' in filteredHdrs)
-
-if __name__ == '__main__':
-    unittest.main()
+class StompSpec(object):
+    VALID_COMMANDS = set([
+        'ABORT', 'ACK', 'BEGIN', 'COMMIT', 'CONNECT', 'CONNECTED', 'DISCONNECT',
+        'MESSAGE', 'SEND', 'SUBSCRIBE', 'UNSUBSCRIBE', 'RECEIPT', 'ERROR'
+    ])
+    
+    LINE_DELIMITER = '\n'
+    FRAME_DELIMITER = '\x00'
+    HEADER_SEPARATOR = ':'
+    CONTENT_LENGTH_HEADER = 'content-length'

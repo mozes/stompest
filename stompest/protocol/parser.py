@@ -1,5 +1,6 @@
+# -*- coding: iso-8859-1 -*-
 """
-Copyright 2011 Mozes, Inc.
+Copyright 2012 Mozes, Inc.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -16,16 +17,11 @@ Copyright 2011 Mozes, Inc.
 import collections
 import cStringIO
 
-import stomper
 from stompest.error import StompFrameError
+from .frame import StompFrame
+from .spec import StompSpec
 
 class StompParser(object):
-    LINE_DELIMITER = '\n'
-    FRAME_DELIMITER = '\x00'
-    HEADER_SEPARATOR = ':'
-    
-    CONTENT_LENGTH_HEADER = 'content-length'
-    
     def __init__(self):
         self._states = {
             'cmd': self._parseCommand,
@@ -61,38 +57,38 @@ class StompParser(object):
         self._state = newState
         
     def _parseCommand(self, character):
-        if character != self.LINE_DELIMITER:
+        if character != StompSpec.LINE_DELIMITER:
             self._buffer.write(character)
             return
         command = self._buffer.getvalue()
         if not command:
             return
-        if command not in stomper.VALID_COMMANDS:
+        if command not in StompSpec.VALID_COMMANDS:
             raise StompFrameError('Invalid command: %s' % repr(command))
         self._message['cmd'] = command
         self._transition('headers')
         
     def _parseHeader(self, character):
-        if character != self.LINE_DELIMITER:
+        if character != StompSpec.LINE_DELIMITER:
             self._buffer.write(character)
             return
         header = self._buffer.getvalue()
         if header:
             try:
-                name, value = header.split(self.HEADER_SEPARATOR, 1)
+                name, value = header.split(StompSpec.HEADER_SEPARATOR, 1)
             except ValueError:
                 raise StompFrameError('No separator in header line: %s' % header)
             self._message['headers'][name] = value
             self._transition('headers')
         else:
-            self._length = int(self._message['headers'].get(self.CONTENT_LENGTH_HEADER, -1))
+            self._length = int(self._message['headers'].get(StompSpec.CONTENT_LENGTH_HEADER, -1))
             self._transition('body')
         
     def _parseBody(self, character):
         self._read += 1
-        if (self._read <= self._length) or (character != self.FRAME_DELIMITER):
+        if (self._read <= self._length) or (character != StompSpec.FRAME_DELIMITER):
             self._buffer.write(character)
             return
         self._message['body'] = self._buffer.getvalue()
-        self._messages.append(self._message)
+        self._messages.append(StompFrame(**self._message))
         self._next()

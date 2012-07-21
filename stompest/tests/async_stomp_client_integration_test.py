@@ -1,5 +1,6 @@
+# -*- coding: iso-8859-1 -*-
 """
-Copyright 2011 Mozes, Inc.
+Copyright 2012 Mozes, Inc.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -15,12 +16,11 @@ Copyright 2011 Mozes, Inc.
 """
 import logging
 
-import stomper
+from twisted.internet import reactor, defer
 from twisted.trial import unittest
 
 from stompest.simple import Stomp
 from stompest.async import StompConfig, StompCreator
-from twisted.internet import reactor, defer
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -151,7 +151,7 @@ class HandlerExceptionWithErrorQueueIntegrationTestCase(unittest.TestCase):
         #Client disconnected and returned error
         try:
             yield stomp.getDisconnectedDeferred()
-        except StompestTestError, e:
+        except StompestTestError:
             pass
         else:
             self.assertTrue(False)
@@ -222,7 +222,7 @@ class GracefulDisconnectTestCase(unittest.TestCase):
         #Connect
         stomp = yield creator.getConnection()
         
-        for i in range(self.numMsgs):
+        for _ in xrange(self.numMsgs):
             stomp.send(self.queue, self.msg)
         stomp.subscribe(self.queue, self._msgHandler, {'ack': 'client-individual', 'activemq.prefetchSize': self.numMsgs})
         
@@ -251,7 +251,7 @@ class GracefulDisconnectTestCase(unittest.TestCase):
             stomp.disconnect()
             
     def _timesUp(self, stomp):
-        print "Times up!!!"
+        print "Time's up!!!"
         self.timeExpired = True
         stomp.disconnect()
 

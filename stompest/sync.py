@@ -17,9 +17,9 @@ import logging
 import time
 
 from stompest.error import StompConnectionError
+from stompest.protocol.frame import StompFrame
+from stompest.protocol.session import StompSession as _StompSession
 from stompest.simple import Stomp as _Stomp
-from stompest.util import createFrame  as _createFrame
-from stompest.session import StompSession as _StompSession
 
 LOG_CATEGORY = 'stompest.sync'
 
@@ -27,7 +27,7 @@ class Stomp(object):
     """A less simple implementation of a failover STOMP session with potentially more than one client"""
     @classmethod
     def packFrame(cls, message):
-        return _createFrame(message).pack()
+        return StompFrame(**message).pack()
     
     def __init__(self, uri, login='', passcode=''):
         self.log = logging.getLogger(LOG_CATEGORY)

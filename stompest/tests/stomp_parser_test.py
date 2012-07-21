@@ -1,5 +1,6 @@
+# -*- coding: iso-8859-1 -*-
 """
-Copyright 2011 Mozes, Inc.
+Copyright 2012 Mozes, Inc.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -15,10 +16,10 @@ Copyright 2011 Mozes, Inc.
 """
 import unittest                                 
 
-import stomper
-from stompest.parser import StompParser
+from stompest.protocol.frame import StompFrame
+from stompest.protocol.parser import StompParser
 from stompest.error import StompFrameError
-from stompest.util import createFrame
+from stompest.protocol import commands
 
 class StompParserTest(unittest.TestCase):
     def test_frameParse_succeeds(self):
@@ -27,30 +28,25 @@ class StompParserTest(unittest.TestCase):
             'headers': {'foo': 'bar', 'hello ': 'there-world with space ', 'empty-value':'', '':'empty-header', 'destination': '/queue/blah'},
             'body': 'some stuff\nand more'
         }
-        frame = createFrame(message)
+        frame = StompFrame(**message)
         parser = StompParser()
         
         parser.add(frame.pack())
-        self.assertEqual(parser.getMessage(), {'cmd': frame.cmd, 'headers': frame.headers, 'body': frame.body})
-        self.assertEqual(parser.getMessage(), None)
-        
-        #This time remove optional trailing newline which stomper adds to frames
-        parser.add(frame.pack()[:-1])
-        self.assertEqual(parser.getMessage(), {'cmd': frame.cmd, 'headers': frame.headers, 'body': frame.body})
+        self.assertEqual(parser.getMessage().__dict__, {'cmd': frame.cmd, 'headers': frame.headers, 'body': frame.body})
         self.assertEqual(parser.getMessage(), None)
         
     def test_frame_without_header_or_body_succeeds(self):
         parser = StompParser()
-        parser.add(stomper.disconnect())
+        parser.add(commands.disconnect().pack())
         msg = parser.getMessage()
-        self.assertEqual(msg, {'cmd': 'DISCONNECT', 'headers': {}, 'body': ''})
+        self.assertEqual(msg.__dict__, {'cmd': 'DISCONNECT', 'headers': {}, 'body': ''})
 
     def test_frames_with_optional_newlines_succeeds(self):
         parser = StompParser()
-        frame = '\n%s\n' % stomper.disconnect()
+        frame = '\n%s\n' % commands.disconnect().pack()
         parser.add(2 * frame)
         for _ in xrange(2):
-            self.assertEqual(parser.getMessage(), {'cmd': 'DISCONNECT', 'headers': {}, 'body': ''})
+            self.assertEqual(parser.getMessage().__dict__, {'cmd': 'DISCONNECT', 'headers': {}, 'body': ''})
         self.assertEqual(parser.getMessage(), None)
 
     def test_getMessage_returns_None_if_not_done(self):
