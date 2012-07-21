@@ -121,13 +121,13 @@ class StompClient(Protocol):
         """Send connect command
         """
         self.log.debug('Sending connect command')
-        self._write(commands.connect(self.factory.login, self.factory.passcode))
+        self.sendFrame(commands.connect(self.factory.login, self.factory.passcode))
 
     def _disconnect(self):
         """Send disconnect command
         """
         self.log.debug('Sending disconnect command')
-        self._write(commands.disconnect())
+        self.sendFrame(commands.disconnect())
 
     def _subscribe(self, dest, headers):
         """Send subscribe command
@@ -135,18 +135,17 @@ class StompClient(Protocol):
         ack = headers.get('ack')
         self.log.debug('Sending subscribe command for destination %s with ack mode %s' % (dest, ack))
         headers['destination'] = dest
-        self._write(commands.subscribe(headers))
+        self.sendFrame(commands.subscribe(headers))
 
     def _ack(self, messageId):
         """Send ack command
         """
         self.log.debug('Sending ack command for message: %s' % messageId)
-        self._write(commands.ack({'message-id': messageId}))
+        self.sendFrame(commands.ack({'message-id': messageId}))
     
-    def _write(self, message):
-        frame = self._toFrame(message).pack()
-        #self.log.debug('sending frame:\n%s' % frame)
-        self.transport.write(frame)
+    def _write(self, data):
+        #self.log.debug('sending data:\n%s' % data)
+        self.transport.write(data)
 
     def _toFrame(self, message):
         if isinstance(message, dict):
@@ -315,8 +314,11 @@ class StompClient(Protocol):
         """
         headers = dict(headers or {})
         self.log.debug('Sending message to %s: [%s...]' % (dest, msg[:self.MESSAGE_INFO_LENGTH]))
-        self._write(commands.send(dest, msg, headers))
-        
+        self.sendFrame(commands.send(dest, msg, headers))
+    
+    def sendFrame(self, message):
+        self._write(self._toFrame(message).pack())
+            
     def getDisconnectedDeferred(self):
         return self.disconnectedDeferred
     

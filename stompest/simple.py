@@ -99,9 +99,6 @@ class Stomp(object):
         messageId = message['headers']['message-id']
         self.sendFrame(commands.ack({'message-id': messageId}))
     
-    def sendFrame(self, message):
-        self._write(self._toFrame(message).pack())
-    
     def receiveFrame(self):
         while True:
             message = self.parser.getMessage()
@@ -116,14 +113,19 @@ class Stomp(object):
                 raise StompConnectionError('Connection closed [%s]' % e)
             self.parser.add(data)
     
+    def sendFrame(self, message):
+        self._write(self._toFrame(message).pack())
+    
+    def _checkConnected(self):
+        if not self._connected():
+            raise StompConnectionError('Not connected')
+       
+    def _connected(self):
+        return self.socket is not None
+        
     def _setParser(self):
         self.parser = StompParser()
         
-    def _toFrame(self, message):
-        if isinstance(message, dict):
-            return StompFrame(**message)
-        return message
-    
     def _socketConnect(self):
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
@@ -139,13 +141,11 @@ class Stomp(object):
         finally:
             self.socket = None
     
-    def _connected(self):
-        return self.socket is not None
-        
-    def _checkConnected(self):
-        if not self._connected():
-            raise StompConnectionError('Not connected')
-       
+    def _toFrame(self, message):
+        if isinstance(message, dict):
+            return StompFrame(**message)
+        return message
+    
     def _write(self, data):
         self._checkConnected()
         try:
