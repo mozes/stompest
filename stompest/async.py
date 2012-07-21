@@ -22,6 +22,7 @@ from twisted.internet.protocol import ClientFactory, Protocol
 from twisted.internet.error import ConnectionLost
 
 from stompest.protocol import commands
+from stompest.protocol.frame import StompFrame
 from stompest.error import StompConnectTimeout, StompError, StompFrameError, StompProtocolError
 from stompest.protocol.parser import StompParser
 from stompest.util import cloneStompMessage as _cloneStompMessage
@@ -148,10 +149,10 @@ class StompClient(Protocol):
         self.transport.write(data)
 
     def _toFrame(self, message):
-        if isinstance(message, dict):
-            return 
+        if not isinstance(message, StompFrame):
+            message = StompFrame(**message)
         return message
-    
+            
     #
     # Private helper methods
     #
@@ -317,7 +318,7 @@ class StompClient(Protocol):
         self.sendFrame(commands.send(dest, msg, headers))
     
     def sendFrame(self, message):
-        self._write(self._toFrame(message).pack())
+        self._write(str(self._toFrame(message)))
             
     def getDisconnectedDeferred(self):
         return self.disconnectedDeferred

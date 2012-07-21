@@ -114,7 +114,7 @@ class Stomp(object):
             self.parser.add(data)
     
     def sendFrame(self, message):
-        self._write(self._toFrame(message).pack())
+        self._write(str(self._toFrame(message)))
     
     def _checkConnected(self):
         if not self._connected():
@@ -142,8 +142,8 @@ class Stomp(object):
             self.socket = None
     
     def _toFrame(self, message):
-        if isinstance(message, dict):
-            return StompFrame(**message)
+        if not isinstance(message, StompFrame):
+            message = StompFrame(**message)
         return message
     
     def _write(self, data):

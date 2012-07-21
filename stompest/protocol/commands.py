@@ -14,7 +14,7 @@ Copyright 2012 Mozes, Inc.
    See the License for the specific language governing permissions and
    limitations under the License.
 """
-from .frame import StompFrame
+from stompest.protocol.frame import StompFrame
 
 import uuid
 

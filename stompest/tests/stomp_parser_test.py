@@ -31,19 +31,19 @@ class StompParserTest(unittest.TestCase):
         frame = StompFrame(**message)
         parser = StompParser()
         
-        parser.add(frame.pack())
+        parser.add(str(frame))
         self.assertEqual(parser.getMessage(), {'cmd': frame.cmd, 'headers': frame.headers, 'body': frame.body})
         self.assertEqual(parser.getMessage(), None)
         
     def test_frame_without_header_or_body_succeeds(self):
         parser = StompParser()
-        parser.add(commands.disconnect().pack())
+        parser.add(str(commands.disconnect()))
         msg = parser.getMessage()
         self.assertEqual(msg, {'cmd': 'DISCONNECT', 'headers': {}, 'body': ''})
 
     def test_frames_with_optional_newlines_succeeds(self):
         parser = StompParser()
-        frame = '\n%s\n' % commands.disconnect().pack()
+        frame = '\n%s\n' % commands.disconnect()
         parser.add(2 * frame)
         for _ in xrange(2):
             self.assertEqual(parser.getMessage(), {'cmd': 'DISCONNECT', 'headers': {}, 'body': ''})

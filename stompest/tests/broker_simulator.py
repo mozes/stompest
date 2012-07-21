@@ -64,7 +64,7 @@ class BlackHoleStompServer(LineOnlyReceiver):
         self.parser = StompParser()
 
     def getFrame(self, cmd, headers, body):
-        return StompFrame(cmd, headers, body).pack()
+        return str(StompFrame(cmd, headers, body))
         
     def handleConnect(self, msg):
         pass

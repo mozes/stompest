@@ -243,12 +243,12 @@ class SimpleStompTest(unittest.TestCase):
             }, sentFrame)
 
     def parseFrame(self, message):
-        parser = StompParser()        
+        parser = StompParser()
         parser.add(message)
         return parser.getMessage()
     
     def getFrame(self, cmd, headers, body):
-        return StompFrame(cmd, headers, body).pack()
+        return str(StompFrame(cmd, headers, body))
         
 if __name__ == '__main__':
     unittest.main()

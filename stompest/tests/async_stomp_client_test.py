@@ -49,7 +49,7 @@ class AsyncStompClientTestCase(unittest.TestCase):
         hdrs = {'foo': '1'}
         body = 'blah'
         frame = {'cmd': 'MESSAGE', 'headers': hdrs, 'body': body}
-        frameBytes = StompFrame(**frame).pack() + StompFrame(**frame).pack()
+        frameBytes = 2* str(StompFrame(**frame))
         
         stomp = StompClient()
         stomp.cmdMap[frame['cmd']] = mock.Mock()
@@ -63,7 +63,7 @@ class AsyncStompClientTestCase(unittest.TestCase):
         hdrs = {'foo': '1'}
         body = 'blah'
         frame = {'cmd': 'MESSAGE', 'headers': hdrs, 'body': body}
-        frameBytes = StompFrame(**frame).pack()
+        frameBytes = str(StompFrame(**frame))
         split = 8
         
         stomp = StompClient()
@@ -79,7 +79,7 @@ class AsyncStompClientTestCase(unittest.TestCase):
         body = binascii.a2b_hex('f0000a09')
         hdrs = {'foo': '1', 'content-length': str(len(body))}
         frame = {'cmd': 'MESSAGE', 'headers': hdrs, 'body': body}
-        frameBytes = StompFrame(**frame).pack() 
+        frameBytes = str(StompFrame(**frame))
         
         stomp = StompClient()
         stomp.cmdMap[frame['cmd']] = mock.Mock()
@@ -96,7 +96,7 @@ class AsyncStompClientTestCase(unittest.TestCase):
         stomp = StompClient()
         stomp.cmdMap['DISCONNECT'] = mock.Mock(side_effect=MyError)
         
-        self.assertRaises(MyError, stomp.dataReceived, commands.disconnect().pack())
+        self.assertRaises(MyError, stomp.dataReceived, str(commands.disconnect()))
 
     def test_dataReceived_bad_command(self):
         self.assertRaises(StompFrameError, StompClient().dataReceived, 'BAD_CMD\n\n\x00\n')
