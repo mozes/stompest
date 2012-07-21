@@ -27,18 +27,36 @@ class Stomp(object):
     """A simple implementation of a STOMP client"""
     READ_SIZE = 4096
     
-    def __init__(self, host, port):
+    def __init__(self, host, port, version='1.0'):
         self.host = host
         self.port = port
         self.socket = None
+        self.version = version
         self._setParser()
     
-    def connect(self, login='', passcode=''):
+    def connect(self, login='', passcode='', headers=None):
+        headers = self._createConnectHeaders(headers)
         self._socketConnect()
+        self.sendFrame(commands.connect(login, passcode, headers))
         self._setParser()
-        self.sendFrame(commands.connect(login, passcode))
-        frame = self.receiveFrame()
-        if frame['cmd'] == 'CONNECTED':
+        return self._handleConnectResponse(self.receiveFrame())
+    
+    def _createConnectHeaders(self, headers):
+        headers = dict(headers or {})
+        if self.version != '1.0':
+            headers[StompSpec.ACCEPT_VERSION_HEADER] = self.version
+        return headers
+    
+    def _handleConnectResponse(self, frame):
+        if frame['cmd'] == StompSpec.CONNECTED:
+            if self.version != '1.0':
+                try:
+                    version = frame['headers'][StompSpec.VERSION_HEADER]
+                except:
+                    version = '1.0'
+                if version != self.version:
+                    self.disconnect()
+                    raise StompProtocolError('Incompatible server version: %s [client version: %s]' % (version, self.version))
             return frame
         raise StompProtocolError('Unexpected frame received: %s' % frame)
         
@@ -86,7 +104,7 @@ class Stomp(object):
 
     def abort(self, transactionId):
         self.sendFrame(commands.abort(commands.transaction(transactionId)))
-            
+    
     @contextlib.contextmanager
     def transaction(self, transactionId):
         self.begin(transactionId)
@@ -97,8 +115,10 @@ class Stomp(object):
             self.abort(transactionId)
         
     def ack(self, message):
-        messageId = message['headers'][StompSpec.MESSAGE_ID_HEADER]
-        self.sendFrame(commands.ack({StompSpec.MESSAGE_ID_HEADER: messageId}))
+        self.sendFrame(commands.ack(message['headers']))
+    
+    def nack(self, message):
+        self.sendFrame(commands.nack(message['headers']))
     
     def receiveFrame(self):
         while True:
@@ -125,7 +145,7 @@ class Stomp(object):
         return self.socket is not None
         
     def _setParser(self):
-        self.parser = StompParser()
+        self.parser = StompParser(self.version)
         
     def _socketConnect(self):
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

@@ -17,6 +17,7 @@ Copyright 2012 Mozes, Inc.
 import time
 import unittest
 
+from stompest.error import StompProtocolError
 from stompest.protocol.spec import StompSpec
 from stompest.simple import Stomp
 
@@ -69,6 +70,29 @@ class SimpleStompIntegrationTest(unittest.TestCase):
         self.assertFalse(stomp.canRead(0))
         stomp.disconnect()
 
+    def test_integration_stomp_version_1_1(self):
+        stomp = Stomp('localhost', 61613, version='1.1')
+        try:
+            reply = stomp.connect()
+        except StompProtocolError as e:
+            self.assertEquals(str(e), 'Incompatible server version: 1.0 [client version: 1.1]')
+            return
+        self.assertEquals(reply['headers']['version'], '1.1')
+        
+        stomp.send(self.DEST, 'test message1')
+        stomp.send(self.DEST, 'test message2')
+        self.assertFalse(stomp.canRead(0))
+        stomp.subscribe(self.DEST, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': 1, 'id': '4711'})
+        time.sleep(1)
+        self.assertTrue(stomp.canRead(0))
+        frame1 = stomp.receiveFrame()
+        self.assertFalse(stomp.canRead(0))
+        stomp.nack(frame1)
+        self.assertTrue(stomp.canRead(1))
+        frame2 = stomp.receiveFrame()
+        self.assertFalse(stomp.canRead(0))
+        stomp.ack(frame2)
+        stomp.disconnect()
 
 if __name__ == '__main__':
     unittest.main()

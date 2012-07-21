@@ -21,16 +21,18 @@ import uuid
 
 def connect(username, password, headers=None):
     headers = dict(headers) if headers else {}
-    headers.update( {StompSpec.LOGIN_HEADER: username, StompSpec.PASSCODE_HEADER: password})
+    headers.update({StompSpec.LOGIN_HEADER: username, StompSpec.PASSCODE_HEADER: password})
     return StompFrame(StompSpec.CONNECT, headers)
 
 def disconnect():
     return StompFrame(StompSpec.DISCONNECT)
 
 def ack(headers):
+    headers = dict((key, value) for (key, value) in headers.iteritems() if key in (StompSpec.SUBSCRIPTION_HEADER, StompSpec.MESSAGE_ID_HEADER, StompSpec.TRANSACTION_HEADER))
     return StompFrame(StompSpec.ACK, headers)
     
 def nack(headers):
+    headers = dict((key, value) for (key, value) in headers.iteritems() if key in (StompSpec.SUBSCRIPTION_HEADER, StompSpec.MESSAGE_ID_HEADER, StompSpec.TRANSACTION_HEADER))
     return StompFrame(StompSpec.NACK, headers)
     
 def subscribe(headers):

@@ -21,7 +21,8 @@ from stompest.error import StompFrameError
 from stompest.protocol.spec import StompSpec
 
 class StompParser(object):
-    def __init__(self):
+    def __init__(self, version='1.0'):
+        self.version = version
         self._states = {
             'cmd': self._parseCommand,
             'headers': self._parseHeader,
@@ -55,14 +56,14 @@ class StompParser(object):
         self._flush()
         self._state = newState
         
-    def _parseCommand(self, character, version='1.0'):
+    def _parseCommand(self, character):
         if character != StompSpec.LINE_DELIMITER:
             self._buffer.write(character)
             return
         command = self._buffer.getvalue()
         if not command:
             return
-        if command not in StompSpec.COMMANDS[version]:
+        if command not in StompSpec.COMMANDS[self.version]:
             raise StompFrameError('Invalid command: %s' % repr(command))
         self._message['cmd'] = command
         self._transition('headers')
