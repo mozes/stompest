@@ -15,12 +15,19 @@ Copyright 2012 Mozes, Inc.
    limitations under the License.
 """
 class StompSpec(object):
-    VALID_COMMANDS = set([
-        'ABORT', 'ACK', 'BEGIN', 'COMMIT', 'CONNECT', 'CONNECTED', 'DISCONNECT',
-        'MESSAGE', 'SEND', 'SUBSCRIBE', 'UNSUBSCRIBE', 'RECEIPT', 'ERROR'
-    ])
+    VALID_COMMANDS = {
+        '1.0': set([
+            'ABORT', 'ACK', 'BEGIN', 'COMMIT', 'CONNECT', 'CONNECTED', 'DISCONNECT',
+            'ERROR', 'MESSAGE', 'RECEIPT', 'SEND', 'STOMP', 'SUBSCRIBE', 'UNSUBSCRIBE'
+        ]),
+        '1.1': set([
+            'ABORT', 'ACK', 'BEGIN', 'COMMIT', 'CONNECT', 'CONNECTED', 'DISCONNECT',
+            'ERROR', 'MESSAGE', 'NACK', 'RECEIPT', 'SEND', 'STOMP', 'SUBSCRIBE', 'UNSUBSCRIBE'
+        ])
+    }
     
     LINE_DELIMITER = '\n'
     FRAME_DELIMITER = '\x00'
     HEADER_SEPARATOR = ':'
     CONTENT_LENGTH_HEADER = 'content-length'
+    

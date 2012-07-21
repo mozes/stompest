@@ -18,9 +18,34 @@ from .frame import StompFrame
 
 import uuid
 
+def connect(username, password, headers=None):
+    headers = dict(headers) if headers else {}
+    headers.update( {'login': username, 'passcode': password})
+    return StompFrame('CONNECT', headers)
+
+def disconnect():
+    return StompFrame('DISCONNECT')
+
 def ack(headers):
     return StompFrame('ACK', headers)
     
+def nack(headers):
+    return StompFrame('NACK', headers)
+    
+def subscribe(headers):
+    return StompFrame('SUBSCRIBE', headers)
+
+def unsubscribe(headers):
+    return StompFrame('UNSUBSCRIBE', headers)
+
+def send(destination, body='', headers=None):
+    headers = dict(headers) if headers else {}
+    headers['destination'] = destination
+    return StompFrame('SEND', headers, body)
+    
+def transaction(transactionId=None):
+    return {'transaction': transactionId or uuid.uuid4()}
+
 def abort(transaction):
     return StompFrame('ABORT', transaction)
 
@@ -29,23 +54,3 @@ def begin(transaction):
     
 def commit(transaction):
     return StompFrame('COMMIT', transaction)
-
-def transaction(transactionId=None):
-    return {'transaction': transactionId or uuid.uuid4()}
-
-def connect(username, password):
-    return StompFrame('CONNECT', {'login': username, 'passcode': password})
-
-def disconnect():
-    return StompFrame('DISCONNECT')
-
-def send(destination, body='', headers=None):
-    headers = dict(headers) if headers else {}
-    headers['destination'] = destination
-    return StompFrame('SEND', headers, body)
-    
-def subscribe(headers):
-    return StompFrame('SUBSCRIBE', headers)
-
-def unsubscribe(headers):
-    return StompFrame('UNSUBSCRIBE', headers)

@@ -56,14 +56,14 @@ class StompParser(object):
         self._flush()
         self._state = newState
         
-    def _parseCommand(self, character):
+    def _parseCommand(self, character, version='1.0'):
         if character != StompSpec.LINE_DELIMITER:
             self._buffer.write(character)
             return
         command = self._buffer.getvalue()
         if not command:
             return
-        if command not in StompSpec.VALID_COMMANDS:
+        if command not in StompSpec.VALID_COMMANDS[version]:
             raise StompFrameError('Invalid command: %s' % repr(command))
         self._message['cmd'] = command
         self._transition('headers')
