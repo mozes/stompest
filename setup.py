@@ -19,8 +19,7 @@ setup(
     include_package_data = True,
     zip_safe = False,   
     install_requires = [
-        'stomper',
-        'twisted',
+        'twisted'
     ],
     tests_require = ['mock'],
     test_suite = 'stompest.tests',
