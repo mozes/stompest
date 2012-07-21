@@ -26,10 +26,6 @@ class Stomp(object):
     """A simple implementation of a STOMP client"""
     READ_SIZE = 4096
     
-    @classmethod
-    def packFrame(cls, message):
-        return StompFrame(**message).pack()
-        
     def __init__(self, host, port):
         self.host = host
         self.port = port
@@ -39,14 +35,14 @@ class Stomp(object):
     def connect(self, login='', passcode=''):
         self._socketConnect()
         self._setParser()
-        self._write(commands.connect(login, passcode).pack())
+        self.sendFrame(commands.connect(login, passcode))
         frame = self.receiveFrame()
         if frame['cmd'] == 'CONNECTED':
             return frame
         raise StompProtocolError('Unexpected frame received: %s' % frame)
         
     def disconnect(self):
-        self._write(commands.disconnect().pack())
+        self.sendFrame(commands.disconnect())
         self._socketDisconnect()
 
     def canRead(self, timeout=None):
@@ -61,9 +57,9 @@ class Stomp(object):
         
     def send(self, dest, msg, headers=None):
         headers = dict(headers or {})
-        headers['destination'] = dest
-        frame = {'cmd': 'SEND', 'headers': headers, 'body': msg}
-        self.sendFrame(frame)
+        if 'destination' in headers:
+            headers.pop('destination')
+        self.sendFrame(commands.send(dest, msg, headers))
         
     def subscribe(self, dest=None, headers=None):
         # made dest parameter optional since it is better to just specify the destination in the headers (see unsubscribe)
@@ -71,7 +67,7 @@ class Stomp(object):
         headers['destination'] = dest or headers['destination']
         headers.setdefault('ack', 'auto')
         headers.setdefault('activemq.prefetchSize', 1)
-        self.sendFrame({'cmd': 'SUBSCRIBE', 'headers': headers, 'body': ''})
+        self.sendFrame(commands.subscribe(headers))
         
     def unsubscribe(self, dest=None, headers=None):
         # made dest parameter optional since an unsubscribe frame with 'id' header precludes a 'destination' header
@@ -79,17 +75,17 @@ class Stomp(object):
             headers = {'id': headers['id']}
         else:
             headers = {'headers': dest or headers['destination']}
-        self.sendFrame({'cmd': 'UNSUBSCRIBE', 'headers': headers, 'body': ''})
+        self.sendFrame(commands.unsubscribe(headers))
     
     def begin(self, transactionId):
-        self.sendFrame({'cmd': 'BEGIN', 'headers': {'transaction': transactionId}, 'body': ''})
+        self.sendFrame(commands.begin(commands.transaction(transactionId)))
         
     def commit(self, transactionId):
-        self.sendFrame({'cmd': 'COMMIT', 'headers': {'transaction': transactionId}, 'body': ''})
-        
+        self.sendFrame(commands.commit(commands.transaction(transactionId)))        
+
     def abort(self, transactionId):
-        self.sendFrame({'cmd': 'ABORT', 'headers': {'transaction': transactionId}, 'body': ''})
-    
+        self.sendFrame(commands.abort(commands.transaction(transactionId)))
+            
     @contextlib.contextmanager
     def transaction(self, transactionId):
         self.begin(transactionId)
@@ -99,18 +95,18 @@ class Stomp(object):
         except:
             self.abort(transactionId)
         
-    def ack(self, frame):
-        messageId = frame['headers']['message-id']
-        self.sendFrame({'cmd': 'ACK', 'headers': {'message-id': messageId}, 'body': ''})
+    def ack(self, message):
+        messageId = message['headers']['message-id']
+        self.sendFrame(commands.ack({'message-id': messageId}))
     
-    def sendFrame(self, frame):
-        self._write(self.packFrame(frame))
+    def sendFrame(self, message):
+        self._write(self._toFrame(message).pack())
     
     def receiveFrame(self):
         while True:
             message = self.parser.getMessage()
             if message:
-                return message.__dict__
+                return message
             try:
                 data = self.socket.recv(self.READ_SIZE)
                 if not data:
@@ -123,6 +119,11 @@ class Stomp(object):
     def _setParser(self):
         self.parser = StompParser()
         
+    def _toFrame(self, message):
+        if isinstance(message, dict):
+            return StompFrame(**message)
+        return message
+    
     def _socketConnect(self):
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:

@@ -90,5 +90,5 @@ class StompParser(object):
             self._buffer.write(character)
             return
         self._message['body'] = self._buffer.getvalue()
-        self._messages.append(StompFrame(**self._message))
+        self._messages.append(self._message)
         self._next()

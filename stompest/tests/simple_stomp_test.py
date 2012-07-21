@@ -245,9 +245,8 @@ class SimpleStompTest(unittest.TestCase):
     def parseFrame(self, message):
         parser = StompParser()        
         parser.add(message)
-        message = parser.getMessage()
-        return message and message.__dict__
-
+        return parser.getMessage()
+    
     def getFrame(self, cmd, headers, body):
         return StompFrame(cmd, headers, body).pack()
         

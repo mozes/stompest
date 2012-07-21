@@ -108,7 +108,6 @@ class StompClient(Protocol):
             message = self.parser.getMessage()
             if not message:
                 break
-            message = message.__dict__
             try:
                 command = self.cmdMap[message['cmd']]
             except KeyError:
@@ -122,15 +121,13 @@ class StompClient(Protocol):
         """Send connect command
         """
         self.log.debug('Sending connect command')
-        cmd = commands.connect(self.factory.login, self.factory.passcode).pack()
-        self._write(cmd)
+        self._write(commands.connect(self.factory.login, self.factory.passcode))
 
     def _disconnect(self):
         """Send disconnect command
         """
         self.log.debug('Sending disconnect command')
-        cmd = commands.disconnect().pack()
-        self._write(cmd)
+        self._write(commands.disconnect())
 
     def _subscribe(self, dest, headers):
         """Send subscribe command
@@ -138,20 +135,24 @@ class StompClient(Protocol):
         ack = headers.get('ack')
         self.log.debug('Sending subscribe command for destination %s with ack mode %s' % (dest, ack))
         headers['destination'] = dest
-        cmd = commands.subscribe(headers).pack()
-        self._write(cmd)
+        self._write(commands.subscribe(headers))
 
     def _ack(self, messageId):
         """Send ack command
         """
         self.log.debug('Sending ack command for message: %s' % messageId)
-        cmd = commands.ack({'message-id': messageId}).pack()
-        self._write(cmd)
+        self._write(commands.ack({'message-id': messageId}))
     
-    def _write(self, frame):
+    def _write(self, message):
+        frame = self._toFrame(message).pack()
         #self.log.debug('sending frame:\n%s' % frame)
         self.transport.write(frame)
 
+    def _toFrame(self, message):
+        if isinstance(message, dict):
+            return 
+        return message
+    
     #
     # Private helper methods
     #
@@ -187,8 +188,8 @@ class StompClient(Protocol):
         disconnect = False
         #Forward message to error queue if configured
         if errDest is not None:
-            errMsg = _cloneStompMessage(msg, persistent=True)
-            self.send(errDest, errMsg['body'], errMsg['headers'])
+            errorMessage = _cloneStompMessage(msg, persistent=True)
+            self.send(errDest, errorMessage['body'], errorMessage['headers'])
             self._ack(messageId)
             if self.factory.alwaysDisconnectOnUnhandledMsg:
                 disconnect = True
@@ -314,8 +315,7 @@ class StompClient(Protocol):
         """
         headers = dict(headers or {})
         self.log.debug('Sending message to %s: [%s...]' % (dest, msg[:self.MESSAGE_INFO_LENGTH]))
-        cmd = commands.send(dest, msg, headers).pack()
-        self._write(cmd)
+        self._write(commands.send(dest, msg, headers))
         
     def getDisconnectedDeferred(self):
         return self.disconnectedDeferred

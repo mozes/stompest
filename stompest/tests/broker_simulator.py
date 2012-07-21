@@ -54,7 +54,6 @@ class BlackHoleStompServer(LineOnlyReceiver):
         message = self.parser.getMessage()
         if not message:
             return
-        message = message.__dict__
         try:
             self.log.debug('Received frame: %s' % message)
             self.cmdMap[message['cmd']](message)

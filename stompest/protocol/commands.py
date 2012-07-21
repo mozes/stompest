@@ -39,10 +39,9 @@ def connect(username, password):
 def disconnect():
     return StompFrame('DISCONNECT')
 
-def send(destination, body='', transaction=None):
-    headers = {'destination': destination}
-    if transaction:
-        headers.update(transaction)
+def send(destination, body='', headers=None):
+    headers = dict(headers) if headers else {}
+    headers['destination'] = destination
     return StompFrame('SEND', headers, body)
     
 def subscribe(headers):

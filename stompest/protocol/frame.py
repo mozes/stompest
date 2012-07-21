@@ -24,4 +24,4 @@ class StompFrame(object):
     
     def pack(self):
         headers = ''.join('%s:%s%s' % (key, value, StompSpec.LINE_DELIMITER) for (key, value) in self.headers.iteritems())
-        return StompSpec.LINE_DELIMITER.join([self.cmd, headers, '%s%s' % (self.body, StompSpec.FRAME_DELIMITER)]) 
+        return StompSpec.LINE_DELIMITER.join([self.cmd, headers, '%s%s' % (self.body, StompSpec.FRAME_DELIMITER)])
