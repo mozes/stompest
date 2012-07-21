@@ -20,11 +20,12 @@ from stompest.error import StompFrameError
 from stompest.protocol import commands
 from stompest.protocol.frame import StompFrame
 from stompest.protocol.parser import StompParser
+from stompest.protocol.spec import StompSpec
 
 
 class FrameTest(unittest.TestCase):
     def test_frame(self):
-        message = {'cmd': 'SEND', 'headers': {'destination': '/queue/world'}, 'body': 'two\nlines'}
+        message = {'cmd': 'SEND', 'headers': {StompSpec.DESTINATION_HEADER: '/queue/world'}, 'body': 'two\nlines'}
         frame = StompFrame(**message)
         self.assertIs(message['headers'], frame.headers)
         self.assertEquals(dict(frame), message)
@@ -51,7 +52,7 @@ class StompParserTest(unittest.TestCase):
     def test_frameParse_succeeds(self):
         message = {
             'cmd': 'SEND',
-            'headers': {'foo': 'bar', 'hello ': 'there-world with space ', 'empty-value':'', '':'empty-header', 'destination': '/queue/blah'},
+            'headers': {'foo': 'bar', 'hello ': 'there-world with space ', 'empty-value':'', '':'empty-header', StompSpec.DESTINATION_HEADER: '/queue/blah'},
             'body': 'some stuff\nand more'
         }
         frame = StompFrame(**message)

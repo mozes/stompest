@@ -21,10 +21,11 @@ from twisted.internet import defer, reactor
 from twisted.internet.protocol import ClientFactory, Protocol
 from twisted.internet.error import ConnectionLost
 
+from stompest.error import StompConnectTimeout, StompError, StompFrameError, StompProtocolError
 from stompest.protocol import commands
 from stompest.protocol.frame import StompFrame
-from stompest.error import StompConnectTimeout, StompError, StompFrameError, StompProtocolError
 from stompest.protocol.parser import StompParser
+from stompest.protocol.spec import StompSpec
 from stompest.util import cloneStompMessage as _cloneStompMessage
 
 LOG_CATEGORY = 'stompest.async'
@@ -133,16 +134,16 @@ class StompClient(Protocol):
     def _subscribe(self, dest, headers):
         """Send subscribe command
         """
-        ack = headers.get('ack')
+        ack = headers.get(StompSpec.ACK_HEADER)
         self.log.debug('Sending subscribe command for destination %s with ack mode %s' % (dest, ack))
-        headers['destination'] = dest
+        headers[StompSpec.DESTINATION_HEADER] = dest
         self.sendFrame(commands.subscribe(headers))
 
     def _ack(self, messageId):
         """Send ack command
         """
         self.log.debug('Sending ack command for message: %s' % messageId)
-        self.sendFrame(commands.ack({'message-id': messageId}))
+        self.sendFrame(commands.ack({StompSpec.MESSAGE_ID_HEADER: messageId}))
     
     def _write(self, data):
         #self.log.debug('sending data:\n%s' % data)
@@ -226,10 +227,10 @@ class StompClient(Protocol):
     def handleMessage(self, msg):
         """Handle STOMP MESSAGE commands
         """
-        dest = msg['headers']['destination']
-        messageId = msg['headers']['message-id']
+        dest = msg['headers'][StompSpec.DESTINATION_HEADER]
+        messageId = msg['headers'][StompSpec.MESSAGE_ID_HEADER]
         errDest = self.destMap[dest]['errorDestination']
-        clientAck = self.destMap[dest]['ack'] in self.clientAckModes
+        clientAck = self.destMap[dest][StompSpec.ACK_HEADER] in self.clientAckModes
 
         #Do not process any more messages if we're disconnecting
         if self.disconnecting:
@@ -304,10 +305,10 @@ class StompClient(Protocol):
         """
         errorDestination = kwargs.get('errorDestination')
         # client-individual mode is only supported in AMQ >= 5.2
-        # headers['ack'] = headers.get('ack', 'client-individual')
+        # headers[StompSpec.ACK_HEADER] = headers.get(StompSpec.ACK_HEADER, 'client-individual')
         headers = dict(headers or {})
-        headers['ack'] = headers.get('ack', 'client')
-        self.destMap[dest] = {'handler': handler, 'ack': headers['ack'], 'errorDestination': errorDestination}
+        headers[StompSpec.ACK_HEADER] = headers.get(StompSpec.ACK_HEADER, 'client')
+        self.destMap[dest] = {'handler': handler, StompSpec.ACK_HEADER: headers[StompSpec.ACK_HEADER], 'errorDestination': errorDestination}
         self._subscribe(dest, headers)
     
     def send(self, dest, msg='', headers=None):

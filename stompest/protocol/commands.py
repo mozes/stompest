@@ -15,42 +15,43 @@ Copyright 2012 Mozes, Inc.
    limitations under the License.
 """
 from stompest.protocol.frame import StompFrame
+from stompest.protocol.spec import StompSpec
 
 import uuid
 
 def connect(username, password, headers=None):
     headers = dict(headers) if headers else {}
-    headers.update( {'login': username, 'passcode': password})
-    return StompFrame('CONNECT', headers)
+    headers.update( {StompSpec.LOGIN_HEADER: username, StompSpec.PASSCODE_HEADER: password})
+    return StompFrame(StompSpec.CONNECT, headers)
 
 def disconnect():
-    return StompFrame('DISCONNECT')
+    return StompFrame(StompSpec.DISCONNECT)
 
 def ack(headers):
-    return StompFrame('ACK', headers)
+    return StompFrame(StompSpec.ACK, headers)
     
 def nack(headers):
-    return StompFrame('NACK', headers)
+    return StompFrame(StompSpec.NACK, headers)
     
 def subscribe(headers):
-    return StompFrame('SUBSCRIBE', headers)
+    return StompFrame(StompSpec.SUBSCRIBE, headers)
 
 def unsubscribe(headers):
-    return StompFrame('UNSUBSCRIBE', headers)
+    return StompFrame(StompSpec.UNSUBSCRIBE, headers)
 
 def send(destination, body='', headers=None):
     headers = dict(headers) if headers else {}
-    headers['destination'] = destination
-    return StompFrame('SEND', headers, body)
+    headers[StompSpec.DESTINATION_HEADER] = destination
+    return StompFrame(StompSpec.SEND, headers, body)
     
 def transaction(transactionId=None):
-    return {'transaction': transactionId or uuid.uuid4()}
+    return {StompSpec.TRANSACTION_HEADER: transactionId or uuid.uuid4()}
 
 def abort(transaction):
-    return StompFrame('ABORT', transaction)
+    return StompFrame(StompSpec.ABORT, transaction)
 
 def begin(transaction):
-    return StompFrame('BEGIN', transaction)
+    return StompFrame(StompSpec.BEGIN, transaction)
     
 def commit(transaction):
-    return StompFrame('COMMIT', transaction)
+    return StompFrame(StompSpec.COMMIT, transaction)

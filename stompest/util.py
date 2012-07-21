@@ -16,7 +16,9 @@ Copyright 2012 Mozes, Inc.
 """
 from copy import deepcopy
 
-_RESERVED_HEADERS = ['message-id', 'timestamp', 'expires', 'priority', 'destination']
+from stompest.protocol.spec import StompSpec
+
+_RESERVED_HEADERS = [StompSpec.MESSAGE_ID_HEADER, StompSpec.DESTINATION_HEADER, 'timestamp', 'expires', 'priority']
 
 def filterReservedHeaders(headers):
     filtered = headers.copy()

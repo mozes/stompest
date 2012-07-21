@@ -62,7 +62,7 @@ class StompParser(object):
         command = self._buffer.getvalue()
         if not command:
             return
-        if command not in StompSpec.VALID_COMMANDS[version]:
+        if command not in StompSpec.COMMANDS[version]:
             raise StompFrameError('Invalid command: %s' % repr(command))
         self._message['cmd'] = command
         self._transition('headers')

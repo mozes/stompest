@@ -22,6 +22,7 @@ from mock import Mock
 from stompest.error import StompProtocolError
 from stompest.protocol.frame import StompFrame
 from stompest.protocol.parser import StompParser
+from stompest.protocol.spec import StompSpec
 from stompest.simple import Stomp
 
 HOST = 'fakeHost'
@@ -169,7 +170,7 @@ class SimpleStompTest(unittest.TestCase):
         sentFrame = self.parseFrame(args[0])
         self.assertEquals({
            'cmd': 'SEND',
-           'headers': {'destination': dest, 'foo': 'bar', 'fuzz': 'ball'},
+           'headers': {StompSpec.DESTINATION_HEADER: dest, 'foo': 'bar', 'fuzz': 'ball'},
            'body': msg
         }, sentFrame)
 
@@ -184,7 +185,7 @@ class SimpleStompTest(unittest.TestCase):
         sentFrame = self.parseFrame(args[0])
         self.assertEquals({
             'cmd': 'SUBSCRIBE',
-            'headers': {'destination': dest, 'ack': 'auto', 'activemq.prefetchSize': '1', 'foo': 'bar', 'fuzz': 'ball'},
+            'headers': {StompSpec.DESTINATION_HEADER: dest, StompSpec.ACK_HEADER: 'auto', 'activemq.prefetchSize': '1', 'foo': 'bar', 'fuzz': 'ball'},
             'body': ''
         }, sentFrame)
 
@@ -193,10 +194,10 @@ class SimpleStompTest(unittest.TestCase):
         stomp = Stomp(HOST, PORT)
         stomp._checkConnected = Mock()
         stomp._write = Mock()
-        stomp.ack({'cmd': 'MESSAGE', 'headers': {'message-id': id_}, 'body': 'blah'})
+        stomp.ack({'cmd': 'MESSAGE', 'headers': {StompSpec.MESSAGE_ID_HEADER: id_}, 'body': 'blah'})
         args, _ = stomp._write.call_args
         sentFrame = self.parseFrame(args[0])
-        self.assertEquals({'cmd': 'ACK', 'headers': {'message-id': id_}, 'body': ''}, sentFrame)
+        self.assertEquals({'cmd': 'ACK', 'headers': {StompSpec.MESSAGE_ID_HEADER: id_}, 'body': ''}, sentFrame)
 
     def test_transaction_writes_correct_frames(self):
         transactionId = '4711'

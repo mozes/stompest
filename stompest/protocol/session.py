@@ -23,6 +23,7 @@ from random import choice, random
 from re import compile
 
 from stompest.error import StompConnectTimeout
+from stompest.protocol.spec import StompSpec
 
 class StompSession(object):
     SUPPORTED_VERSIONS = ['1.0']
@@ -49,10 +50,10 @@ class StompSession(object):
         self._subscriptions.append(dict(headers))
     
     def unsubscribe(self, headers):
-        if 'id' in headers:
-            self._subscriptions = [h for h in self._subscriptions if h.get('id') != headers['id']]
+        if StompSpec.ID_HEADER in headers:
+            self._subscriptions = [h for h in self._subscriptions if h.get(StompSpec.ID_HEADER) != headers[StompSpec.ID_HEADER]]
         else:
-            self._subscriptions = [h for h in self._subscriptions if h['destination'] != headers['destination']]
+            self._subscriptions = [h for h in self._subscriptions if h[StompSpec.DESTINATION_HEADER] != headers[StompSpec.DESTINATION_HEADER]]
     
     def _reset(self):
         options = self._config.options

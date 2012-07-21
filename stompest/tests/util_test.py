@@ -15,6 +15,7 @@ Copyright 2012 Mozes, Inc.
    limitations under the License.
 """
 import unittest
+
 from stompest.util import filterReservedHeaders
 
 class UtilTest(unittest.TestCase):

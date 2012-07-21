@@ -21,6 +21,7 @@ from stompest.error import StompConnectionError, StompProtocolError
 from stompest.protocol import commands
 from stompest.protocol.frame import StompFrame
 from stompest.protocol.parser import StompParser
+from stompest.protocol.spec import StompSpec
 
 class Stomp(object):
     """A simple implementation of a STOMP client"""
@@ -57,24 +58,24 @@ class Stomp(object):
         
     def send(self, dest, msg, headers=None):
         headers = dict(headers or {})
-        if 'destination' in headers:
-            headers.pop('destination')
+        if StompSpec.DESTINATION_HEADER in headers:
+            headers.pop(StompSpec.DESTINATION_HEADER)
         self.sendFrame(commands.send(dest, msg, headers))
         
     def subscribe(self, dest=None, headers=None):
         # made dest parameter optional since it is better to just specify the destination in the headers (see unsubscribe)
         headers = dict(headers or {})
-        headers['destination'] = dest or headers['destination']
-        headers.setdefault('ack', 'auto')
+        headers[StompSpec.DESTINATION_HEADER] = dest or headers[StompSpec.DESTINATION_HEADER]
+        headers.setdefault(StompSpec.ACK_HEADER, 'auto')
         headers.setdefault('activemq.prefetchSize', 1)
         self.sendFrame(commands.subscribe(headers))
         
     def unsubscribe(self, dest=None, headers=None):
-        # made dest parameter optional since an unsubscribe frame with 'id' header precludes a 'destination' header
-        if 'id' in headers:
-            headers = {'id': headers['id']}
+        # made dest parameter optional since an unsubscribe frame with ID_HEADER header precludes a DESTINATION_HEADER
+        if StompSpec.ID_HEADER in headers:
+            headers = {StompSpec.ID_HEADER: headers[StompSpec.ID_HEADER]}
         else:
-            headers = {'headers': dest or headers['destination']}
+            headers = {'headers': dest or headers[StompSpec.DESTINATION_HEADER]}
         self.sendFrame(commands.unsubscribe(headers))
     
     def begin(self, transactionId):
@@ -96,8 +97,8 @@ class Stomp(object):
             self.abort(transactionId)
         
     def ack(self, message):
-        messageId = message['headers']['message-id']
-        self.sendFrame(commands.ack({'message-id': messageId}))
+        messageId = message['headers'][StompSpec.MESSAGE_ID_HEADER]
+        self.sendFrame(commands.ack({StompSpec.MESSAGE_ID_HEADER: messageId}))
     
     def receiveFrame(self):
         while True:

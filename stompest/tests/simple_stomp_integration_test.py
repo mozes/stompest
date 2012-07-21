@@ -17,6 +17,7 @@ Copyright 2012 Mozes, Inc.
 import time
 import unittest
 
+from stompest.protocol.spec import StompSpec
 from stompest.simple import Stomp
 
 class SimpleStompIntegrationTest(unittest.TestCase):
@@ -25,7 +26,7 @@ class SimpleStompIntegrationTest(unittest.TestCase):
     def setUp(self):
         stomp = Stomp('localhost', 61613)
         stomp.connect()
-        stomp.subscribe(self.DEST, {'ack': 'client'})
+        stomp.subscribe(self.DEST, {StompSpec.ACK_HEADER: 'client'})
         while (stomp.canRead(1)):
             stomp.ack(stomp.receiveFrame())
         
@@ -35,7 +36,7 @@ class SimpleStompIntegrationTest(unittest.TestCase):
         stomp.send(self.DEST, 'test message1')
         stomp.send(self.DEST, 'test message2')
         self.assertFalse(stomp.canRead(1))
-        stomp.subscribe(self.DEST, {'ack': 'client'})
+        stomp.subscribe(self.DEST, {StompSpec.ACK_HEADER: 'client'})
         self.assertTrue(stomp.canRead(1))
         frame = stomp.receiveFrame()
         stomp.ack(frame)
@@ -52,7 +53,7 @@ class SimpleStompIntegrationTest(unittest.TestCase):
         stomp.send(self.DEST, 'test message2')
         stomp.send(self.DEST, 'test message3')
         self.assertFalse(stomp.canRead(0))
-        stomp.subscribe(self.DEST, {'ack': 'client-individual', 'activemq.prefetchSize': 2})
+        stomp.subscribe(self.DEST, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': 2})
         time.sleep(1)
         self.assertTrue(stomp.canRead(0))
         frame1 = stomp.receiveFrame()

@@ -21,6 +21,7 @@ from twisted.trial import unittest
 
 from stompest.simple import Stomp
 from stompest.async import StompConfig, StompCreator
+from stompest.protocol.spec import StompSpec
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -44,7 +45,7 @@ class HandlerExceptionWithErrorQueueIntegrationTestCase(unittest.TestCase):
     def cleanQueue(self, queue):
         stomp = Stomp(HOST, PORT)
         stomp.connect()
-        stomp.subscribe(queue, {'ack': 'client'})
+        stomp.subscribe(queue, {StompSpec.ACK_HEADER: 'client'})
         while stomp.canRead(1):
             frame = stomp.receiveFrame()
             stomp.ack(frame)
@@ -73,7 +74,7 @@ class HandlerExceptionWithErrorQueueIntegrationTestCase(unittest.TestCase):
         
         #Barf on first message so it will get put in error queue
         #Use selector to guarantee message order.  AMQ doesn't not guarantee order by default
-        stomp.subscribe(self.queue, self._saveMsgAndBarf, {'ack': 'client-individual', 'activemq.prefetchSize': 1, 'selector': "food = 'barf'"}, errorDestination=self.errorQueue)
+        stomp.subscribe(self.queue, self._saveMsgAndBarf, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': 1, 'selector': "food = 'barf'"}, errorDestination=self.errorQueue)
         
         #Client disconnected and returned error
         try:
@@ -85,14 +86,14 @@ class HandlerExceptionWithErrorQueueIntegrationTestCase(unittest.TestCase):
         
         #Reconnect and subscribe again - consuming second message then disconnecting
         stomp = yield creator.getConnection()
-        stomp.subscribe(self.queue, self._eatOneMsgAndDisconnect, {'ack': 'client-individual', 'activemq.prefetchSize': 1}, errorDestination=self.errorQueue)
+        stomp.subscribe(self.queue, self._eatOneMsgAndDisconnect, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': 1}, errorDestination=self.errorQueue)
         
         #Client disconnects without error
         yield stomp.getDisconnectedDeferred()
         
         #Reconnect and subscribe to error queue
         stomp = yield creator.getConnection()
-        stomp.subscribe(self.errorQueue, self._saveErrMsgAndDisconnect, {'ack': 'client-individual', 'activemq.prefetchSize': 1})
+        stomp.subscribe(self.errorQueue, self._saveErrMsgAndDisconnect, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': 1})
         
         #Wait for disconnect
         yield stomp.getDisconnectedDeferred()
@@ -118,14 +119,14 @@ class HandlerExceptionWithErrorQueueIntegrationTestCase(unittest.TestCase):
         stomp.send(self.queue, self.msg2)
         
         #Barf on first msg, disconnect on second msg
-        stomp.subscribe(self.queue, self._barfOneEatOneAndDisonnect, {'ack': 'client-individual', 'activemq.prefetchSize': 1}, errorDestination=self.errorQueue)
+        stomp.subscribe(self.queue, self._barfOneEatOneAndDisonnect, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': 1}, errorDestination=self.errorQueue)
         
         #Client disconnects without error
         yield stomp.getDisconnectedDeferred()
         
         #Reconnect and subscribe to error queue
         stomp = yield creator.getConnection()
-        stomp.subscribe(self.errorQueue, self._saveErrMsgAndDisconnect, {'ack': 'client-individual', 'activemq.prefetchSize': 1})
+        stomp.subscribe(self.errorQueue, self._saveErrMsgAndDisconnect, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': 1})
         
         #Wait for disconnect
         yield stomp.getDisconnectedDeferred()
@@ -146,7 +147,7 @@ class HandlerExceptionWithErrorQueueIntegrationTestCase(unittest.TestCase):
         stomp.send(self.queue, self.msg1, self.msg1Hdrs)
         
         #Barf on first msg (implicit disconnect)
-        stomp.subscribe(self.queue, self._saveMsgAndBarf, {'ack': 'client-individual', 'activemq.prefetchSize': 1})
+        stomp.subscribe(self.queue, self._saveMsgAndBarf, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': 1})
         
         #Client disconnected and returned error
         try:
@@ -158,7 +159,7 @@ class HandlerExceptionWithErrorQueueIntegrationTestCase(unittest.TestCase):
             
         #Reconnect and subscribe again - consuming retried message and disconnecting
         stomp = yield creator.getConnection()
-        stomp.subscribe(self.queue, self._eatOneMsgAndDisconnect, {'ack': 'client-individual', 'activemq.prefetchSize': 1})
+        stomp.subscribe(self.queue, self._eatOneMsgAndDisconnect, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': 1})
         
         #Client disconnects without error
         yield stomp.getDisconnectedDeferred()
@@ -204,7 +205,7 @@ class GracefulDisconnectTestCase(unittest.TestCase):
     def cleanQueue(self, queue):
         stomp = Stomp(HOST, PORT)
         stomp.connect()
-        stomp.subscribe(queue, {'ack': 'client'})
+        stomp.subscribe(queue, {StompSpec.ACK_HEADER: 'client'})
         while stomp.canRead(1):
             frame = stomp.receiveFrame()
             stomp.ack(frame)
@@ -224,7 +225,7 @@ class GracefulDisconnectTestCase(unittest.TestCase):
         
         for _ in xrange(self.numMsgs):
             stomp.send(self.queue, self.msg)
-        stomp.subscribe(self.queue, self._msgHandler, {'ack': 'client-individual', 'activemq.prefetchSize': self.numMsgs})
+        stomp.subscribe(self.queue, self._msgHandler, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': self.numMsgs})
         
         #Wait for disconnect
         yield stomp.getDisconnectedDeferred()
@@ -233,7 +234,7 @@ class GracefulDisconnectTestCase(unittest.TestCase):
         stomp = yield creator.getConnection()
         self.timeExpired = False
         self.timeoutDelayedCall = reactor.callLater(1, self._timesUp, stomp)
-        stomp.subscribe(self.queue, self._eatOneMsgAndDisconnect, {'ack': 'client-individual', 'activemq.prefetchSize': self.numMsgs})
+        stomp.subscribe(self.queue, self._eatOneMsgAndDisconnect, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': self.numMsgs})
 
         #Wait for disconnect
         yield stomp.getDisconnectedDeferred()
