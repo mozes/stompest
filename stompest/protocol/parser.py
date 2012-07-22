@@ -23,7 +23,7 @@ from stompest.protocol.spec import StompSpec
 class StompParser(object):
     def __init__(self, version='1.0'):
         self.version = version
-        self._states = {
+        self._parsers = {
             'cmd': self._parseCommand,
             'headers': self._parseHeader,
             'body': self._parseBody,
@@ -40,7 +40,7 @@ class StompParser(object):
     
     def add(self, data):
         for character in data: 
-            self._states[self._state](character)
+            self.parse(character)
     
     def _flush(self):
         self._buffer = cStringIO.StringIO()
@@ -52,9 +52,9 @@ class StompParser(object):
         self._transition('cmd')
         self._flush()
     
-    def _transition(self, newState):
+    def _transition(self, state):
         self._flush()
-        self._state = newState
+        self.parse = self._parsers[state]
         
     def _parseCommand(self, character):
         if character != StompSpec.LINE_DELIMITER:
