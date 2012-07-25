@@ -27,7 +27,7 @@ class FrameTest(unittest.TestCase):
     def test_frame(self):
         message = {'cmd': 'SEND', 'headers': {StompSpec.DESTINATION_HEADER: '/queue/world'}, 'body': 'two\nlines'}
         frame = StompFrame(**message)
-        self.assertIs(message['headers'], frame.headers)
+        self.assertEquals(message['headers'], frame.headers)
         self.assertEquals(dict(frame), message)
         self.assertEquals(str(frame), """\
 SEND
@@ -40,7 +40,7 @@ lines\x00""")
     def test_frame_without_headers_and_body(self):
         message = {'cmd': 'DISCONNECT', 'headers': {}, 'body': ''}
         frame = StompFrame(**message)
-        self.assertIs(message['headers'], frame.headers)
+        self.assertEquals(message['headers'], frame.headers)
         self.assertEquals(dict(frame), message)
         self.assertEquals(str(frame), """\
 DISCONNECT
