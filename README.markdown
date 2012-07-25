@@ -2,9 +2,9 @@ stomp, stomper, stompest!
 
 Stompest is a no-nonsense [STOMP 1.0](http://stomp.github.com/) implementation for Python including both synchronous and [Twisted](http://twistedmatrix.com/) clients.
 
-Modeled after the Perl [Net::Stomp](http://search.cpan.org/dist/Net-Stomp/lib/Net/Stomp.pm) module, the synchronous client is dead simple.  It does not assume anything about your concurrency model (thread vs process) or force you to use it any particular way. It gets out of your way and lets you do what you want.
+Modeled after the Perl [Net::Stomp](http://search.cpan.org/dist/Net-Stomp/lib/Net/Stomp.pm) module, the synchronous client is dead simple.  It does not assume anything about your concurrency model (thread vs process) or force you to use it any particular way. It gets out of your way and lets you do what you want. The optional session layer adds failover logic and subscription state to the simple client.
 
-The Twisted client is a full-featured STOMP protocol client built on top of the [stomper](http://code.google.com/p/stomper/) library.  It supports destination-specific message handlers, concurrent message processing, graceful shutdown, "poison pill" error handling, and connection timeout.
+The Twisted client is a full-featured STOMP protocol client.  It supports destination-specific message handlers, concurrent message processing, graceful shutdown, "poison pill" error handling, and connection timeout.
 
 This module is thoroughly unit tested and production hardened for the functionality used by [Mozes](http://www.mozes.com/): persistent queueing on [ActiveMQ](http://activemq.apache.org/).  Minor enhancements may be required to use this STOMP adapter with other brokers or certain feature sets like transactions.
 
@@ -31,14 +31,14 @@ Simple Producer
     stomp.send(QUEUE, 'test message1')
     stomp.send(QUEUE, 'test message2')
     stomp.disconnect()
-    
+
 Simple Consumer
 ---------------
 
     from stompest.simple import Stomp
 
     QUEUE = '/queue/simpleTest'
-
+    
     stomp = Stomp('localhost', 61613)
     stomp.connect()
     stomp.subscribe(QUEUE, {'ack': 'client'})
@@ -49,6 +49,20 @@ Simple Consumer
         stomp.ack(frame)
     
     stomp.disconnect()
+
+
+Simple + Session
+----------------
+
+In the simple client examples above, replace
+
+    from stompest.simple import Stomp
+    stomp = Stomp('localhost', 61613)
+
+by
+
+    from stompest.sync import Stomp
+    stomp = Stomp('failover:(tcp://localhost:61614,tcp://localhost:61613)?randomize=false,maxReconnectAttempts=2')
 
 Twisted Producer
 ----------------
@@ -175,13 +189,26 @@ Twisted Consumer
 Features
 ========
 
+Protocol layer
+--------------
+* Transport and client agnostic
+* Supports STOMP 1.0 and 1.1
+* Supports binary message bodies
+
+Session layer
+-------------
+* Manages the state of a connection
+* Mimics the [broker failover](http://activemq.apache.org/failover-transport-reference.html) behavior of the native Java client
+* Replays subscriptions upon reconnect
+* Not yet fully client agnostic (currently only works on top of the simple client; support for the Twisted client is planned)
+
 Simple
 ------
-Basically the same as [Net::Stomp](http://search.cpan.org/dist/Net-Stomp/lib/Net/Stomp.pm)
+* Basically the same as [Net::Stomp](http://search.cpan.org/dist/Net-Stomp/lib/Net/Stomp.pm)
+* Now supports STOMP 1.1 (NACK, heartbeat)
 
 Twisted
 -------
-* Supports binary message bodies
 * Graceful shutdown - On disconnect or error, the client stops processing new messages and waits for all outstanding message handlers to finish before issuing the DISCONNECT command
 * Error handling - STOMP 1.0 does not have a NACK command so you have two options for error handling:
     * Client error handling - passing the errorDestination parameter to the subscribe() method will cause unhandled messages to be forwarded to that destination.
