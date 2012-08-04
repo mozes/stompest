@@ -36,7 +36,9 @@ class StompClient(Protocol):
     MESSAGE_INFO_LENGTH = 20
     CLIENT_ACK_MODES = set(['client', 'client-individual'])
 
-    def __init__(self):
+    def __init__(self, alwaysDisconnectOnUnhandledMsg=False):
+        self.alwaysDisconnectOnUnhandledMsg = alwaysDisconnectOnUnhandledMsg
+        
         self.log = logging.getLogger(LOG_CATEGORY)
         self.cmdMap = {
             'MESSAGE': self.handleMessage,
@@ -58,10 +60,6 @@ class StompClient(Protocol):
     #
     # Overriden methods from parent protocol class
     #
-    def connectionMade(self):
-        """When TCP connection is made, register shutdown handler
-        """
-        Protocol.connectionMade(self)
         
     def connectionLost(self, reason):
         """When TCP connection is lost, remove shutdown handler
@@ -125,11 +123,11 @@ class StompClient(Protocol):
     #
     # Methods for sending raw STOMP commands
     #
-    def _connect(self):
+    def _connect(self, login, passcode):
         """Send connect command
         """
         self.log.debug('Sending connect command')
-        self.sendFrame(commands.connect(self.factory.login, self.factory.passcode))
+        self.sendFrame(commands.connect(login, passcode))
 
     def _disconnect(self):
         """Send disconnect command
@@ -194,7 +192,7 @@ class StompClient(Protocol):
             errorMessage = _cloneStompMessage(msg, persistent=True)
             self.send(errDest, errorMessage['body'], errorMessage['headers'])
             self._ack(messageId)
-            if not self.factory.alwaysDisconnectOnUnhandledMsg:
+            if not self.alwaysDisconnectOnUnhandledMsg:
                 return
         self.disconnectError = failure
         self.disconnect()
@@ -277,12 +275,12 @@ class StompClient(Protocol):
     #
     # Public functions
     #
-    def connect(self, timeout=None):
+    def connect(self, login, passcode, timeout):
         """Send connect command and return Deferred for caller that will get trigger when connect is complete
         """
         if timeout is not None:
             self.connectTimeoutDelayedCall = reactor.callLater(timeout, self.connectTimeout, timeout)
-        self._connect()
+        self._connect(login, passcode)
         self.connectedDeferred = defer.Deferred()
         return self.connectedDeferred
     
@@ -329,29 +327,28 @@ class StompConfig(object):
         self.log = logging.getLogger(LOG_CATEGORY)
 
 class StompCreator(object):
-    def __init__(self, config, **kwargs):
+    def __init__(self, config, connectTimeout=None, **kwargs):
         self.config = config
-        self.connectTimeout = kwargs.get('connectTimeout')
-        self.alwaysDisconnectOnUnhandledMsg = kwargs.get('alwaysDisconnectOnUnhandledMsg', False)
-        self.log = logging.getLogger(LOG_CATEGORY)
-        self.stompConnectedDeferred = None
-    
+        self.connectTimeout = connectTimeout
+        self.kwargs = kwargs
+        
     @defer.inlineCallbacks
     def getConnection(self):
-        factory = StompFactory(
-            login=self.config.login,
-            passcode=self.config.passcode,
-            alwaysDisconnectOnUnhandledMsg=self.alwaysDisconnectOnUnhandledMsg
-        )
-        stomp = yield TCP4ClientEndpoint(reactor, self.config.host, self.config.port).connect(factory)
-        yield stomp.connect(self.connectTimeout)
+        factory = StompFactory(**self.kwargs)
+        stomp = yield self._getEndpoint().connect(factory)
+        yield stomp.connect(self.config.login, self.config.passcode, self.connectTimeout)
         defer.returnValue(stomp)
+    
+    def _getEndpoint(self):
+        return TCP4ClientEndpoint(reactor, self.config.host, self.config.port)
     
 class StompFactory(Factory):
     protocol = StompClient
     
     def __init__(self, **kwargs):
-        self.login = kwargs.get('login', '')
-        self.passcode = kwargs.get('passcode', '')
-        self.alwaysDisconnectOnUnhandledMsg = kwargs.get('alwaysDisconnectOnUnhandledMsg', True)
-        self.log = logging.getLogger(LOG_CATEGORY)
+        self.kwargs = kwargs
+        
+    def buildProtocol(self, addr):
+        protocol = self.protocol(**self.kwargs)
+        protocol.factory = self
+        return protocol
