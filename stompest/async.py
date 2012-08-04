@@ -18,7 +18,7 @@ Copyright 2011 Mozes, Inc.
 import logging
 
 from twisted.internet import defer, reactor
-from twisted.internet.protocol import ClientFactory, Protocol
+from twisted.internet.protocol import Factory, Protocol
 from twisted.internet.error import ConnectionLost
 
 from stompest.error import StompConnectTimeout, StompError, StompFrameError, StompProtocolError
@@ -27,12 +27,14 @@ from stompest.protocol.frame import StompFrame
 from stompest.protocol.parser import StompParser
 from stompest.protocol.spec import StompSpec
 from stompest.util import cloneStompMessage as _cloneStompMessage
+from twisted.internet.endpoints import TCP4ClientEndpoint
 
 LOG_CATEGORY = 'stompest.async'
 
 class StompClient(Protocol):
     """A Twisted implementation of a STOMP client"""
     MESSAGE_INFO_LENGTH = 20
+    CLIENT_ACK_MODES = set(['client', 'client-individual'])
 
     def __init__(self):
         self.log = logging.getLogger(LOG_CATEGORY)
@@ -42,7 +44,6 @@ class StompClient(Protocol):
             'ERROR': self.handleError,
             'RECEIPT': self.handleReceipt,
         }
-        self.clientAckModes = {'client': 1, 'client-individual': 1}
         self.destMap = {}
         self.connectedDeferred = None
         self.connectTimeoutDelayedCall = None
@@ -72,7 +73,7 @@ class StompClient(Protocol):
         self.log.debug(msg)
             
         #Remove connect timeout if set
-        if self.connectTimeoutDelayedCall is not None:
+        if self.connectTimeoutDelayedCall:
             self.log.debug('Cancelling connect timeout after TCP connection was lost')
             self.connectTimeoutDelayedCall.cancel()
             self.connectTimeoutDelayedCall = None
@@ -186,23 +187,15 @@ class StompClient(Protocol):
     
     def messageHandlerFailed(self, failure, messageId, msg, errDest):
         self.log.error('Error in message handler: %s' % str(failure))
-        disconnect = False
-        #Forward message to error queue if configured
-        if errDest is not None:
+        if errDest: #Forward message to error queue if configured
             errorMessage = _cloneStompMessage(msg, persistent=True)
             self.send(errDest, errorMessage['body'], errorMessage['headers'])
             self._ack(messageId)
-            if self.factory.alwaysDisconnectOnUnhandledMsg:
-                disconnect = True
-        else:
-            disconnect = True
-        if disconnect:
-            #Set disconnect error
-            self.disconnectError = failure
-            #Disconnect
-            self.disconnect()
-            return failure
-        return None
+            if not self.factory.alwaysDisconnectOnUnhandledMsg:
+                return
+        self.disconnectError = failure
+        self.disconnect()
+        return failure
         
     def connectTimeout(self, timeout):
         self.log.error('Connect command timed out after %s seconds' % timeout)
@@ -215,8 +208,7 @@ class StompClient(Protocol):
         """
         sessionId = msg['headers'].get('session')
         self.log.debug('Connected to stomp broker with session: %s' % sessionId)
-        #Remove connect timeout if set
-        if self.connectTimeoutDelayedCall is not None:
+        if self.connectTimeoutDelayedCall: #Cancel connect timeout
             self.log.debug('Cancelling connect timeout after sucessfully connecting')
             self.connectTimeoutDelayedCall.cancel()
             self.connectTimeoutDelayedCall = None
@@ -230,24 +222,24 @@ class StompClient(Protocol):
         dest = msg['headers'][StompSpec.DESTINATION_HEADER]
         messageId = msg['headers'][StompSpec.MESSAGE_ID_HEADER]
         errDest = self.destMap[dest]['errorDestination']
-        clientAck = self.destMap[dest][StompSpec.ACK_HEADER] in self.clientAckModes
 
         #Do not process any more messages if we're disconnecting
         if self.disconnecting:
             self.log.debug('Disconnecting...ignoring stomp message: %s at destination: %s' % (messageId, dest))
             return
 
-        if self.log.isEnabledFor(logging.DEBUG):
-            self.log.debug('Received stomp message %s from destination %s: [%s...].  Headers: %s' % (messageId, dest, msg['body'][:self.MESSAGE_INFO_LENGTH], msg['headers']))
+        self.log.debug('Received stomp message %s from destination %s: [%s...].  Headers: %s' % (messageId, dest, msg['body'][:self.MESSAGE_INFO_LENGTH], msg['headers']))
         
         #Call message handler (can return deferred to be async)
         self.handlerStarted(messageId)        
         handlerCall = defer.maybeDeferred(self.destMap[dest]['handler'], self, msg)
-        #Ack the message if necessary
-        if clientAck:
+        if self.clientAck(dest): #Ack the message
             handlerCall.addCallback(lambda result: self._ack(messageId))
         handlerCall.addErrback(self.messageHandlerFailed, messageId, msg, errDest)
         handlerCall.addBoth(self.postProcessMessage, messageId)
+    
+    def clientAck(self, dest):
+        return self.destMap[dest][StompSpec.ACK_HEADER] in self.CLIENT_ACK_MODES
 
     def postProcessMessage(self, result, messageId):
         self.handlerFinished(messageId)
@@ -260,7 +252,7 @@ class StompClient(Protocol):
         """Handle STOMP ERROR commands
         """
         self.log.info('Received stomp error: %s' % msg)
-        if self.connectedDeferred is not None:
+        if self.connectedDeferred:
             self.transport.loseConnection()
             self.connectError = StompProtocolError('STOMP error message received while trying to connect: %s' % msg)
         else:
@@ -324,28 +316,6 @@ class StompClient(Protocol):
     def getDisconnectedDeferred(self):
         return self.disconnectedDeferred
     
-class StompClientFactory(ClientFactory):
-    protocol = StompClient
-
-    def __init__(self, **kwargs):
-        self.login = kwargs.get('login', '')
-        self.passcode = kwargs.get('passcode', '')
-        self.alwaysDisconnectOnUnhandledMsg = kwargs.get('alwaysDisconnectOnUnhandledMsg', True)
-        self.buildProtocolDeferred = defer.Deferred()
-        self.log = logging.getLogger(LOG_CATEGORY)
-    
-    def buildProtocol(self, addr):
-        protocol = ClientFactory.buildProtocol(self, addr)
-        #This is a sneaky way of passing the protocol instance back to the caller
-        reactor.callLater(0, self.buildProtocolDeferred.callback, protocol)
-        return protocol
-    
-    def clientConnectionFailed(self, connector, reason):
-        """Connection failed
-        """
-        self.log.error('Connection failed. Reason: %s' % str(reason))
-        self.buildProtocolDeferred.errback(reason)
-
 class StompConfig(object):
     def __init__(self, host, port, **kwargs):
         self.host = host
@@ -368,13 +338,25 @@ class StompCreator(object):
         return self.stompConnectedDeferred
 
     def connect(self):
-        factory = StompClientFactory(login=self.config.login, passcode=self.config.passcode, alwaysDisconnectOnUnhandledMsg=self.alwaysDisconnectOnUnhandledMsg)
-        reactor.connectTCP(self.config.host, self.config.port, factory) 
-        return factory.buildProtocolDeferred
-        
+        factory = StompFactory(
+            login=self.config.login,
+            passcode=self.config.passcode,
+            alwaysDisconnectOnUnhandledMsg=self.alwaysDisconnectOnUnhandledMsg
+        )
+        return TCP4ClientEndpoint(reactor, self.config.host, self.config.port).connect(factory)
+    
     def connected(self, stomp):
         stomp.connect(self.connectTimeout).addCallback(self.stompConnected).addErrback(self.stompConnectedDeferred.errback)
 
     def stompConnected(self, stomp):
         self.stompConnectedDeferred.callback(stomp)
         self.stompConnectedDeferred = None
+
+class StompFactory(Factory):
+    protocol = StompClient
+    
+    def __init__(self, **kwargs):
+        self.login = kwargs.get('login', '')
+        self.passcode = kwargs.get('passcode', '')
+        self.alwaysDisconnectOnUnhandledMsg = kwargs.get('alwaysDisconnectOnUnhandledMsg', True)
+        self.log = logging.getLogger(LOG_CATEGORY)
