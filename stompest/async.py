@@ -52,7 +52,7 @@ class StompClient(Protocol):
         self.finishedHandlersDeferred = None
         self.disconnecting = False
         self.disconnectError = None
-        self.activeHandlers = {}
+        self.activeHandlers = set()
         self.resetParser()
 
     #
@@ -72,38 +72,43 @@ class StompClient(Protocol):
             msg = 'Disconnected: %s' % reason.getErrorMessage()
         self.log.debug(msg)
             
-        #Remove connect timeout if set
-        if self.connectTimeoutDelayedCall:
-            self.log.debug('Cancelling connect timeout after TCP connection was lost')
-            self.connectTimeoutDelayedCall.cancel()
-            self.connectTimeoutDelayedCall = None
-        
-        #Callback for failed connect
-        if self.connectedDeferred:
-            if self.connectError:
-                self.log.debug('Calling connectedDeferred errback: %s' % self.connectError)
-                self.connectedDeferred.errback(self.connectError)
-                self.connectError = None
-            else:
-                self.log.error('Connection lost with outstanding connectedDeferred')
-                error = StompError('Unexpected connection loss')
-                self.log.debug('Calling connectedDeferred errback: %s' % error)
-                self.connectedDeferred.errback(error)                
-            self.connectedDeferred = None
-        
-        #Callback for disconnect
-        if self.disconnectedDeferred:
-            if self.disconnectError:
-                #self.log.debug('Calling disconnectedDeferred errback: %s' % self.disconnectError)
-                self.disconnectedDeferred.errback(self.disconnectError)
-                self.disconnectError = None
-            else:
-                #self.log.debug('Calling disconnectedDeferred callback')
-                self.disconnectedDeferred.callback(self)
-            self.disconnectedDeferred = None
+        self.cancelConnectTimeout('network connection was lost')
+        self.handleConnectionLostConnect()
+        self.handleConnectionLostDisconnect()
             
         Protocol.connectionLost(self, reason)
-
+    
+    def cancelConnectTimeout(self, reason):
+        if not self.connectTimeoutDelayedCall:
+            return
+        self.log.debug('Cancelling connect timeout [%s]' % reason)
+        self.connectTimeoutDelayedCall.cancel()
+        self.connectTimeoutDelayedCall = None
+    
+    def handleConnectionLostDisconnect(self):
+        if not self.disconnectedDeferred:
+            return
+        if self.disconnectError:
+            #self.log.debug('Calling disconnectedDeferred errback: %s' % self.disconnectError)
+            self.disconnectedDeferred.errback(self.disconnectError)
+            self.disconnectError = None
+        else:
+            #self.log.debug('Calling disconnectedDeferred callback')
+            self.disconnectedDeferred.callback(self)
+        self.disconnectedDeferred = None
+            
+    def handleConnectionLostConnect(self):
+        if not self.connectedDeferred:
+            return
+        if self.connectError:
+            error, self.connectError = self.connectError, None
+        else:
+            self.log.error('Connection lost with outstanding connectedDeferred')
+            error = StompError('Unexpected connection loss')
+        self.log.debug('Calling connectedDeferred errback: %s' % error)
+        self.connectedDeferred.errback(error)                
+        self.connectedDeferred = None
+    
     def dataReceived(self, data):
         self.parser.add(data)
                 
@@ -171,22 +176,20 @@ class StompClient(Protocol):
             return self.finishedHandlersDeferred
     
     def handlersInProgress(self):
-        if self.activeHandlers:
-            return True
-        return False
+        return bool(self.activeHandlers)
     
     def handlerFinished(self, messageId):
-        del self.activeHandlers[messageId]
+        self.activeHandlers.remove(messageId)
         self.log.debug('Handler complete for message: %s' % messageId)
 
     def handlerStarted(self, messageId):
         if messageId in self.activeHandlers:
             raise StompProtocolError('Duplicate message received. Message id %s is already in progress' % messageId)
-        self.activeHandlers[messageId] = None
+        self.activeHandlers.add(messageId)
         self.log.debug('Handler started for message: %s' % messageId)
     
     def messageHandlerFailed(self, failure, messageId, msg, errDest):
-        self.log.error('Error in message handler: %s' % str(failure))
+        self.log.error('Error in message handler: %s' % failure)
         if errDest: #Forward message to error queue if configured
             errorMessage = _cloneStompMessage(msg, persistent=True)
             self.send(errDest, errorMessage['body'], errorMessage['headers'])
@@ -195,8 +198,7 @@ class StompClient(Protocol):
                 return
         self.disconnectError = failure
         self.disconnect()
-        return failure
-        
+
     def connectTimeout(self, timeout):
         self.log.error('Connect command timed out after %s seconds' % timeout)
         self.connectTimeoutDelayedCall = None
@@ -208,14 +210,12 @@ class StompClient(Protocol):
         """
         sessionId = msg['headers'].get('session')
         self.log.debug('Connected to stomp broker with session: %s' % sessionId)
-        if self.connectTimeoutDelayedCall: #Cancel connect timeout
-            self.log.debug('Cancelling connect timeout after sucessfully connecting')
-            self.connectTimeoutDelayedCall.cancel()
-            self.connectTimeoutDelayedCall = None
+        self.cancelConnectTimeout('successfully connected')
         self.disconnectedDeferred = defer.Deferred()
         self.connectedDeferred.callback(self)
         self.connectedDeferred = None
     
+    @defer.inlineCallbacks
     def handleMessage(self, msg):
         """Handle STOMP MESSAGE commands
         """
@@ -231,17 +231,21 @@ class StompClient(Protocol):
         self.log.debug('Received stomp message %s from destination %s: [%s...].  Headers: %s' % (messageId, dest, msg['body'][:self.MESSAGE_INFO_LENGTH], msg['headers']))
         
         #Call message handler (can return deferred to be async)
-        self.handlerStarted(messageId)        
-        handlerCall = defer.maybeDeferred(self.destMap[dest]['handler'], self, msg)
-        if self.clientAck(dest): #Ack the message
-            handlerCall.addCallback(lambda result: self._ack(messageId))
-        handlerCall.addErrback(self.messageHandlerFailed, messageId, msg, errDest)
-        handlerCall.addBoth(self.postProcessMessage, messageId)
-    
+        self.handlerStarted(messageId)
+        try:
+            yield defer.maybeDeferred(self.destMap[dest]['handler'], self, msg)
+        except Exception as e:
+            self.messageHandlerFailed(e, messageId, msg, errDest)
+        else:
+            if self.clientAck(dest):
+                self._ack(messageId)
+        finally:
+            self.postProcessMessage(messageId)
+        
     def clientAck(self, dest):
         return self.destMap[dest][StompSpec.ACK_HEADER] in self.CLIENT_ACK_MODES
 
-    def postProcessMessage(self, result, messageId):
+    def postProcessMessage(self, messageId):
         self.handlerFinished(messageId)
         #If someone's waiting to know that all handlers are done, call them back
         if self.finishedHandlersDeferred and not self.handlersInProgress():
@@ -256,8 +260,8 @@ class StompClient(Protocol):
             self.transport.loseConnection()
             self.connectError = StompProtocolError('STOMP error message received while trying to connect: %s' % msg)
         else:
-            #Work around for AMQ < 5.2
-            if 'message' in msg['headers'] and msg['headers']['message'].find('Unexpected ACK received for message-id') >= 0:
+            #Workaround for AMQ < 5.2
+            if 'Unexpected ACK received for message-id' in msg['headers'].get('message', ''):
                 self.log.debug('AMQ brokers < 5.2 do not support client-individual mode.')
             else:
                 #Set disconnect error
@@ -281,7 +285,7 @@ class StompClient(Protocol):
         self._connect()
         self.connectedDeferred = defer.Deferred()
         return self.connectedDeferred
-
+    
     def disconnect(self):
         """After finishing outstanding requests, send disconnect command and return Deferred for caller that will get trigger when disconnect is complete
         """
