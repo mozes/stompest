@@ -20,6 +20,7 @@ import logging
 from twisted.internet import defer, reactor
 from twisted.internet.protocol import Factory, Protocol
 from twisted.internet.error import ConnectionLost
+from twisted.internet.endpoints import TCP4ClientEndpoint
 
 from stompest.error import StompConnectTimeout, StompError, StompFrameError, StompProtocolError
 from stompest.protocol import commands
@@ -27,7 +28,6 @@ from stompest.protocol.frame import StompFrame
 from stompest.protocol.parser import StompParser
 from stompest.protocol.spec import StompSpec
 from stompest.util import cloneStompMessage as _cloneStompMessage
-from twisted.internet.endpoints import TCP4ClientEndpoint
 
 LOG_CATEGORY = 'stompest.async'
 
@@ -331,27 +331,18 @@ class StompCreator(object):
         self.alwaysDisconnectOnUnhandledMsg = kwargs.get('alwaysDisconnectOnUnhandledMsg', False)
         self.log = logging.getLogger(LOG_CATEGORY)
         self.stompConnectedDeferred = None
-
+    
+    @defer.inlineCallbacks
     def getConnection(self):
-        self.stompConnectedDeferred = defer.Deferred()
-        self.connect().addCallback(self.connected).addErrback(self.stompConnectedDeferred.errback)
-        return self.stompConnectedDeferred
-
-    def connect(self):
         factory = StompFactory(
             login=self.config.login,
             passcode=self.config.passcode,
             alwaysDisconnectOnUnhandledMsg=self.alwaysDisconnectOnUnhandledMsg
         )
-        return TCP4ClientEndpoint(reactor, self.config.host, self.config.port).connect(factory)
+        stomp = yield TCP4ClientEndpoint(reactor, self.config.host, self.config.port).connect(factory)
+        yield stomp.connect(self.connectTimeout)
+        defer.returnValue(stomp)
     
-    def connected(self, stomp):
-        stomp.connect(self.connectTimeout).addCallback(self.stompConnected).addErrback(self.stompConnectedDeferred.errback)
-
-    def stompConnected(self, stomp):
-        self.stompConnectedDeferred.callback(stomp)
-        self.stompConnectedDeferred = None
-
 class StompFactory(Factory):
     protocol = StompClient
     
