@@ -28,10 +28,10 @@ class Stomp(object):
         self.log = logging.getLogger(LOG_CATEGORY)
         self._login = login
         self._passcode = passcode
-        self._session = _StompSession(uri, _Stomp)
+        self._session = _StompSession(uri, lambda broker: _Stomp(broker['host'], broker['port']))
         self._stomp = None
         
-    def connect(self):
+    def connect(self, **kwargs):
         if self._stomp:
             try: # preserve existing connection
                 self._stomp.canRead(0)
@@ -46,16 +46,16 @@ class Stomp(object):
                     self.log.debug('delaying connect attempt for %d ms' % int(connectDelay * 1000))
                     time.sleep(connectDelay)
                 try:
-                    return self._connect()
+                    return self._connect(**kwargs)
                 except StompConnectionError as e:
                     self.log.warning('could not connect to %s:%d [%s]' % (self._stomp.host, self._stomp.port, e))
         except StompConnectionError as e:
             self.log.error('reconnect failed [%s]' % e)
             raise
 
-    def _connect(self):
+    def _connect(self, **kwargs):
         self.log.debug('connecting to %s:%d ...' % (self._stomp.host, self._stomp.port))
-        result = self._stomp.connect(self._login, self._passcode)
+        result = self._stomp.connect(self._login, self._passcode, **kwargs)
         for headers in self._session.replay():
             self.log.debug('replaying subscription %s' % headers)
             self.subscribe(headers)

@@ -62,7 +62,7 @@ class HandlerExceptionWithErrorQueueIntegrationTestCase(unittest.TestCase):
 
     @defer.inlineCallbacks
     def test_onhandlerException_ackMessage_filterReservedHdrs_send2ErrorQ_and_disconnect(self):
-        config = StompConfig(HOST, PORT)
+        config = StompConfig(uri='tcp://%s:%d' % (HOST, PORT))
         creator = StompCreator(config, alwaysDisconnectOnUnhandledMsg=True)
         
         #Connect
@@ -108,7 +108,7 @@ class HandlerExceptionWithErrorQueueIntegrationTestCase(unittest.TestCase):
 
     @defer.inlineCallbacks
     def test_onhandlerException_ackMessage_filterReservedHdrs_send2ErrorQ_and_no_disconnect(self):
-        config = StompConfig(HOST, PORT)
+        config = StompConfig(uri='tcp://%s:%d' % (HOST, PORT))
         creator = StompCreator(config)
         
         #Connect
@@ -137,7 +137,7 @@ class HandlerExceptionWithErrorQueueIntegrationTestCase(unittest.TestCase):
 
     @defer.inlineCallbacks
     def test_onhandlerException_disconnect(self):
-        config = StompConfig(HOST, PORT)
+        config = StompConfig(uri='tcp://%s:%d' % (HOST, PORT))
         creator = StompCreator(config)
         
         #Connect
@@ -214,10 +214,7 @@ class GracefulDisconnectTestCase(unittest.TestCase):
         
     @defer.inlineCallbacks
     def test_onDisconnect_waitForOutstandingMessagesToFinish(self):
-        self.config = StompConfig(HOST, PORT)
-        self.creator = StompCreator(self.config)
-        
-        config = StompConfig(HOST, PORT)
+        config = StompConfig(uri='tcp://%s:%d' % (HOST, PORT))
         creator = StompCreator(config)
         
         #Connect

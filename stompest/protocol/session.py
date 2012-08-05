@@ -34,7 +34,7 @@ class StompSession(object):
         self._subscriptions = []
         self._maxReconnectAttempts = None
         self._config = StompConfiguration(uri) # syntax of uri: cf. stompest.util
-        stomps = [stompFactory(broker['host'], broker['port']) for broker in self._config.brokers]
+        stomps = [stompFactory(broker) for broker in self._config.brokers]
         self._stomps = ((choice(stomps) if self._config.options['randomize'] else stomp) for stomp in cycle(stomps))
     
     def connections(self):

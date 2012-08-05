@@ -36,14 +36,14 @@ logging.basicConfig(level=logging.DEBUG)
 class AsyncStompClientTestCase(unittest.TestCase):
     
     def test_bad_host_tcp_error(self):
-        config = StompConfig('nosuchhost', 61613)
+        config = StompConfig(uri='tcp://nosuchhost:61613')
         creator = StompCreator(config)
-        return self.assertFailure(creator.getConnection(), error.DNSLookupError)
+        return self.assertFailure(creator.getConnection(), StompConnectTimeout)
 
     def test_bad_port_tcp_error(self):
-        config = StompConfig('localhost', 65535)
+        config = StompConfig(uri='tcp://localhost:65535')
         creator = StompCreator(config)
-        return self.assertFailure(creator.getConnection(), error.ConnectionRefusedError)
+        return self.assertFailure(creator.getConnection(), StompConnectTimeout)
         
     def test_dataReceived_multiple_messages(self):
         hdrs = {'foo': '1'}
@@ -117,7 +117,7 @@ class AsyncClientConnectTimeoutTestCase(AsyncClientBaseTestCase):
     protocol = BlackHoleStompServer
 
     def test_connection_timeout(self):
-        config = StompConfig('localhost', self.testPort)
+        config = StompConfig(uri='tcp://localhost:%d' % self.testPort)
         creator = StompCreator(config, connectTimeout=1)
         return self.assertFailure(creator.getConnection(), StompConnectTimeout)
 
@@ -125,9 +125,9 @@ class AsyncClientConnectErrorTestCase(AsyncClientBaseTestCase):
     protocol = ErrorOnConnectStompServer
 
     def test_stomp_error_before_connected(self):
-        config = StompConfig('localhost', self.testPort)
+        config = StompConfig(uri='tcp://localhost:%d' % self.testPort)
         creator = StompCreator(config)
-        return self.assertFailure(creator.getConnection(), StompProtocolError)
+        return self.assertFailure(creator.getConnection(), StompConnectTimeout)
 
 class AsyncClientErrorAfterConnectedTestCase(AsyncClientBaseTestCase):
     protocol = ErrorOnSendStompServer
@@ -137,7 +137,7 @@ class AsyncClientErrorAfterConnectedTestCase(AsyncClientBaseTestCase):
         self.disconnected = defer.Deferred()
 
     def test_stomp_error_after_connected(self):
-        config = StompConfig('localhost', self.testPort)
+        config = StompConfig(uri='tcp://localhost:%d' % self.testPort)
         creator = StompCreator(config)
         creator.getConnection().addCallback(self.onConnected)
         return self.assertFailure(self.disconnected, StompProtocolError)

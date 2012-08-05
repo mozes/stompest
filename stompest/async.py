@@ -16,16 +16,18 @@ Copyright 2011 Mozes, Inc.
    limitations under the License.
 """
 import logging
+import warnings
 
 from twisted.internet import defer, reactor
-from twisted.internet.protocol import Factory, Protocol
+from twisted.internet.endpoints import clientFromString
 from twisted.internet.error import ConnectionLost
-from twisted.internet.endpoints import TCP4ClientEndpoint
+from twisted.internet.protocol import Factory, Protocol
 
 from stompest.error import StompConnectTimeout, StompError, StompFrameError, StompProtocolError
 from stompest.protocol import commands
 from stompest.protocol.frame import StompFrame
 from stompest.protocol.parser import StompParser
+from stompest.protocol.session import StompSession
 from stompest.protocol.spec import StompSpec
 from stompest.util import cloneStompMessage as _cloneStompMessage
 
@@ -319,29 +321,58 @@ class StompClient(Protocol):
         return self.disconnectedDeferred
     
 class StompConfig(object):
-    def __init__(self, host, port, **kwargs):
-        self.host = host
-        self.port = port
-        self.login = kwargs.get('login', '')
-        self.passcode = kwargs.get('passcode', '')
-        self.log = logging.getLogger(LOG_CATEGORY)
+    def __init__(self, host=None, port=None, uri=None, login='', passcode=''):
+        if not uri:
+            if not (host and port):
+                raise ValueError('host and port missing')
+            uri = 'tcp://%s:%d' % (host, port)
+            warnings.warn('host and port arguments are deprecated. use uri=%s instead!' % uri)
+        self.uri = uri
+        self.login = login
+        self.passcode = passcode
 
 class StompCreator(object):
     def __init__(self, config, connectTimeout=None, **kwargs):
         self.config = config
         self.connectTimeout = connectTimeout
         self.kwargs = kwargs
+        self.log = logging.getLogger(LOG_CATEGORY)
         
-    @defer.inlineCallbacks
+    @defer.inlineCallbacks  
     def getConnection(self):
+        session = StompSession(self.config.uri, self._getEndpoint)
+        try:
+            for (endpoint, connectDelay) in session.connections():
+                if connectDelay:
+                    self.log.debug('delaying connect attempt for %d ms' % int(connectDelay * 1000))
+                    yield self._sleep(connectDelay)
+                    
+                try:
+                    stomp = yield self._getConnection(endpoint)
+                    yield stomp.connect(self.config.login, self.config.passcode, timeout=self.connectTimeout)
+                    defer.returnValue(stomp)
+                    
+                except Exception as e:
+                    self.log.warning('%s [%s]' % ('could not connect to %(host)s:%(port)d' % endpoint.broker, e))
+                
+        except Exception as e:
+            self.log.error('reconnect failed [%s]' % e)
+            raise
+        
+    def _getConnection(self, endpoint):
         factory = StompFactory(**self.kwargs)
-        stomp = yield self._getEndpoint().connect(factory)
-        yield stomp.connect(self.config.login, self.config.passcode, self.connectTimeout)
-        defer.returnValue(stomp)
+        return endpoint.connect(factory)
     
-    def _getEndpoint(self):
-        return TCP4ClientEndpoint(reactor, self.config.host, self.config.port)
+    def _getEndpoint(self, broker):
+        endpoint = clientFromString(reactor, 'tcp:host=%(host)s:port=%(port)d' % broker)
+        endpoint.broker = broker
+        return endpoint
     
+    def _sleep(self, delay):
+        sleep = defer.Deferred()
+        reactor.callLater(delay, sleep.callback, None)
+        return sleep
+
 class StompFactory(Factory):
     protocol = StompClient
     
