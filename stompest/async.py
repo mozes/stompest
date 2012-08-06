@@ -227,8 +227,9 @@ class StompClient(Protocol):
         if self.disconnecting:
             self.log.debug('Disconnecting...ignoring stomp message: %s at destination: %s' % (messageId, dest))
             return
-
-        self.log.debug('Received stomp message %s from destination %s: [%s...].  Headers: %s' % (messageId, dest, msg['body'][:self.MESSAGE_INFO_LENGTH], msg['headers']))
+        
+        if self.log.isEnabledFor(logging.DEBUG):
+            self.log.debug('Received stomp message %s from destination %s: [%s...].  Headers: %s' % (messageId, dest, msg['body'][:self.MESSAGE_INFO_LENGTH], msg['headers']))
         
         #Call message handler (can return deferred to be async)
         self.handlerStarted(messageId)
@@ -311,7 +312,8 @@ class StompClient(Protocol):
         """Do the send command to enqueue a message to a destination
         """
         headers = dict(headers or {})
-        self.log.debug('Sending message to %s: [%s...]' % (dest, msg[:self.MESSAGE_INFO_LENGTH]))
+        if self.log.isEnabledFor(logging.DEBUG):
+            self.log.debug('Sending message to %s: [%s...]' % (dest, msg[:self.MESSAGE_INFO_LENGTH]))
         self.sendFrame(commands.send(dest, msg, headers))
     
     def sendFrame(self, message):
