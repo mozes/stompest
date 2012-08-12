@@ -14,13 +14,11 @@ Copyright 2012 Mozes, Inc.
    See the License for the specific language governing permissions and
    limitations under the License.
 """
+import collections
+import random
+import re
 import socket
 import time
-
-from collections import namedtuple
-from itertools import cycle
-from random import choice, random
-from re import compile
 
 from stompest.error import StompConnectTimeout
 from stompest.protocol.spec import StompSpec
@@ -34,13 +32,16 @@ class StompSession(object):
         self._subscriptions = []
         self._maxReconnectAttempts = None
         self._config = StompConfiguration(uri) # syntax of uri: cf. stompest.util
-        stomps = [stompFactory(broker) for broker in self._config.brokers]
-        self._stomps = ((choice(stomps) if self._config.options['randomize'] else stomp) for stomp in cycle(stomps))
+        self._stomps = [stompFactory(broker) for broker in self._config.brokers]
     
-    def connections(self):
+    def __iter__(self):
         self._reset()
         while True:
-            yield self._stomps.next(), self._delay()
+            stomps = list(self._stomps)
+            if self._config.options['randomize']:
+                random.shuffle(stomps)
+            for stomp in stomps:
+                yield stomp, self._delay()
 
     def replay(self):
         subscriptions, self._subscriptions = self._subscriptions, []
@@ -75,7 +76,7 @@ class StompSession(object):
         remainingTime = self._cutoff - time.time()
         if remainingTime <= 0:
             raise StompConnectTimeout('Reconnect timeout: %d ms'  % options['maxReconnectDelay'])
-        delay = max(0, (min(self._reconnectDelay + (random() * options['reconnectDelayJitter'] / 1000.0), remainingTime)))
+        delay = max(0, (min(self._reconnectDelay + (random.random() * options['reconnectDelayJitter'] / 1000.0), remainingTime)))
         self._reconnectDelay *= (options['backOffMultiplier'] if options['useExponentialBackOff'] else 1)
         return delay
     
@@ -88,12 +89,12 @@ class StompConfiguration(object):
         socket.getfqdn(socket.gethostname())
     ])
     
-    _configurationOption = namedtuple('_configurationOption', ['parser', 'default'])
+    _configurationOption = collections.namedtuple('_configurationOption', ['parser', 'default'])
     _bool = {'true': True, 'false': False}.__getitem__
     
     _FAILOVER_PREFIX = 'failover:'
-    _REGEX_URI = compile('^(?P<protocol>tcp)://(?P<host>[^:]+):(?P<port>\d+)$')
-    _REGEX_BRACKETS =  compile('^\((?P<uri>.+)\)$')
+    _REGEX_URI = re.compile('^(?P<protocol>tcp)://(?P<host>[^:]+):(?P<port>\d+)$')
+    _REGEX_BRACKETS =  re.compile('^\((?P<uri>.+)\)$')
     _SUPPORTED_OPTIONS = { # cf. http://activemq.apache.org/failover-transport-reference.html
         'initialReconnectDelay': _configurationOption(int, 10) # how long to wait before the first reconnect attempt (in ms)
         , 'maxReconnectDelay': _configurationOption(int, 30000) # the maximum amount of time we ever wait between reconnect attempts (in ms)

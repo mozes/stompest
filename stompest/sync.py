@@ -40,7 +40,7 @@ class Stomp(object):
             except StompConnectionError as e:
                 self.log.warning('lost connection to %s:%d [%s]' % (self._stomp.host, self._stomp.port, e))
         try:
-            for (stomp, connectDelay) in self._session.connections():
+            for (stomp, connectDelay) in self._session:
                 self._stomp = stomp
                 if connectDelay:
                     self.log.debug('delaying connect attempt for %d ms' % int(connectDelay * 1000))

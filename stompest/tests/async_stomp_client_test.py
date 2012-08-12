@@ -52,12 +52,12 @@ class AsyncStompClientTestCase(unittest.TestCase):
         frameBytes = 2* str(StompFrame(**frame))
         
         stomp = StompClient()
-        stomp.cmdMap[frame['cmd']] = mock.Mock()
+        stomp._handlers[frame['cmd']] = mock.Mock()
         
         stomp.dataReceived(frameBytes)
         
-        self.assertEquals(2, stomp.cmdMap[frame['cmd']].call_count)
-        stomp.cmdMap[frame['cmd']].assert_called_with({'cmd': frame['cmd'], 'headers': hdrs, 'body': body})
+        self.assertEquals(2, stomp._handlers[frame['cmd']].call_count)
+        stomp._handlers[frame['cmd']].assert_called_with({'cmd': frame['cmd'], 'headers': hdrs, 'body': body})
 
     def test_dataReceived_partial_message(self):
         hdrs = {'foo': '1'}
@@ -67,13 +67,13 @@ class AsyncStompClientTestCase(unittest.TestCase):
         split = 8
         
         stomp = StompClient()
-        stomp.cmdMap[frame['cmd']] = mock.Mock()
+        stomp._handlers[frame['cmd']] = mock.Mock()
         
         stomp.dataReceived(frameBytes[:split])
         stomp.dataReceived(frameBytes[split:])
                 
-        self.assertEquals(1, stomp.cmdMap[frame['cmd']].call_count)
-        stomp.cmdMap[frame['cmd']].assert_called_with({'cmd': frame['cmd'], 'headers': hdrs, 'body': body})
+        self.assertEquals(1, stomp._handlers[frame['cmd']].call_count)
+        stomp._handlers[frame['cmd']].assert_called_with({'cmd': frame['cmd'], 'headers': hdrs, 'body': body})
         
     def test_dataReceived_binary(self):
         body = binascii.a2b_hex('f0000a09')
@@ -82,19 +82,19 @@ class AsyncStompClientTestCase(unittest.TestCase):
         frameBytes = str(StompFrame(**frame))
         
         stomp = StompClient()
-        stomp.cmdMap[frame['cmd']] = mock.Mock()
+        stomp._handlers[frame['cmd']] = mock.Mock()
         
         stomp.dataReceived(frameBytes)
                 
-        self.assertEquals(1, stomp.cmdMap[frame['cmd']].call_count)
-        stomp.cmdMap[frame['cmd']].assert_called_with({'cmd': frame['cmd'], 'headers': hdrs, 'body': body})
+        self.assertEquals(1, stomp._handlers[frame['cmd']].call_count)
+        stomp._handlers[frame['cmd']].assert_called_with({'cmd': frame['cmd'], 'headers': hdrs, 'body': body})
         
     def test_dataReceived_unexpected_exception(self):
         class MyError(Exception):
             pass
         
         stomp = StompClient()
-        stomp.cmdMap['DISCONNECT'] = mock.Mock(side_effect=MyError)
+        stomp._handlers['DISCONNECT'] = mock.Mock(side_effect=MyError)
         
         self.assertRaises(MyError, stomp.dataReceived, str(commands.disconnect()))
 
