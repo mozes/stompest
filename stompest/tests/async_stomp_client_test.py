@@ -18,7 +18,7 @@ import binascii
 import logging
 import mock
 
-from twisted.internet import error, reactor, defer
+from twisted.internet import reactor, defer
 from twisted.internet.protocol import Factory 
 from twisted.python import log
 from twisted.trial import unittest

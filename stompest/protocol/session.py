@@ -59,7 +59,7 @@ class StompSession(object):
     def _reset(self):
         options = self._config.options
         self._cutoff = time.time() + (options['maxReconnectDelay'] / 1000.0)
-        self._reconnectDelay = self._reconnectDelay = options['initialReconnectDelay'] / 1000.0
+        self._reconnectDelay = options['initialReconnectDelay'] / 1000.0
         if self._maxReconnectAttempts is None:
             self._maxReconnectAttempts = options['startupMaxReconnectAttempts']
         else:

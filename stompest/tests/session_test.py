@@ -14,9 +14,12 @@ Copyright 2012 Mozes, Inc.
    See the License for the specific language governing permissions and
    limitations under the License.
 """
+import itertools
+import mock
 import unittest
 
-from stompest.protocol.session import StompConfiguration
+from stompest.error import StompConnectTimeout
+from stompest.protocol.session import StompConfiguration, StompSession
 
 class SessionTest(unittest.TestCase):
     def test_configuration(self):
@@ -53,6 +56,55 @@ class SessionTest(unittest.TestCase):
             'failover:tcp://primary:61616,tcp://secondary:61616)', 'failover:(tcp://primary:61616,tcp://secondary:61616',
         ]:
             self.assertRaises(ValueError, lambda: StompConfiguration(uri))
-
+    
+    def test_session(self):
+        uri = 'failover:tcp://remote1:61615,tcp://localhost:61616,tcp://remote2:61617?randomize=false,startupMaxReconnectAttempts=3,initialReconnectDelay=7,backOffMultiplier=3.0,maxReconnectAttempts=1'
+        stompFactory = mock.Mock()
+        session = StompSession(uri, stompFactory)
+        self.assertEquals(session.version, StompSession.DEFAULT_VERSION)
+        self.assertEquals(stompFactory.mock_calls, map(mock.call, [
+            {'host': 'remote1', 'protocol': 'tcp', 'port': 61615},
+            {'host': 'localhost', 'protocol': 'tcp', 'port': 61616},
+            {'host': 'remote2', 'protocol': 'tcp', 'port': 61617}
+        ]))
+        
+        stompFactory = lambda broker: broker
+        
+        session = StompSession(uri, stompFactory)
+        expectedDelaysAndBrokers = [
+            (0, {'host': 'remote1', 'protocol': 'tcp', 'port': 61615}),
+            (0.007, {'host': 'localhost', 'protocol': 'tcp', 'port': 61616}),
+            (0.021, {'host': 'remote2', 'protocol': 'tcp', 'port': 61617}),
+            (0.063, {'host': 'remote1', 'protocol': 'tcp', 'port': 61615})
+        ]
+        self._test_reconnect(iter(session), expectedDelaysAndBrokers, maxReconnectAttempts=3)
+        
+        expectedDelaysAndBrokers = [
+            (0, {'host': 'remote1', 'protocol': 'tcp', 'port': 61615}),
+            (0.007, {'host': 'localhost', 'protocol': 'tcp', 'port': 61616})
+        ]
+        self._test_reconnect(iter(session), expectedDelaysAndBrokers, maxReconnectAttempts=1)
+        
+        uri = 'failover:(tcp://remote1:61615,tcp://localhost:61616)?randomize=false,startupMaxReconnectAttempts=3,initialReconnectDelay=7,maxReconnectDelay=8'
+        session = StompSession(uri, stompFactory)
+        
+        expectedDelaysAndBrokers = [
+            (0, {'host': 'remote1', 'protocol': 'tcp', 'port': 61615}),
+            (0.007, {'host': 'localhost', 'protocol': 'tcp', 'port': 61616}),
+            (0.008, {'host': 'remote1', 'protocol': 'tcp', 'port': 61615}),
+            (0.008, {'host': 'localhost', 'protocol': 'tcp', 'port': 61616})
+        ]   
+        self._test_reconnect(iter(session), expectedDelaysAndBrokers, maxReconnectAttempts=3)
+        
+    def _test_reconnect(self, brokersAndDelays, expectedDelaysAndBrokers, maxReconnectAttempts):
+        for (n, ((broker, delay), (expectedDelay, expectedBroker))) in enumerate(itertools.izip(brokersAndDelays, expectedDelaysAndBrokers)):
+            self.assertAlmostEquals(delay, expectedDelay, delta=0.0005)
+            self.assertEquals(broker, expectedBroker)
+            
+            if n == maxReconnectAttempts:
+                break
+        
+        self.assertRaises(StompConnectTimeout, brokersAndDelays.next)
+        
 if __name__ == '__main__':
     unittest.main()

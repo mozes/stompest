@@ -73,14 +73,16 @@ class StompClient(Protocol):
         self._connectedDeferred = defer.Deferred()
         return self._connectedDeferred
     
-    def disconnect(self):
+    def disconnect(self, failure=None):
         """After finishing outstanding requests, send disconnect command and return Deferred for caller that will get trigger when disconnect is complete
         """
+        if failure:
+            self._disconnectError = failure
         if not self._disconnecting:
             self._disconnecting = True
             #Send disconnect command after outstanding messages are ack'ed
             defer.maybeDeferred(self._finishHandlers).addBoth(lambda result: self._disconnect())
-
+            
         return self._disconnectedDeferred
     
     def subscribe(self, dest, handler, headers=None, **kwargs):
@@ -115,16 +117,15 @@ class StompClient(Protocol):
     def connectionLost(self, reason):
         """When TCP connection is lost, remove shutdown handler
         """
-        if reason.type == ConnectionLost:
-            msg = 'Disconnected'
-        else:
-            msg = 'Disconnected: %s' % reason.getErrorMessage()
-        self.log.debug(msg)
-            
+        message = 'Disconnected'
+        if reason.type is not ConnectionLost:
+            message = '%s: %s' % (message, reason.getErrorMessage())
+        self.log.debug(message)
+        
         self._cancelConnectTimeout('Network connection was lost')
         self._handleConnectionLostConnect()
         self._handleConnectionLostDisconnect()
-            
+        
         Protocol.connectionLost(self, reason)
     
     def dataReceived(self, data):
@@ -135,11 +136,11 @@ class StompClient(Protocol):
             if not message:
                 break
             try:
-                command = self._handlers[message['cmd']]
+                handler = self._handlers[message['cmd']]
             except KeyError:
                 raise StompFrameError('Unknown STOMP command: %s' % message)
-            command(message)
-
+            handler(message)
+    
     #
     # Methods for sending raw STOMP commands
     #
@@ -161,15 +162,15 @@ class StompClient(Protocol):
         self.log.debug('Sending ACK command for message: %s' % messageId)
         self.sendFrame(commands.ack({StompSpec.MESSAGE_ID_HEADER: messageId}))
     
-    def _write(self, data):
-        #self.log.debug('sending data:\n%s' % data)
-        self.transport.write(data)
-
     def _toFrame(self, message):
         if not isinstance(message, StompFrame):
             message = StompFrame(**message)
         return message
-            
+    
+    def _write(self, data):
+        #self.log.debug('sending data:\n%s' % data)
+        self.transport.write(data)
+
     #
     # Private helper methods
     #
@@ -232,8 +233,7 @@ class StompClient(Protocol):
             self._ack(messageId)
             if not self._alwaysDisconnectOnUnhandledMsg:
                 return
-        self._disconnectError = failure
-        self.disconnect()
+        self.disconnect(failure)
 
     def _connectTimeout(self, timeout):
         self.log.error('Connect command timed out after %s seconds' % timeout)
@@ -353,6 +353,7 @@ class StompCreator(object):
         return endpoint.connect(factory)
     
     def _getEndpoint(self, broker):
+        # TODO: SSL suppport 
         endpoint = clientFromString(reactor, 'tcp:host=%(host)s:port=%(port)d' % broker)
         endpoint.broker = broker
         return endpoint
