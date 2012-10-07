@@ -24,28 +24,48 @@ class SessionTest(unittest.TestCase):
     def test_configuration(self):
         uri = 'tcp://localhost:61613'
         configuration = StompConfiguration(uri)
-        self.assertEqual(configuration.brokers, [{'host': 'localhost', 'protocol': 'tcp', 'port': 61613}])
-        self.assertEqual(configuration.options, {'priorityBackup': False, 'initialReconnectDelay': 10, 'reconnectDelayJitter': 0, 'maxReconnectDelay': 30000, 'backOffMultiplier': 2.0, 'startupMaxReconnectAttempts': 0, 'maxReconnectAttempts': -1, 'useExponentialBackOff': True, 'randomize': True})
+        self.assertEquals(configuration.brokers, [{'host': 'localhost', 'protocol': 'tcp', 'port': 61613}])
+        self.assertEquals(configuration.options, {'priorityBackup': False, 'initialReconnectDelay': 10, 'reconnectDelayJitter': 0, 'maxReconnectDelay': 30000, 'backOffMultiplier': 2.0, 'startupMaxReconnectAttempts': 0, 'maxReconnectAttempts': -1, 'useExponentialBackOff': True, 'randomize': True})
 
         uri = 'tcp://123.456.789.0:61616?randomize=true,maxReconnectAttempts=-1'
         configuration = StompConfiguration(uri)
         self.assertTrue(configuration.options['randomize'])
-        self.assertEqual(configuration.options['maxReconnectAttempts'], -1)
-        self.assertEqual(configuration.brokers, [{'host': '123.456.789.0', 'protocol': 'tcp', 'port': 61616}])
+        self.assertEquals(configuration.options['maxReconnectAttempts'], -1)
+        self.assertEquals(configuration.brokers, [{'host': '123.456.789.0', 'protocol': 'tcp', 'port': 61616}])
 
         uri = 'failover:(tcp://primary:61616,tcp://secondary:61616)?randomize=false,maxReconnectAttempts=2,backOffMultiplier=3.0'
         configuration = StompConfiguration(uri)
-        self.assertEqual(configuration.uri, uri)
+        self.assertEquals(configuration.uri, uri)
         self.assertFalse(configuration.options['randomize'])
-        self.assertEqual(configuration.options['backOffMultiplier'], 3.0)
-        self.assertEqual(configuration.options['maxReconnectAttempts'], 2)
-        self.assertEqual(configuration.brokers, [{'host': 'primary', 'protocol': 'tcp', 'port': 61616}, {'host': 'secondary', 'protocol': 'tcp', 'port': 61616}])
+        self.assertEquals(configuration.options['backOffMultiplier'], 3.0)
+        self.assertEquals(configuration.options['maxReconnectAttempts'], 2)
+        self.assertEquals(configuration.brokers, [{'host': 'primary', 'protocol': 'tcp', 'port': 61616}, {'host': 'secondary', 'protocol': 'tcp', 'port': 61616}])
 
-        uri = 'failover:tcp://remote1:61616,tcp://localhost:61616,tcp://remote2:61616?priorityBackup=true'
+        uri = 'failover:tcp://remote1:61616,tcp://localhost:61616,tcp://127.0.0.1:61615,tcp://remote2:61616?priorityBackup=true,randomize=false'
         configuration = StompConfiguration(uri)
-        self.assertEqual(configuration.options['priorityBackup'], True)
-        self.assertEqual(configuration.brokers, [{'host': 'localhost', 'protocol': 'tcp', 'port': 61616}, {'host': 'remote1', 'protocol': 'tcp', 'port': 61616}, {'host': 'remote2', 'protocol': 'tcp', 'port': 61616}])
-    
+        self.assertEquals(configuration.options['priorityBackup'], True)
+        self.assertEquals(configuration.brokers, [
+            {'host': 'localhost', 'protocol': 'tcp', 'port': 61616},
+            {'host': '127.0.0.1', 'protocol': 'tcp', 'port': 61615},
+            {'host': 'remote1', 'protocol': 'tcp', 'port': 61616},
+            {'host': 'remote2', 'protocol': 'tcp', 'port': 61616}
+        ])
+        
+        uri = 'failover:tcp://remote1:61616,tcp://localhost:61616,tcp://127.0.0.1:61615,tcp://remote2:61616?priorityBackup=true,randomize=true'
+        localShuffled = remoteShuffled = 0
+        localHosts = ['localhost', '127.0.0.1']
+        remoteHosts = ['remote1', 'remote2']
+        while (localShuffled * remoteShuffled) == 0:
+            configuration = StompConfiguration(uri)
+            self.assertEquals(configuration.options['priorityBackup'], True)
+            hosts = [broker['host'] for broker in configuration.brokers]
+            self.assertEquals(set(hosts[:2]), set(localHosts))
+            if (hosts[:2] != localHosts):
+                localShuffled += 1
+            self.assertEquals(set(hosts[2:]), set(remoteHosts))
+            if (hosts[2:] != remoteHosts):
+                remoteShuffled += 1
+        
     def test_configuration_invalid_uris(self):
         for uri in [
             'ssl://localhost:61613', 'tcp://:61613', 'tcp://61613', 'tcp:localhost:61613', 'tcp:/localhost',
@@ -61,12 +81,8 @@ class SessionTest(unittest.TestCase):
         stompFactory = mock.Mock()
         session = StompSession(uri, stompFactory)
         self.assertEquals(session.version, StompSession.DEFAULT_VERSION)
-        self.assertEquals(stompFactory.mock_calls, map(mock.call, [
-            {'host': 'remote1', 'protocol': 'tcp', 'port': 61615},
-            {'host': 'localhost', 'protocol': 'tcp', 'port': 61616},
-            {'host': 'remote2', 'protocol': 'tcp', 'port': 61617}
-        ]))
-    
+        self.assertEquals(stompFactory.mock_calls, map(mock.call, []))
+        
     def test_session_reconnect(self):
         uri = 'failover:tcp://remote1:61615,tcp://localhost:61616,tcp://remote2:61617?randomize=false,startupMaxReconnectAttempts=3,initialReconnectDelay=7,backOffMultiplier=3.0,maxReconnectAttempts=1'
         stompFactory = lambda broker: broker
@@ -154,6 +170,6 @@ class SessionTest(unittest.TestCase):
         
         headersWithoutDestination = {'bla2': 'bla3'}
         self.assertRaises(StompError, lambda: session.subscribe(headersWithoutDestination))
-        
+    
 if __name__ == '__main__':
     unittest.main()

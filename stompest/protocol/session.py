@@ -31,15 +31,12 @@ class StompSession(object):
         self._subscriptions = []
         self._maxReconnectAttempts = None
         self._config = StompConfiguration(uri) # syntax of uri: cf. stompest.util
-        self._stomps = [stompFactory(broker) for broker in self._config.brokers]
+        self._stompFactory = stompFactory
     
     def __iter__(self):
         self._reset()
         while True:
-            stomps = list(self._stomps)
-            if self._config.options['randomize']:
-                random.shuffle(stomps)
-            for stomp in stomps:
+            for stomp in (self._stompFactory(broker) for broker in self._config.brokers):
                 yield stomp, self._delay()
 
     def replay(self):
@@ -113,7 +110,20 @@ class StompConfiguration(object):
         self._parse(uri)
         self.login = login
         self.passcode = passcode
-        
+    
+    @property
+    def brokers(self):
+        brokers = list(self._brokers)
+        if self.options['randomize']:
+            random.shuffle(brokers)
+        if self.options['priorityBackup']:
+            brokers.sort(key=lambda b: b['host'] in self._localHostNames, reverse=True)
+        return brokers
+    
+    @brokers.setter
+    def brokers(self, brokers):
+        self._brokers = brokers
+    
     def _parse(self, uri):
         self.uri = uri
         try:
@@ -137,12 +147,10 @@ class StompConfiguration(object):
     def _setBrokers(self, uri):
         brackets = self._REGEX_BRACKETS.match(uri)
         uri = brackets.groupdict()['uri'] if brackets else uri
-        _brokers = [self._REGEX_URI.match(u).groupdict() for u in uri.split(',')]
-        for broker in _brokers:
+        brokers = [self._REGEX_URI.match(u).groupdict() for u in uri.split(',')]
+        for broker in brokers:
             broker['port'] = int(broker['port'])
-        if self.options['priorityBackup']:
-            _brokers.sort(key=lambda b: b['host'] in self._localHostNames, reverse=True)
-        self.brokers = _brokers
+        self.brokers = brokers
 
     def _setOptions(self, options=None):
         _options = dict((k, o.default) for (k, o) in self._SUPPORTED_OPTIONS.iteritems())
