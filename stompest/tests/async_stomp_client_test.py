@@ -14,19 +14,15 @@ Copyright 2011, 2012 Mozes, Inc.
    See the License for the specific language governing permissions and
    limitations under the License.
 """
-import binascii
 import logging
-import mock
 
-from twisted.internet import reactor, defer
+from twisted.internet import defer, reactor
 from twisted.internet.protocol import Factory 
 from twisted.python import log
 from twisted.trial import unittest
 
-from stompest.async import StompClient, StompConfig, StompCreator
-from stompest.error import StompConnectTimeout, StompFrameError, StompProtocolError
-from stompest.protocol import commands
-from stompest.protocol.frame import StompFrame
+from stompest.async import StompConfig, StompCreator
+from stompest.error import StompConnectTimeout, StompProtocolError
 from stompest.tests.broker_simulator import BlackHoleStompServer, ErrorOnConnectStompServer, ErrorOnSendStompServer
 
 observer = log.PythonLoggingObserver()
@@ -102,7 +98,5 @@ if __name__ == '__main__':
     sys.argv.extend([sys.argv[0]])
     trial.run()
 
-    
-        
         
         
