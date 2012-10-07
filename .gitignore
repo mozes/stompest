@@ -9,3 +9,4 @@ _trial_temp
 .pydevproject
 build/
 dist/
+/.settings
