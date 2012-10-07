@@ -51,17 +51,10 @@ class SimpleStompIntegrationTest(unittest.TestCase):
         stomp.disconnect()
 
     def test_2_timeout(self):
-        timeout = 150
-        initialReconnectDelay = .01
-        tolerance = initialReconnectDelay
+        tolerance = .01
         
         stomp = Stomp('failover:(tcp://localhost:61614,tcp://localhost:61615)?startupMaxReconnectAttempts=2,backOffMultiplier=3')
         expectedTimeout = time.time() + 40 / 1000.0 # 40 ms = 10 ms + 3 * 10 ms
-        self.assertRaises(StompConnectionError, stomp.connect)
-        self.assertTrue(abs(time.time() - expectedTimeout) < tolerance)
-        
-        stomp = Stomp('failover:(tcp://localhost:61614,tcp://localhost:61615)?startupMaxReconnectAttempts=5,maxReconnectDelay=%d,useExponentialBackOff=false,initialReconnectDelay=30,reconnectDelayJitter=5' % timeout)
-        expectedTimeout = time.time() + timeout / 1000.0
         self.assertRaises(StompConnectionError, stomp.connect)
         self.assertTrue(abs(time.time() - expectedTimeout) < tolerance)
         
