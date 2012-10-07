@@ -33,73 +33,6 @@ observer = log.PythonLoggingObserver()
 observer.start()
 logging.basicConfig(level=logging.DEBUG)
 
-class AsyncStompClientTestCase(unittest.TestCase):
-    
-    def test_bad_host_tcp_error(self):
-        config = StompConfig(uri='tcp://nosuchhost:61613')
-        creator = StompCreator(config)
-        return self.assertFailure(creator.getConnection(), StompConnectTimeout)
-
-    def test_bad_port_tcp_error(self):
-        config = StompConfig(uri='tcp://localhost:65535')
-        creator = StompCreator(config)
-        return self.assertFailure(creator.getConnection(), StompConnectTimeout)
-        
-    def test_dataReceived_multiple_messages(self):
-        hdrs = {'foo': '1'}
-        body = 'blah'
-        frame = {'cmd': 'MESSAGE', 'headers': hdrs, 'body': body}
-        frameBytes = 2* str(StompFrame(**frame))
-        
-        stomp = StompClient()
-        stomp._handlers[frame['cmd']] = mock.Mock()
-        
-        stomp.dataReceived(frameBytes)
-        
-        self.assertEquals(2, stomp._handlers[frame['cmd']].call_count)
-        stomp._handlers[frame['cmd']].assert_called_with({'cmd': frame['cmd'], 'headers': hdrs, 'body': body})
-
-    def test_dataReceived_partial_message(self):
-        hdrs = {'foo': '1'}
-        body = 'blah'
-        frame = {'cmd': 'MESSAGE', 'headers': hdrs, 'body': body}
-        frameBytes = str(StompFrame(**frame))
-        split = 8
-        
-        stomp = StompClient()
-        stomp._handlers[frame['cmd']] = mock.Mock()
-        
-        stomp.dataReceived(frameBytes[:split])
-        stomp.dataReceived(frameBytes[split:])
-                
-        self.assertEquals(1, stomp._handlers[frame['cmd']].call_count)
-        stomp._handlers[frame['cmd']].assert_called_with({'cmd': frame['cmd'], 'headers': hdrs, 'body': body})
-        
-    def test_dataReceived_binary(self):
-        body = binascii.a2b_hex('f0000a09')
-        hdrs = {'foo': '1', 'content-length': str(len(body))}
-        frame = {'cmd': 'MESSAGE', 'headers': hdrs, 'body': body}
-        frameBytes = str(StompFrame(**frame))
-        
-        stomp = StompClient()
-        stomp._handlers[frame['cmd']] = mock.Mock()
-        
-        stomp.dataReceived(frameBytes)
-                
-        self.assertEquals(1, stomp._handlers[frame['cmd']].call_count)
-        stomp._handlers[frame['cmd']].assert_called_with({'cmd': frame['cmd'], 'headers': hdrs, 'body': body})
-        
-    def test_dataReceived_unexpected_exception(self):
-        class MyError(Exception):
-            pass
-        
-        stomp = StompClient()
-        stomp._handlers['DISCONNECT'] = mock.Mock(side_effect=MyError)
-        
-        self.assertRaises(MyError, stomp.dataReceived, str(commands.disconnect()))
-
-    def test_dataReceived_bad_command(self):
-        self.assertRaises(StompFrameError, StompClient().dataReceived, 'BAD_CMD\n\n\x00\n')
 
 class AsyncClientBaseTestCase(unittest.TestCase):
     protocol = None
@@ -118,7 +51,7 @@ class AsyncClientConnectTimeoutTestCase(AsyncClientBaseTestCase):
 
     def test_connection_timeout(self):
         config = StompConfig(uri='tcp://localhost:%d' % self.testPort)
-        creator = StompCreator(config, connectTimeout=1)
+        creator = StompCreator(config, connectTimeout=0.01)
         return self.assertFailure(creator.getConnection(), StompConnectTimeout)
 
 class AsyncClientConnectErrorTestCase(AsyncClientBaseTestCase):
@@ -138,6 +71,23 @@ class AsyncClientErrorAfterConnectedTestCase(AsyncClientBaseTestCase):
 
     def test_stomp_error_after_connected(self):
         config = StompConfig(uri='tcp://localhost:%d' % self.testPort)
+        creator = StompCreator(config)
+        creator.getConnection().addCallback(self.onConnected)
+        return self.assertFailure(self.disconnected, StompProtocolError)
+
+    def onConnected(self, stomp):
+        stomp.getDisconnectedDeferred().chainDeferred(self.disconnected)
+        stomp.send('/queue/fake', 'fake message')
+
+class AsyncClientFailoverTestCase(AsyncClientBaseTestCase):
+    protocol = ErrorOnSendStompServer
+
+    def setUp(self):
+        AsyncClientBaseTestCase.setUp(self)
+        self.disconnected = defer.Deferred()
+
+    def test_failover_stomp_error_after_connected(self):
+        config = StompConfig(uri='failover:(tcp://nosuchhost:65535,tcp://localhost:%d)?startupMaxReconnectAttempts=1,initialReconnectDelay=0,randomize=false' % self.testPort)
         creator = StompCreator(config)
         creator.getConnection().addCallback(self.onConnected)
         return self.assertFailure(self.disconnected, StompProtocolError)

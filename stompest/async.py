@@ -18,7 +18,7 @@ Copyright 2011 Mozes, Inc.
 import logging
 import warnings
 
-from twisted.internet import defer, reactor
+from twisted.internet import defer, reactor, task
 from twisted.internet.endpoints import clientFromString
 from twisted.internet.error import ConnectionLost
 from twisted.internet.protocol import Factory, Protocol
@@ -359,9 +359,7 @@ class StompCreator(object):
         return endpoint
     
     def _sleep(self, delay):
-        sleep = defer.Deferred()
-        reactor.callLater(delay, sleep.callback, None)
-        return sleep
+        return task.deferLater(reactor, delay, lambda: None)
 
 class StompFactory(Factory):
     protocol = StompClient
