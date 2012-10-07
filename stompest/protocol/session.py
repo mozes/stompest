@@ -18,9 +18,8 @@ import collections
 import random
 import re
 import socket
-import time
 
-from stompest.error import StompConnectTimeout
+from stompest.error import StompConnectTimeout, StompError
 from stompest.protocol.spec import StompSpec
 
 class StompSession(object):
@@ -48,18 +47,19 @@ class StompSession(object):
         return subscriptions
 
     def subscribe(self, headers):
+        if StompSpec.DESTINATION_HEADER not in headers:
+            raise StompError('invalid subscription (destination header missing) [%s]' % headers)
         self._subscriptions.append(dict(headers))
     
     def unsubscribe(self, headers):
         if StompSpec.ID_HEADER in headers:
-            self._subscriptions = [h for h in self._subscriptions if h.get(StompSpec.ID_HEADER) != headers[StompSpec.ID_HEADER]]
+            self._subscriptions = [h for h in self._subscriptions if (StompSpec.ID_HEADER not in h) or (h[StompSpec.ID_HEADER] != headers[StompSpec.ID_HEADER])]
         else:
             self._subscriptions = [h for h in self._subscriptions if h[StompSpec.DESTINATION_HEADER] != headers[StompSpec.DESTINATION_HEADER]]
     
     def _reset(self):
         options = self._config.options
-        self._cutoff = time.time() + (options['maxReconnectDelay'] / 1000.0)
-        self._reconnectDelay = options['initialReconnectDelay'] / 1000.0
+        self._reconnectDelay = options['initialReconnectDelay']
         if self._maxReconnectAttempts is None:
             self._maxReconnectAttempts = options['startupMaxReconnectAttempts']
         else:
@@ -73,12 +73,9 @@ class StompSession(object):
             return 0
         if (self._maxReconnectAttempts != -1) and (self._reconnectAttempts > self._maxReconnectAttempts):
             raise StompConnectTimeout('Reconnect timeout: %d attempts'  % self._maxReconnectAttempts)
-        remainingTime = self._cutoff - time.time()
-        if remainingTime <= 0:
-            raise StompConnectTimeout('Reconnect timeout: %d ms'  % options['maxReconnectDelay'])
-        delay = max(0, (min(self._reconnectDelay + (random.random() * options['reconnectDelayJitter'] / 1000.0), remainingTime)))
+        delay = max(0, (min(self._reconnectDelay + (random.random() * options['reconnectDelayJitter']), options['maxReconnectDelay'])))
         self._reconnectDelay *= (options['backOffMultiplier'] if options['useExponentialBackOff'] else 1)
-        return delay
+        return delay / 1000.0
     
 class StompConfiguration(object):
     _localHostNames = set([

@@ -14,11 +14,10 @@ Copyright 2012 Mozes, Inc.
    See the License for the specific language governing permissions and
    limitations under the License.
 """
-import itertools
 import mock
 import unittest
 
-from stompest.error import StompConnectTimeout
+from stompest.error import StompConnectTimeout, StompError
 from stompest.protocol.session import StompConfiguration, StompSession
 
 class SessionTest(unittest.TestCase):
@@ -57,8 +56,8 @@ class SessionTest(unittest.TestCase):
         ]:
             self.assertRaises(ValueError, lambda: StompConfiguration(uri))
     
-    def test_session(self):
-        uri = 'failover:tcp://remote1:61615,tcp://localhost:61616,tcp://remote2:61617?randomize=false,startupMaxReconnectAttempts=3,initialReconnectDelay=7,backOffMultiplier=3.0,maxReconnectAttempts=1'
+    def test_session_init(self):
+        uri = 'failover:tcp://remote1:61615,tcp://localhost:61616,tcp://remote2:61617?randomize=false'
         stompFactory = mock.Mock()
         session = StompSession(uri, stompFactory)
         self.assertEquals(session.version, StompSession.DEFAULT_VERSION)
@@ -67,7 +66,9 @@ class SessionTest(unittest.TestCase):
             {'host': 'localhost', 'protocol': 'tcp', 'port': 61616},
             {'host': 'remote2', 'protocol': 'tcp', 'port': 61617}
         ]))
-        
+    
+    def test_session_reconnect(self):
+        uri = 'failover:tcp://remote1:61615,tcp://localhost:61616,tcp://remote2:61617?randomize=false,startupMaxReconnectAttempts=3,initialReconnectDelay=7,backOffMultiplier=3.0,maxReconnectAttempts=1'
         stompFactory = lambda broker: broker
         
         session = StompSession(uri, stompFactory)
@@ -77,15 +78,15 @@ class SessionTest(unittest.TestCase):
             (0.021, {'host': 'remote2', 'protocol': 'tcp', 'port': 61617}),
             (0.063, {'host': 'remote1', 'protocol': 'tcp', 'port': 61615})
         ]
-        self._test_reconnect(iter(session), expectedDelaysAndBrokers, maxReconnectAttempts=3)
+        self._test_session_reconnect(iter(session), expectedDelaysAndBrokers)
         
         expectedDelaysAndBrokers = [
             (0, {'host': 'remote1', 'protocol': 'tcp', 'port': 61615}),
             (0.007, {'host': 'localhost', 'protocol': 'tcp', 'port': 61616})
         ]
-        self._test_reconnect(iter(session), expectedDelaysAndBrokers, maxReconnectAttempts=1)
+        self._test_session_reconnect(iter(session), expectedDelaysAndBrokers)
         
-        uri = 'failover:(tcp://remote1:61615,tcp://localhost:61616)?randomize=false,startupMaxReconnectAttempts=3,initialReconnectDelay=7,maxReconnectDelay=8'
+        uri = 'failover:(tcp://remote1:61615,tcp://localhost:61616)?randomize=false,startupMaxReconnectAttempts=3,initialReconnectDelay=7,maxReconnectDelay=8,maxReconnectAttempts=0'
         session = StompSession(uri, stompFactory)
         
         expectedDelaysAndBrokers = [
@@ -94,17 +95,65 @@ class SessionTest(unittest.TestCase):
             (0.008, {'host': 'remote1', 'protocol': 'tcp', 'port': 61615}),
             (0.008, {'host': 'localhost', 'protocol': 'tcp', 'port': 61616})
         ]   
-        self._test_reconnect(iter(session), expectedDelaysAndBrokers, maxReconnectAttempts=3)
+        self._test_session_reconnect(iter(session), expectedDelaysAndBrokers)
         
-    def _test_reconnect(self, brokersAndDelays, expectedDelaysAndBrokers, maxReconnectAttempts):
-        for (n, ((broker, delay), (expectedDelay, expectedBroker))) in enumerate(itertools.izip(brokersAndDelays, expectedDelaysAndBrokers)):
-            self.assertAlmostEquals(delay, expectedDelay, delta=0.0005)
+        expectedDelaysAndBrokers = [
+            (0, {'host': 'remote1', 'protocol': 'tcp', 'port': 61615})
+        ]   
+        self._test_session_reconnect(iter(session), expectedDelaysAndBrokers)
+        
+        uri = 'failover:(tcp://remote1:61615,tcp://localhost:61616,tcp://remote2:61617)?randomize=false,priorityBackup=true,startupMaxReconnectAttempts=3'
+        session = StompSession(uri, stompFactory)
+        
+        expectedDelaysAndBrokers = [
+            (0, {'host': 'localhost', 'protocol': 'tcp', 'port': 61616}),
+            (0.01, {'host': 'remote1', 'protocol': 'tcp', 'port': 61615}),
+            (0.02, {'host': 'remote2', 'protocol': 'tcp', 'port': 61617}),
+            (0.04, {'host': 'localhost', 'protocol': 'tcp', 'port': 61616})
+        ]   
+        self._test_session_reconnect(iter(session), expectedDelaysAndBrokers)
+        
+    def _test_session_reconnect(self, brokersAndDelays, expectedDelaysAndBrokers):
+        for (expectedDelay, expectedBroker) in expectedDelaysAndBrokers:
+            broker, delay = brokersAndDelays.next()
+            self.assertEquals(delay, expectedDelay)
             self.assertEquals(broker, expectedBroker)
             
-            if n == maxReconnectAttempts:
-                break
-        
         self.assertRaises(StompConnectTimeout, brokersAndDelays.next)
+    
+    def test_session_subscribe(self):
+        uri = 'tcp://remote1:61615'
+        stompFactory = lambda broker: broker
+        
+        session = StompSession(uri, stompFactory)
+        
+        headers = {'destination': 'bla1', 'bla2': 'bla3'}
+        session.subscribe(headers)
+        
+        headersWithId1 = {'destination': 'bla2', 'id': 'bla2', 'bla3': 'bla4'}
+        session.subscribe(headersWithId1)
+        
+        headersWithId2 = {'destination': 'bla2', 'id': 'bla3', 'bla4': 'bla5'}
+        session.subscribe(headersWithId2)
+        
+        subscriptions = session.replay()
+        self.assertEquals(subscriptions, [headers, headersWithId1, headersWithId2])
+        self.assertEquals(session.replay(), [])
+        
+        for header in subscriptions:
+            session.subscribe(header)
+        session.unsubscribe({'id': headersWithId1['id']})
+        
+        subscriptions = session.replay()
+        self.assertEquals(subscriptions, [headers, headersWithId2])
+        
+        for header in subscriptions:
+            session.subscribe(header)
+        session.unsubscribe(headers)
+        self.assertEquals(session.replay(), [headersWithId2])
+        
+        headersWithoutDestination = {'bla2': 'bla3'}
+        self.assertRaises(StompError, lambda: session.subscribe(headersWithoutDestination))
         
 if __name__ == '__main__':
     unittest.main()
