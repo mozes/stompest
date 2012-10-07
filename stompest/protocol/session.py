@@ -14,30 +14,24 @@ Copyright 2012 Mozes, Inc.
    See the License for the specific language governing permissions and
    limitations under the License.
 """
-import collections
-import random
-import re
-import socket
-
-from stompest.error import StompConnectTimeout, StompError
+from stompest.error import StompError
 from stompest.protocol.spec import StompSpec
+from stompest.protocol.failover import StompFailoverProtocol
 
 class StompSession(object):
-    SUPPORTED_VERSIONS = ['1.0']
+    SUPPORTED_VERSIONS = ['1.0', '1.1']
     DEFAULT_VERSION = '1.0'
     
     def __init__(self, uri, stompFactory, version=None):
-        self.version = version or self.DEFAULT_VERSION
+        self.version = version
         self._subscriptions = []
         self._maxReconnectAttempts = None
-        self._config = StompConfiguration(uri) # syntax of uri: cf. stompest.util
+        self._protocol = StompFailoverProtocol(uri) # syntax of uri: cf. stompest.util
         self._stompFactory = stompFactory
     
     def __iter__(self):
-        self._reset()
-        while True:
-            for stomp in (self._stompFactory(broker) for broker in self._config.brokers):
-                yield stomp, self._delay()
+        for broker, delay in self._protocol:
+            yield self._stompFactory(broker), delay
 
     def replay(self):
         subscriptions, self._subscriptions = self._subscriptions, []
@@ -46,115 +40,26 @@ class StompSession(object):
     def subscribe(self, headers):
         if StompSpec.DESTINATION_HEADER not in headers:
             raise StompError('invalid subscription (destination header missing) [%s]' % headers)
+        if (self.version != '1.0') and (StompSpec.ID_HEADER not in headers):
+            raise StompError('invalid subscription (id header missing) [%s]' % headers)
         self._subscriptions.append(dict(headers))
     
     def unsubscribe(self, headers):
+        if (self.version != '1.0') and (StompSpec.ID_HEADER not in headers):
+            raise StompError('invalid unsubscription (id header missing) [%s]' % headers)
         if StompSpec.ID_HEADER in headers:
             self._subscriptions = [h for h in self._subscriptions if (StompSpec.ID_HEADER not in h) or (h[StompSpec.ID_HEADER] != headers[StompSpec.ID_HEADER])]
         else:
             self._subscriptions = [h for h in self._subscriptions if h[StompSpec.DESTINATION_HEADER] != headers[StompSpec.DESTINATION_HEADER]]
     
-    def _reset(self):
-        options = self._config.options
-        self._reconnectDelay = options['initialReconnectDelay']
-        if self._maxReconnectAttempts is None:
-            self._maxReconnectAttempts = options['startupMaxReconnectAttempts']
-        else:
-            self._maxReconnectAttempts = options['maxReconnectAttempts']
-        self._reconnectAttempts = -1
-        
-    def _delay(self):
-        options = self._config.options
-        self._reconnectAttempts += 1
-        if self._reconnectAttempts == 0:
-            return 0
-        if (self._maxReconnectAttempts != -1) and (self._reconnectAttempts > self._maxReconnectAttempts):
-            raise StompConnectTimeout('Reconnect timeout: %d attempts'  % self._maxReconnectAttempts)
-        delay = max(0, (min(self._reconnectDelay + (random.random() * options['reconnectDelayJitter']), options['maxReconnectDelay'])))
-        self._reconnectDelay *= (options['backOffMultiplier'] if options['useExponentialBackOff'] else 1)
-        return delay / 1000.0
-    
-class StompConfiguration(object):
-    _localHostNames = set([
-        'localhost',
-        '127.0.0.1',
-        socket.gethostbyname(socket.gethostname()),
-        socket.gethostname(),
-        socket.getfqdn(socket.gethostname())
-    ])
-    
-    _configurationOption = collections.namedtuple('_configurationOption', ['parser', 'default'])
-    _bool = {'true': True, 'false': False}.__getitem__
-    
-    _FAILOVER_PREFIX = 'failover:'
-    _REGEX_URI = re.compile('^(?P<protocol>tcp)://(?P<host>[^:]+):(?P<port>\d+)$')
-    _REGEX_BRACKETS =  re.compile('^\((?P<uri>.+)\)$')
-    _SUPPORTED_OPTIONS = { # cf. http://activemq.apache.org/failover-transport-reference.html
-        'initialReconnectDelay': _configurationOption(int, 10) # how long to wait before the first reconnect attempt (in ms)
-        , 'maxReconnectDelay': _configurationOption(int, 30000) # the maximum amount of time we ever wait between reconnect attempts (in ms)
-        , 'useExponentialBackOff': _configurationOption(_bool, True) # should an exponential backoff be used between reconnect attempts
-        , 'backOffMultiplier': _configurationOption(float, 2.0) # the exponent used in the exponential backoff attempts
-        , 'maxReconnectAttempts': _configurationOption(int, -1) # -1 is default and means retry forever, 0 means don't retry (only try connection once but no retry), >0 means the maximum number of reconnect attempts before an error is sent back to the client
-        , 'startupMaxReconnectAttempts': _configurationOption(int, 0) # if not 0, then this is the maximum number of reconnect attempts before an error is sent back to the client on the first attempt by the client to start a connection, once connected the maxReconnectAttempts option takes precedence
-        , 'reconnectDelayJitter': _configurationOption(int, 0) # jitter in ms by which reconnect delay is blurred in order to avoid stampeding
-        , 'randomize': _configurationOption(_bool, True) # use a random algorithm to choose the the URI to use for reconnect from the list provided
-        , 'priorityBackup': _configurationOption(_bool, False) # if set, prefer local connections to remote connections
-        #, 'backup': _configurationOption(_bool, False), # initialize and hold a second transport connection - to enable fast failover
-        #, 'timeout': _configurationOption(int, -1), # enables timeout on send operations (in miliseconds) without interruption of reconnection process
-        #, 'trackMessages': _configurationOption(_bool, False), # keep a cache of in-flight messages that will flushed to a broker on reconnect
-        #, 'maxCacheSize': _configurationOption(int, 131072), # size in bytes for the cache, if trackMessages is enabled
-        #, 'updateURIsSupported': _configurationOption(_bool, True), # determines whether the client should accept updates to its list of known URIs from the connected broker
-    }
-    
-    def __init__(self, uri, login='', passcode=''):
-        self._parse(uri)
-        self.login = login
-        self.passcode = passcode
-    
     @property
-    def brokers(self):
-        brokers = list(self._brokers)
-        if self.options['randomize']:
-            random.shuffle(brokers)
-        if self.options['priorityBackup']:
-            brokers.sort(key=lambda b: b['host'] in self._localHostNames, reverse=True)
-        return brokers
+    def version(self):
+        return self._version
     
-    @brokers.setter
-    def brokers(self, brokers):
-        self._brokers = brokers
-    
-    def _parse(self, uri):
-        self.uri = uri
-        try:
-            (uri, _, options) = uri.partition('?')
-            if uri.startswith(self._FAILOVER_PREFIX):
-                (_, _, uri) = uri.partition(self._FAILOVER_PREFIX)
-            
-            try:
-                self._setOptions(options)
-            except Exception, msg:
-                raise ValueError('invalid options: %s' % msg)
-            
-            try:
-                self._setBrokers(uri)
-            except Exception, msg:
-                raise ValueError('invalid broker(s): %s' % msg)
-            
-        except ValueError, msg:
-            raise ValueError('invalid uri: %s [%s]' % (self.uri, msg))
-    
-    def _setBrokers(self, uri):
-        brackets = self._REGEX_BRACKETS.match(uri)
-        uri = brackets.groupdict()['uri'] if brackets else uri
-        brokers = [self._REGEX_URI.match(u).groupdict() for u in uri.split(',')]
-        for broker in brokers:
-            broker['port'] = int(broker['port'])
-        self.brokers = brokers
-
-    def _setOptions(self, options=None):
-        _options = dict((k, o.default) for (k, o) in self._SUPPORTED_OPTIONS.iteritems())
-        if options:
-            _options.update((k, self._SUPPORTED_OPTIONS[k].parser(v)) for (k, _, v) in (o.partition('=') for o in options.split(',')))
-        self.options = _options
+    @version.setter
+    def version(self, version):
+        version = version or self.DEFAULT_VERSION
+        if version not in self.SUPPORTED_VERSIONS:
+            raise StompError('version is not supported [%s]' % version)
+        self._version = version
 
