@@ -32,15 +32,16 @@ class StompFailoverProtocol(object):
             for broker in self._brokers():
                 yield broker, self._delay()
     
-    def _reset(self):
-        options = self._config.options
-        self._reconnectDelay = options['initialReconnectDelay']
-        if self._maxReconnectAttempts is None:
-            self._maxReconnectAttempts = options['startupMaxReconnectAttempts']
-        else:
-            self._maxReconnectAttempts = options['maxReconnectAttempts']
-        self._reconnectAttempts = -1
-        
+    def _brokers(self):
+        config = self._config
+        options = config.options
+        brokers = list(config.brokers)
+        if options['randomize']:
+            random.shuffle(brokers)
+        if options['priorityBackup']:
+            brokers.sort(key=lambda b: b['host'] in config.LOCAL_HOST_NAMES, reverse=True)
+        return brokers
+    
     def _delay(self):
         options = self._config.options
         self._reconnectAttempts += 1
@@ -52,16 +53,15 @@ class StompFailoverProtocol(object):
         self._reconnectDelay *= (options['backOffMultiplier'] if options['useExponentialBackOff'] else 1)
         return delay / 1000.0
 
-    def _brokers(self):
-        config = self._config
-        options = config.options
-        brokers = list(config.brokers)
-        if options['randomize']:
-            random.shuffle(brokers)
-        if options['priorityBackup']:
-            brokers.sort(key=lambda b: b['host'] in config.LOCAL_HOST_NAMES, reverse=True)
-        return brokers
-    
+    def _reset(self):
+        options = self._config.options
+        self._reconnectDelay = options['initialReconnectDelay']
+        if self._maxReconnectAttempts is None:
+            self._maxReconnectAttempts = options['startupMaxReconnectAttempts']
+        else:
+            self._maxReconnectAttempts = options['maxReconnectAttempts']
+        self._reconnectAttempts = -1
+        
 class StompConfiguration(object):
     LOCAL_HOST_NAMES = set([
         'localhost',
