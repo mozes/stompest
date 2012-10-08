@@ -25,7 +25,6 @@ class StompSession(object):
     def __init__(self, uri, stompFactory, version=None):
         self.version = version
         self._subscriptions = []
-        self._maxReconnectAttempts = None
         self._protocol = StompFailoverProtocol(uri) # syntax of uri: cf. stompest.util
         self._stompFactory = stompFactory
     
@@ -37,20 +36,20 @@ class StompSession(object):
         subscriptions, self._subscriptions = self._subscriptions, []
         return subscriptions
 
-    def subscribe(self, headers):
+    def subscribe(self, headers, context=None):
         if StompSpec.DESTINATION_HEADER not in headers:
             raise StompError('invalid subscription (destination header missing) [%s]' % headers)
         if (self.version != '1.0') and (StompSpec.ID_HEADER not in headers):
             raise StompError('invalid subscription (id header missing) [%s]' % headers)
-        self._subscriptions.append(dict(headers))
+        self._subscriptions.append((dict(headers), context))
     
     def unsubscribe(self, headers):
         if (self.version != '1.0') and (StompSpec.ID_HEADER not in headers):
             raise StompError('invalid unsubscription (id header missing) [%s]' % headers)
         if StompSpec.ID_HEADER in headers:
-            self._subscriptions = [h for h in self._subscriptions if (StompSpec.ID_HEADER not in h) or (h[StompSpec.ID_HEADER] != headers[StompSpec.ID_HEADER])]
+            self._subscriptions = [(h, c) for (h, c) in self._subscriptions if (StompSpec.ID_HEADER not in h) or (h[StompSpec.ID_HEADER] != headers[StompSpec.ID_HEADER])]
         else:
-            self._subscriptions = [h for h in self._subscriptions if h[StompSpec.DESTINATION_HEADER] != headers[StompSpec.DESTINATION_HEADER]]
+            self._subscriptions = [(h, c) for (h, c) in self._subscriptions if h[StompSpec.DESTINATION_HEADER] != headers[StompSpec.DESTINATION_HEADER]]
     
     @property
     def version(self):

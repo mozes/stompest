@@ -23,7 +23,7 @@ from stompest.error import StompConnectTimeout
 
 class StompFailoverProtocol(object):
     def __init__(self, uri):
-        self._config = StompConfiguration(uri)
+        self._failoverUri = StompFailoverUri(uri)
         self._maxReconnectAttempts = None
     
     def __iter__(self):
@@ -33,17 +33,17 @@ class StompFailoverProtocol(object):
                 yield broker, self._delay()
     
     def _brokers(self):
-        config = self._config
-        options = config.options
-        brokers = list(config.brokers)
+        failoverUri = self._failoverUri
+        options = failoverUri.options
+        brokers = list(failoverUri.brokers)
         if options['randomize']:
             random.shuffle(brokers)
         if options['priorityBackup']:
-            brokers.sort(key=lambda b: b['host'] in config.LOCAL_HOST_NAMES, reverse=True)
+            brokers.sort(key=lambda b: b['host'] in failoverUri.LOCAL_HOST_NAMES, reverse=True)
         return brokers
     
     def _delay(self):
-        options = self._config.options
+        options = self._failoverUri.options
         self._reconnectAttempts += 1
         if self._reconnectAttempts == 0:
             return 0
@@ -54,7 +54,7 @@ class StompFailoverProtocol(object):
         return delay / 1000.0
 
     def _reset(self):
-        options = self._config.options
+        options = self._failoverUri.options
         self._reconnectDelay = options['initialReconnectDelay']
         if self._maxReconnectAttempts is None:
             self._maxReconnectAttempts = options['startupMaxReconnectAttempts']
@@ -62,7 +62,7 @@ class StompFailoverProtocol(object):
             self._maxReconnectAttempts = options['maxReconnectAttempts']
         self._reconnectAttempts = -1
         
-class StompConfiguration(object):
+class StompFailoverUri(object):
     LOCAL_HOST_NAMES = set([
         'localhost',
         '127.0.0.1',
@@ -98,6 +98,12 @@ class StompConfiguration(object):
         self._parse(uri)
         self.login = login
         self.passcode = passcode
+    
+    def __repr__(self):
+        return "StompFailoverUri('%s')" % self.uri
+    
+    def __str__(self):
+        return self.uri
     
     def _parse(self, uri):
         self.uri = uri

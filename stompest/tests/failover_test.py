@@ -18,24 +18,24 @@ import itertools
 import unittest
 
 from stompest.error import StompConnectTimeout
-from stompest.protocol.failover import StompConfiguration, StompFailoverProtocol
+from stompest.protocol.failover import StompFailoverUri, StompFailoverProtocol
 
-class StompConfigurationTest(unittest.TestCase):
+class StompFailoverUriTest(unittest.TestCase):
     def test_configuration(self):
         uri = 'tcp://localhost:61613'
-        configuration = StompConfiguration(uri)
+        configuration = StompFailoverUri(uri)
         self.assertEquals(configuration.brokers, [{'host': 'localhost', 'protocol': 'tcp', 'port': 61613}])
         self.assertEquals(configuration.options, {'priorityBackup': False, 'initialReconnectDelay': 10, 'reconnectDelayJitter': 0, 'maxReconnectDelay': 30000, 'backOffMultiplier': 2.0, 'startupMaxReconnectAttempts': 0, 'maxReconnectAttempts': -1, 'useExponentialBackOff': True, 'randomize': True})
 
         uri = 'tcp://123.456.789.0:61616?randomize=true,maxReconnectAttempts=-1,priorityBackup=true'
-        configuration = StompConfiguration(uri)
+        configuration = StompFailoverUri(uri)
         self.assertTrue(configuration.options['randomize'])
         self.assertEquals(configuration.options['priorityBackup'], True)
         self.assertEquals(configuration.options['maxReconnectAttempts'], -1)
         self.assertEquals(configuration.brokers, [{'host': '123.456.789.0', 'protocol': 'tcp', 'port': 61616}])
 
         uri = 'failover:(tcp://primary:61616,tcp://secondary:61616)?randomize=false,maxReconnectAttempts=2,backOffMultiplier=3.0'
-        configuration = StompConfiguration(uri)
+        configuration = StompFailoverUri(uri)
         self.assertEquals(configuration.uri, uri)
         self.assertFalse(configuration.options['randomize'])
         self.assertEquals(configuration.options['backOffMultiplier'], 3.0)
@@ -53,7 +53,7 @@ class StompConfigurationTest(unittest.TestCase):
             'failover:(tcp://primary:61616, tcp://secondary:61616)', 'failover:tcp://primary:61616, tcp://secondary:61616',
             'failover:tcp://primary:61616,tcp://secondary:61616)', 'failover:(tcp://primary:61616,tcp://secondary:61616',
         ]:
-            self.assertRaises(ValueError, lambda: StompConfiguration(uri))
+            self.assertRaises(ValueError, lambda: StompFailoverUri(uri))
 
 class StompFailoverTest(unittest.TestCase):
     def test_time_scales_and_reconnect_attempts(self):

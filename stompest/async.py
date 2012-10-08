@@ -30,6 +30,7 @@ from stompest.protocol.parser import StompParser
 from stompest.protocol.session import StompSession
 from stompest.protocol.spec import StompSpec
 from stompest.util import cloneStompMessage as _cloneStompMessage
+from stompest.protocol.failover import StompFailoverUri
 
 LOG_CATEGORY = 'stompest.async'
 
@@ -95,7 +96,7 @@ class StompClient(Protocol):
         headers[StompSpec.ACK_HEADER] = headers.get(StompSpec.ACK_HEADER, 'client')
         self._destinations[dest] = {'handler': handler, StompSpec.ACK_HEADER: headers[StompSpec.ACK_HEADER], 'errorDestination': errorDestination}
         self._subscribe(dest, headers)
-    
+        
     def send(self, dest, msg='', headers=None):
         """Do the send command to enqueue a message to a destination
         """
@@ -316,11 +317,32 @@ class StompConfig(object):
                 raise ValueError('host and port missing')
             uri = 'tcp://%s:%d' % (host, port)
             warnings.warn('host and port arguments are deprecated. use uri=%s instead!' % uri)
-        self.uri = uri
+        self.failoverUri = StompFailoverUri(uri)
         self.login = login
         self.passcode = passcode
-
+        
 class StompCreator(object):
+    def __init__(self, config, connectTimeout=None, **kwargs):
+        self.config = config
+        self.connectTimeout = connectTimeout
+        self.kwargs = kwargs
+        self.log = logging.getLogger(LOG_CATEGORY)
+    
+    @defer.inlineCallbacks  
+    def getConnection(self, endpoint=None):
+        endpoint = endpoint or self._createEndpoint()
+        stomp = yield endpoint.connect(StompFactory(**self.kwargs))
+        yield stomp.connect(self.config.login, self.config.passcode, timeout=self.connectTimeout)
+        defer.returnValue(stomp)
+        
+    def _createEndpoint(self):
+        brokers = self.config.failoverUri.brokers
+        if len(brokers) != 1:
+            raise ValueError('invalid URI: %s' % self.config.failoverUri)
+        return createEndpoint(brokers[0])
+
+"""
+class StompFailoverClient(object):
     def __init__(self, config, connectTimeout=None, **kwargs):
         self.config = config
         self.connectTimeout = connectTimeout
@@ -337,8 +359,12 @@ class StompCreator(object):
                     yield self._sleep(connectDelay)
                     
                 try:
-                    stomp = yield self._getConnection(endpoint)
+                    stomp = yield self._getConnection(session, endpoint)
                     yield stomp.connect(self.config.login, self.config.passcode, timeout=self.connectTimeout)
+                    for (headers, context) in session.replay():
+                        self.log.debug('replaying subscription %s' % headers)
+                        stomp.subscribe(context['dest'], headers, context['handler'], **context['kwargs'])
+                    
                     defer.returnValue(stomp)
                     
                 except Exception as e:
@@ -348,26 +374,25 @@ class StompCreator(object):
             self.log.error('reconnect failed [%s]' % e)
             raise
         
-    def _getConnection(self, endpoint):
+    def _getConnection(self, session, endpoint):
         factory = StompFactory(**self.kwargs)
         return endpoint.connect(factory)
     
-    def _getEndpoint(self, broker):
-        # TODO: SSL suppport 
-        endpoint = clientFromString(reactor, 'tcp:host=%(host)s:port=%(port)d' % broker)
-        endpoint.broker = broker
-        return endpoint
-    
     def _sleep(self, delay):
         return task.deferLater(reactor, delay, lambda: None)
+"""
 
 class StompFactory(Factory):
     protocol = StompClient
     
     def __init__(self, **kwargs):
-        self.kwargs = kwargs
+        self._kwargs = kwargs
         
     def buildProtocol(self, addr):
-        protocol = self.protocol(**self.kwargs)
+        protocol = self.protocol(**self._kwargs)
         protocol.factory = self
         return protocol
+
+def createEndpoint(broker):
+    # TODO: SSL suppport (enrich broker dict with SSL config entries)
+    return clientFromString(reactor, '%(protocol)s:host=%(host)s:port=%(port)d' % broker)

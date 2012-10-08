@@ -74,7 +74,7 @@ class SimpleStompIntegrationTest(unittest.TestCase):
         stomp.send(self.DEST, 'test message 1')
         headers = {StompSpec.DESTINATION_HEADER: self.DEST, StompSpec.ACK_HEADER: 'client-individual'}
         stomp.subscribe(headers)
-        self.assertEqual(stomp._session._subscriptions, [headers])
+        self.assertEqual(stomp._session._subscriptions, [(headers, None)])
         stomp._stomp.socket.close()
         self.assertRaises(StompConnectionError, stomp.receiveFrame)
         stomp.connect()
@@ -84,7 +84,7 @@ class SimpleStompIntegrationTest(unittest.TestCase):
         stomp.send(self.DEST, 'test message 2')
         headers = {StompSpec.DESTINATION_HEADER: self.DEST, 'id': 'bla', StompSpec.ACK_HEADER: 'client-individual'}
         stomp.subscribe(headers)
-        self.assertEqual(stomp._session._subscriptions, [headers])
+        self.assertEqual(stomp._session._subscriptions, [(headers, None)])
         stomp._stomp.socket.close()
         self.assertRaises(StompConnectionError, stomp.receiveFrame)
         stomp.connect()

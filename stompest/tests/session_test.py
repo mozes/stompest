@@ -58,20 +58,20 @@ class StompSessionTest(unittest.TestCase):
         session.subscribe(headersWithId2)
         
         subscriptions = session.replay()
-        self.assertEquals(subscriptions, [headers, headersWithId1, headersWithId2])
+        self.assertEquals(subscriptions, [(headers, None), (headersWithId1, None), (headersWithId2, None)])
         self.assertEquals(session.replay(), [])
         
-        for header in subscriptions:
+        for header, _ in subscriptions:
             session.subscribe(header)
         session.unsubscribe({'id': headersWithId1['id']})
         
         subscriptions = session.replay()
-        self.assertEquals(subscriptions, [headers, headersWithId2])
+        self.assertEquals(subscriptions, [(headers, None), (headersWithId2, None)])
         
-        for header in subscriptions:
+        for header, _ in subscriptions:
             session.subscribe(header)
         session.unsubscribe(headers)
-        self.assertEquals(session.replay(), [headersWithId2])
+        self.assertEquals(session.replay(), [(headersWithId2, None)])
         
         headersWithoutDestination = {'bla2': 'bla3'}
         self.assertRaises(StompError, lambda: session.subscribe(headersWithoutDestination))
@@ -82,7 +82,7 @@ class StompSessionTest(unittest.TestCase):
         session.subscribe(headersWithId1)
         session.subscribe(headersWithId2)
         session.unsubscribe(headersWithId1)
-        self.assertEquals(session.replay(), [headersWithId2])
+        self.assertEquals(session.replay(), [(headersWithId2, None)])
         
 if __name__ == '__main__':
     unittest.main()

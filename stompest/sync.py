@@ -56,14 +56,13 @@ class Stomp(object):
     def _connect(self, **kwargs):
         self.log.debug('connecting to %s:%d ...' % (self._stomp.host, self._stomp.port))
         result = self._stomp.connect(self._login, self._passcode, **kwargs)
-        for headers in self._session.replay():
+        for (headers, _) in self._session.replay():
             self.log.debug('replaying subscription %s' % headers)
             self.subscribe(headers)
         self.log.info('connection established to %s:%d' % (self._stomp.host, self._stomp.port))
         return result
     
     def disconnect(self):
-        self._subscriptions = []
         return self._stomp.disconnect()
 
     def canRead(self, timeout=None):
