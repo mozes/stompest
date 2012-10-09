@@ -28,38 +28,38 @@ class Stomp(object):
         self.log = logging.getLogger(LOG_CATEGORY)
         self._login = login
         self._passcode = passcode
-        self._session = _StompSession(uri, lambda broker: _Stomp(broker['host'], broker['port']))
+        self._session = _StompSession(uri, stompFactory=lambda broker: _Stomp(broker['host'], broker['port']))
         self._stomp = None
         
     def connect(self, **kwargs):
         if self._stomp:
             try: # preserve existing connection
                 self._stomp.canRead(0)
-                self.log.warning('already connected to %s:%d' % (self._stomp.host, self._stomp.port))
+                self.log.warning('Already connected to %s:%d' % (self._stomp.host, self._stomp.port))
                 return
             except StompConnectionError as e:
-                self.log.warning('lost connection to %s:%d [%s]' % (self._stomp.host, self._stomp.port, e))
+                self.log.warning('Lost connection to %s:%d [%s]' % (self._stomp.host, self._stomp.port, e))
         try:
             for (stomp, connectDelay) in self._session:
                 self._stomp = stomp
                 if connectDelay:
-                    self.log.debug('delaying connect attempt for %d ms' % int(connectDelay * 1000))
+                    self.log.debug('Delaying connect attempt for %d ms' % int(connectDelay * 1000))
                     time.sleep(connectDelay)
                 try:
                     return self._connect(**kwargs)
                 except StompConnectionError as e:
-                    self.log.warning('could not connect to %s:%d [%s]' % (self._stomp.host, self._stomp.port, e))
+                    self.log.warning('Could not connect to %s:%d [%s]' % (self._stomp.host, self._stomp.port, e))
         except StompConnectionError as e:
-            self.log.error('reconnect failed [%s]' % e)
+            self.log.error('Reconnect failed [%s]' % e)
             raise
 
     def _connect(self, **kwargs):
-        self.log.debug('connecting to %s:%d ...' % (self._stomp.host, self._stomp.port))
+        self.log.debug('Connecting to %s:%d ...' % (self._stomp.host, self._stomp.port))
         result = self._stomp.connect(self._login, self._passcode, **kwargs)
         for (headers, _) in self._session.replay():
-            self.log.debug('replaying subscription %s' % headers)
+            self.log.debug('Replaying subscription %s' % headers)
             self.subscribe(headers)
-        self.log.info('connection established to %s:%d' % (self._stomp.host, self._stomp.port))
+        self.log.info('Connection established to %s:%d' % (self._stomp.host, self._stomp.port))
         return result
     
     def disconnect(self):

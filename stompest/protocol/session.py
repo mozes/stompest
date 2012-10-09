@@ -22,11 +22,11 @@ class StompSession(object):
     SUPPORTED_VERSIONS = ['1.0', '1.1']
     DEFAULT_VERSION = '1.0'
     
-    def __init__(self, uri, stompFactory, version=None):
+    def __init__(self, uri, version=None, stompFactory=None):
         self.version = version
         self._subscriptions = []
         self._protocol = StompFailoverProtocol(uri) # syntax of uri: cf. stompest.util
-        self._stompFactory = stompFactory
+        self._stompFactory = stompFactory or (lambda broker: broker)
     
     def __iter__(self):
         for broker, delay in self._protocol:

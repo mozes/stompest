@@ -75,25 +75,6 @@ class AsyncClientErrorAfterConnectedTestCase(AsyncClientBaseTestCase):
         stomp.getDisconnectedDeferred().chainDeferred(self.disconnected)
         stomp.send('/queue/fake', 'fake message')
 
-"""
-class AsyncClientFailoverTestCase(AsyncClientBaseTestCase):
-    protocol = ErrorOnSendStompServer
-
-    def setUp(self):
-        AsyncClientBaseTestCase.setUp(self)
-        self.disconnected = defer.Deferred()
-
-    def test_failover_stomp_error_after_connected(self):
-        config = StompConfig(uri='failover:(tcp://nosuchhost:65535,tcp://localhost:%d)?startupMaxReconnectAttempts=1,initialReconnectDelay=0,randomize=false' % self.testPort)
-        creator = StompCreator(config)
-        creator.getConnection().addCallback(self.onConnected)
-        return self.assertFailure(self.disconnected, StompProtocolError)
-
-    def onConnected(self, stomp):
-        stomp.getDisconnectedDeferred().chainDeferred(self.disconnected)
-        stomp.send('/queue/fake', 'fake message')
-"""
-
 if __name__ == '__main__':
     import sys
     from twisted.scripts import trial
