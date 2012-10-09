@@ -20,15 +20,33 @@ from twisted.internet import defer
 from twisted.python import log
 
 from stompest.async import StompConfig, StompFailoverClient
-from stompest.error import StompProtocolError
+from stompest.error import StompConnectTimeout, StompProtocolError
 from stompest.tests.async_stomp_client_test import AsyncClientBaseTestCase
-from stompest.tests.broker_simulator import ErrorOnSendStompServer
+from stompest.tests.broker_simulator import BlackHoleStompServer, ErrorOnConnectStompServer, ErrorOnSendStompServer
 
 observer = log.PythonLoggingObserver()
 observer.start()
 logging.basicConfig(level=logging.DEBUG)
 
-class AsyncClientFailoverTestCase(AsyncClientBaseTestCase):
+class AsyncFailoverClientConnectTimeoutTestCase(AsyncClientBaseTestCase):
+    protocol = BlackHoleStompServer
+
+    def test_connection_timeout(self):
+        config = StompConfig(uri='tcp://localhost:%d' % self.testPort)
+        client = StompFailoverClient(config, connectTimeout=0.01)
+        return self.assertFailure(client.connect(), StompConnectTimeout)
+
+"""
+class AsyncFailoverClientConnectErrorTestCase(AsyncClientBaseTestCase):
+    protocol = ErrorOnConnectStompServer
+
+    def test_stomp_error_before_connected(self):
+        config = StompConfig(uri='tcp://localhost:%d' % self.testPort)
+        client = StompFailoverClient(config)
+        return self.assertFailure(client.connect(), StompProtocolError)
+"""
+
+class AsyncFailoverClientErrorAfterConnectedTestCase(AsyncClientBaseTestCase):
     protocol = ErrorOnSendStompServer
 
     def setUp(self):
@@ -41,15 +59,13 @@ class AsyncClientFailoverTestCase(AsyncClientBaseTestCase):
         client.connect().addCallback(self.onConnected)
         return self.assertFailure(self.disconnected, StompProtocolError)
 
-    def onConnected(self, stomp):
-        stomp.getDisconnectedDeferred().chainDeferred(self.disconnected)
-        stomp.send('/queue/fake', 'fake message')
+    def onConnected(self, client):
+        client.getDisconnectedDeferred().chainDeferred(self.disconnected)
+        client.send('/queue/fake', 'fake message')
 
 if __name__ == '__main__':
     import sys
     from twisted.scripts import trial
     sys.argv.extend([sys.argv[0]])
     trial.run()
-
-        
-        
+       
