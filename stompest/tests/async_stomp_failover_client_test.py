@@ -28,6 +28,7 @@ observer = log.PythonLoggingObserver()
 observer.start()
 logging.basicConfig(level=logging.DEBUG)
 
+
 class AsyncFailoverClientConnectTimeoutTestCase(AsyncClientBaseTestCase):
     protocol = BlackHoleStompServer
 
@@ -66,7 +67,6 @@ class AsyncFailoverClientErrorAfterConnectedTestCase(AsyncClientBaseTestCase):
         yield client.connect()
         client.getDisconnectedDeferred().chainDeferred(deferred)
         client.send('/queue/fake', 'fake message')
-
 """
 class AsyncFailoverClientFailoverOnDisconnectTestCase(AsyncClientBaseTestCase):
     protocol = DisconnectOnSendStompServer
@@ -74,16 +74,17 @@ class AsyncFailoverClientFailoverOnDisconnectTestCase(AsyncClientBaseTestCase):
     def test_failover_stomp_failover_on_disconnect(self):
         config = StompConfig(uri='failover:(tcp://localhost:%d,tcp://nosuchhost:65535)?startupMaxReconnectAttempts=0,initialReconnectDelay=0,randomize=false,maxReconnectAttempts=1' % self.testPort)
         client = StompFailoverClient(config)
-        d = client.getReconnectedDeferred().addCallback(self.onReconnect)
-        self._connect_and_send(client)
+        deferred = defer.Deferred()
+        self._connect_and_send(client, deferred)
         
-        return d
+        return deferred.addCallback(self.assertEqual, client)
         
     @defer.inlineCallbacks
-    def _connect_and_send(self, client):
+    def _connect_and_send(self, client, deferred):
         yield client.connect()
+        client.getReconnectedDeferred().chainDeferred(deferred).addCallback(lambda _: client.disconnect())
         client.send('/queue/fake', 'fake message')
-
+        
     def onReconnect(self, reason):
         print 20 * '$', reason
         reason.disconnect()

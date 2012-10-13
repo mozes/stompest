@@ -353,7 +353,6 @@ class StompFailoverClient(object):
         self._kwargs = kwargs
         
         self._session = StompSession(self._config.uri)
-        self._brokersAndDelays = iter(self._session)
         self._stomp = None
         
         self._connecting = None
@@ -398,7 +397,7 @@ class StompFailoverClient(object):
             raise StompError('Already connected')
 
         try:
-            for (broker, delay) in self._brokersAndDelays:
+            for (broker, delay) in self._session:
                 yield self._sleep(delay)   
                 
                 endpoint = _endpointFactory(broker)
@@ -441,6 +440,7 @@ class StompFailoverClient(object):
     def _handleStompDisconnected(self, result):
         self.log.debug('Handling disconnected deferred callback: %s' % result)
         self._stomp = None
+        
         disconnected, self._disconnected = self._disconnected, None
         disconnected.callback(result)
     
@@ -448,6 +448,7 @@ class StompFailoverClient(object):
     def _handleStompDisconnectedError(self, failure):
         self.log.debug('Handling disconnected deferred errback: %s' % failure)
         self._stomp = None
+        
         if failure.check(StompConnectionError):
             self.log.warning('Connection lost unxepectedly. Attempting to reconnect ...')
             reconnected, self._reconnected = self._reconnected, defer.Deferred()
