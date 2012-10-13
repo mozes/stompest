@@ -25,28 +25,26 @@ class StompSessionTest(unittest.TestCase):
     def test_session_init(self):
         uri = 'failover:tcp://remote1:61615,tcp://localhost:61616,tcp://remote2:61617?randomize=false'
         stompFactory = mock.Mock()
-        session = StompSession(uri, stompFactory)
+        session = StompSession(uri, stompFactory=stompFactory)
         self.assertEquals(session.version, StompSession.DEFAULT_VERSION)
         self.assertEquals(stompFactory.mock_calls, map(mock.call, []))
 
-        session = StompSession(uri, stompFactory, version='1.1')
+        session = StompSession(uri, '1.1', stompFactory)
         self.assertEquals(session.version, '1.1')
         
-        self.assertRaises(StompError, lambda: StompSession(uri, stompFactory, version='1.2'))
+        self.assertRaises(StompError, lambda: StompSession(uri, version='1.2', stompFactory=stompFactory))
 
     def _test_session_failover(self):
         uri = 'failover:tcp://remote1:61615,tcp://localhost:61616,tcp://remote2:61617?randomize=false,startupMaxReconnectAttempts=3,initialReconnectDelay=7,backOffMultiplier=3.0,maxReconnectAttempts=1'
-        stompFactory = lambda broker: broker
-        session = iter(StompSession(uri, stompFactory))
+        session = iter(StompSession(uri))
         protocol = StompFailoverProtocol(uri)
         self.assertEquals(itertools.islice(session, 4), itertools.islice(protocol, 4))
         self.assertRaises(StompConnectTimeout, session.next)
         
     def test_session_subscribe(self):
         uri = 'tcp://remote1:61615'
-        stompFactory = lambda broker: broker
         
-        session = StompSession(uri, stompFactory)
+        session = StompSession(uri)
         
         headers = {'destination': 'bla1', 'bla2': 'bla3'}
         session.subscribe(headers)
@@ -76,7 +74,7 @@ class StompSessionTest(unittest.TestCase):
         headersWithoutDestination = {'bla2': 'bla3'}
         self.assertRaises(StompError, lambda: session.subscribe(headersWithoutDestination))
     
-        session = StompSession(uri, stompFactory, version='1.1')
+        session = StompSession(uri, version='1.1')
         self.assertRaises(StompError, lambda: session.subscribe(headers))
         self.assertRaises(StompError, lambda: session.unsubscribe(headers))
         session.subscribe(headersWithId1)

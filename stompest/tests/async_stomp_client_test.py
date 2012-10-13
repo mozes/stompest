@@ -61,18 +61,15 @@ class AsyncClientConnectErrorTestCase(AsyncClientBaseTestCase):
 class AsyncClientErrorAfterConnectedTestCase(AsyncClientBaseTestCase):
     protocol = ErrorOnSendStompServer
 
-    def setUp(self):
-        AsyncClientBaseTestCase.setUp(self)
-        self.disconnected = defer.Deferred()
-        
     def test_stomp_error_after_connected(self):
         config = StompConfig(uri='tcp://localhost:%d' % self.testPort)
         creator = StompCreator(config)
-        creator.getConnection().addCallback(self.onConnected)
-        return self.assertFailure(self.disconnected, StompProtocolError)
+        deferred = defer.Deferred()
+        creator.getConnection().addCallback(self.onConnected, deferred)
+        return self.assertFailure(deferred, StompProtocolError)
     
-    def onConnected(self, stomp):
-        stomp.getDisconnectedDeferred().chainDeferred(self.disconnected)
+    def onConnected(self, stomp, deferred):
+        stomp.getDisconnectedDeferred().chainDeferred(deferred)
         stomp.send('/queue/fake', 'fake message')
 
 if __name__ == '__main__':

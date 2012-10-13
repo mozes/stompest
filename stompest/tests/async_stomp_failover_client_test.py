@@ -36,7 +36,11 @@ class AsyncFailoverClientConnectTimeoutTestCase(AsyncClientBaseTestCase):
         client = StompFailoverClient(config, connectTimeout=0.01)
         return self.assertFailure(client.connect(), StompConnectTimeout)
 
-"""
+    def test_connection_timeout_after_failover(self):
+        config = StompConfig(uri='failover:(tcp://nosuchhost:65535,tcp://localhost:%d)?startupMaxReconnectAttempts=2,initialReconnectDelay=0,randomize=false' % self.testPort)
+        client = StompFailoverClient(config, connectTimeout=0.01)
+        return self.assertFailure(client.connect(), StompConnectTimeout)
+
 class AsyncFailoverClientConnectErrorTestCase(AsyncClientBaseTestCase):
     protocol = ErrorOnConnectStompServer
 
@@ -44,23 +48,19 @@ class AsyncFailoverClientConnectErrorTestCase(AsyncClientBaseTestCase):
         config = StompConfig(uri='tcp://localhost:%d' % self.testPort)
         client = StompFailoverClient(config)
         return self.assertFailure(client.connect(), StompProtocolError)
-"""
 
 class AsyncFailoverClientErrorAfterConnectedTestCase(AsyncClientBaseTestCase):
     protocol = ErrorOnSendStompServer
 
-    def setUp(self):
-        AsyncClientBaseTestCase.setUp(self)
-        self.disconnected = defer.Deferred()
-
     def test_failover_stomp_error_after_connected(self):
         config = StompConfig(uri='failover:(tcp://nosuchhost:65535,tcp://localhost:%d)?startupMaxReconnectAttempts=1,initialReconnectDelay=0,randomize=false' % self.testPort)
         client = StompFailoverClient(config)
-        client.connect().addCallback(self.onConnected)
-        return self.assertFailure(self.disconnected, StompProtocolError)
+        deferred = defer.Deferred()
+        client.connect().addCallback(self.onConnected, deferred)
+        return self.assertFailure(deferred, StompProtocolError)
 
-    def onConnected(self, client):
-        client.getDisconnectedDeferred().chainDeferred(self.disconnected)
+    def onConnected(self, client, deferred):
+        client.getDisconnectedDeferred().chainDeferred(deferred)
         client.send('/queue/fake', 'fake message')
 
 if __name__ == '__main__':

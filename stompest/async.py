@@ -34,6 +34,9 @@ from stompest.protocol.failover import StompFailoverUri
 
 LOG_CATEGORY = 'stompest.async'
 
+def _endpointFactory(broker):
+    return clientFromString(reactor, '%(protocol)s:host=%(host)s:port=%(port)d' % broker)
+
 class StompClient(Protocol):
     """A Twisted implementation of a STOMP client"""
     MESSAGE_INFO_LENGTH = 20
@@ -339,7 +342,7 @@ class StompCreator(object):
         brokers = StompFailoverUri(self.config.uri).brokers
         if len(brokers) != 1:
             raise ValueError('failover URI is not supported [%s]' % self.config.failoverUri)
-        return createEndpoint(brokers[0])
+        return _endpointFactory(brokers[0])
 
 class StompFactory(Factory):
     protocol = StompClient
@@ -351,10 +354,6 @@ class StompFactory(Factory):
         protocol = self.protocol(**self._kwargs)
         protocol.factory = self
         return protocol
-
-def createEndpoint(broker):
-    # TODO: SSL suppport (enrich broker dict with SSL config entries)
-    return clientFromString(reactor, '%(protocol)s:host=%(host)s:port=%(port)d' % broker)
 
 class StompFailoverClient(object):
     def __init__(self, config, connectTimeout=None, **kwargs):
@@ -368,7 +367,7 @@ class StompFailoverClient(object):
         self.log = logging.getLogger(LOG_CATEGORY)
         
     @defer.inlineCallbacks  
-    def connect(self):
+    def connect(self, endpointFactory=None):
         if self._stomp:
             raise StompError('already connected')
         
@@ -376,23 +375,26 @@ class StompFailoverClient(object):
             for (broker, delay) in self._session:
                 yield self._sleep(delay)   
                 
+                endpoint = (endpointFactory or _endpointFactory)(broker)
+                self.log.debug('Connecting to %(host)s:%(port)s ...' % broker)
                 try:
-                    yield self._connect(broker)
+                    stomp = yield endpoint.connect(StompFactory(**self._kwargs))
                 except Exception as e:
                     self.log.warning('%s [%s]' % ('Could not connect to %(host)s:%(port)d' % broker, e))
                     continue
                 
-                yield self._replay()
+                yield self._connect(stomp)
                 defer.returnValue(self)
             
         except Exception as e:
-            self.log.error('reconnect failed [%s]' % e)
+            self.log.error('Connect failed [%s]' % e)
             raise
     
     def getDisconnectedDeferred(self):
         return self._stomp and self._stomp.getDisconnectedDeferred()
     
     # STOMP commands
+    
     def disconnect(self, *args, **kwargs):
         self._stomp.disconnect(*args, **kwargs)
         
@@ -405,29 +407,31 @@ class StompFailoverClient(object):
     def subscribe(self, *args, **kwargs):
         self._stomp.subscribe(*args, **kwargs)
     
-    # private methods 
+    # private methods
+    
     @defer.inlineCallbacks
-    def _connect(self, broker):
-        self.log.debug('Connecting to %(host)s:%(port)s ...' % broker)
-        stomp = yield createEndpoint(broker).connect(StompFactory(**self._kwargs))
+    def _connect(self, stomp):
         self._stomp = yield stomp.connect(self._config.login, self._config.passcode, timeout=self._connectTimeout)
         self._stomp.getDisconnectedDeferred().addCallbacks(self._handleDisconnected, self._handleDisconnectedError)
-        
-    def _handleDisconnected(self, _):
+        yield self._replay()
+    
+    def _handleDisconnected(self, result):
+        self.log.debug('Handling disconnected deferred callback: %s' % result)
         self._stomp = None
         
     def _handleDisconnectedError(self, error):
+        self.log.debug('Handling disconnected deferred errback: %s' % error)
         self._stomp = None
         if error.check(StompProtocolError):
             return error
-        self.connect()
-        
+        return self.connect()
+    
     @defer.inlineCallbacks
     def _replay(self):
         for (headers, context) in self._session.replay():
             self.log.debug('Replaying subscription %s' % headers)
             yield self._stomp.subscribe(context['dest'], headers, context['handler'], **context['kwargs'])
-
+    
     def _sleep(self, delay):
         if not delay:
             return
