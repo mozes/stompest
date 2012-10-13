@@ -57,14 +57,14 @@ class AsyncFailoverClientErrorAfterConnectedTestCase(AsyncClientBaseTestCase):
         
         client = StompFailoverClient(config)
         deferred = defer.Deferred()
-        client.getDisconnectedDeferred().chainDeferred(deferred)
-        self._connect_and_send(client)
+        self._connect_and_send(client, deferred)
         
         return self.assertFailure(deferred, StompProtocolError)
     
     @defer.inlineCallbacks
-    def _connect_and_send(self, client):
+    def _connect_and_send(self, client, deferred):
         yield client.connect()
+        client.getDisconnectedDeferred().chainDeferred(deferred)
         client.send('/queue/fake', 'fake message')
 
 """

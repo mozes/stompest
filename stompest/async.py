@@ -35,9 +35,6 @@ from stompest.protocol.failover import StompFailoverUri
 
 LOG_CATEGORY = 'stompest.async'
 
-def _endpointFactory(broker):
-    return clientFromString(reactor, '%(protocol)s:host=%(host)s:port=%(port)d' % broker)
-
 class StompClient(Protocol):
     """A Twisted implementation of a STOMP client"""
     MESSAGE_INFO_LENGTH = 20
@@ -316,17 +313,17 @@ class StompClient(Protocol):
         """
         self.log.info('Received stomp receipt: %s' % msg)
 
-class StompConfig(object):
-    def __init__(self, host=None, port=None, uri=None, login='', passcode=''):
-        if not uri:
-            if not (host and port):
-                raise ValueError('host and port missing')
-            uri = 'tcp://%s:%d' % (host, port)
-            warnings.warn('host and port arguments are deprecated. use uri=%s instead!' % uri)
-        self.uri = uri
-        self.login = login
-        self.passcode = passcode
+class StompFactory(Factory):
+    protocol = StompClient
+    
+    def __init__(self, **kwargs):
+        self._kwargs = kwargs
         
+    def buildProtocol(self, _):
+        protocol = self.protocol(**self._kwargs)
+        protocol.factory = self
+        return protocol
+
 class StompCreator(object):
     def __init__(self, config, connectTimeout=None, **kwargs):
         self.config = config
@@ -347,66 +344,43 @@ class StompCreator(object):
             raise ValueError('failover URI is not supported [%s]' % self.config.failoverUri)
         return _endpointFactory(brokers[0])
 
-class StompFactory(Factory):
-    protocol = StompClient
-    
-    def __init__(self, **kwargs):
-        self._kwargs = kwargs
-        
-    def buildProtocol(self, _):
-        protocol = self.protocol(**self._kwargs)
-        protocol.factory = self
-        return protocol
-
 class StompFailoverClient(object):
     def __init__(self, config, connectTimeout=None, **kwargs):
+        self.log = logging.getLogger(LOG_CATEGORY)
+        
         self._config = config
         self._connectTimeout = connectTimeout
         self._kwargs = kwargs
         
         self._session = StompSession(self._config.uri)
+        self._brokersAndDelays = iter(self._session)
         self._stomp = None
         
-        self.log = logging.getLogger(LOG_CATEGORY)
+        self._connecting = None
+        self._reconnecting = None
+        self._disconnecting = None
         
-        self._disconnectedDeferred = defer.Deferred()
-        self._reconnectedDeferred = defer.Deferred()
+        self._disconnected = None
+        self._reconnected = None
     
-    @defer.inlineCallbacks  
     def connect(self):
-        if self._stomp:
-            raise StompError('already connected')
-        
-        try:
-            for (broker, delay) in self._session:
-                yield self._sleep(delay)   
-                
-                endpoint = _endpointFactory(broker)
-                self.log.debug('Connecting to %(host)s:%(port)s ...' % broker)
-                try:
-                    stomp = yield endpoint.connect(StompFactory(**self._kwargs))
-                except Exception as e:
-                    self.log.warning('%s [%s]' % ('Could not connect to %(host)s:%(port)d' % broker, e))
-                    continue
-                
-                yield self._connect(stomp)
-                defer.returnValue(self)
-            
-        except Exception as e:
-            self.log.error('Connect failed [%s]' % e)
-            raise
+        if not self._connecting:
+            self._connecting = self._connect()
+        return self._connecting
+    
+    def disconnect(self, failure=None):
+        if not self._disconnecting:
+            self._disconnecting = self._disconnect(failure).chainDeferred(self._disconnected)
+        return self._disconnecting
     
     def getDisconnectedDeferred(self):
-        return self._disconnectedDeferred
+        return self._disconnected
     
     def getReconnectedDeferred(self):
-        return self._reconnectedDeferred
+        return self._reconnected
     
     # STOMP commands
     
-    def disconnect(self, *args, **kwargs):
-        self._stomp.disconnect(*args, **kwargs)
-        
     def send(self, *args, **kwargs):
         self._stomp.send(*args, **kwargs)
         
@@ -419,38 +393,93 @@ class StompFailoverClient(object):
     # private methods
     
     @defer.inlineCallbacks
-    def _connect(self, stomp):
-        self._stomp = yield stomp.connect(self._config.login, self._config.passcode, timeout=self._connectTimeout)
-        self._stomp.getDisconnectedDeferred().addCallbacks(self._handleDisconnected, self._handleDisconnectedError)
-        yield self._replay()
+    def _connect(self):
+        if self._stomp:
+            raise StompError('Already connected')
+
+        try:
+            for (broker, delay) in self._brokersAndDelays:
+                yield self._sleep(delay)   
+                
+                endpoint = _endpointFactory(broker)
+                self.log.debug('Connecting to %(host)s:%(port)s ...' % broker)
+                try:
+                    stomp = yield endpoint.connect(StompFactory(**self._kwargs))
+                except Exception as e:
+                    self.log.warning('%s [%s]' % ('Could not connect to %(host)s:%(port)d' % broker, e))
+                    continue
+                
+                yield stomp.connect(self._config.login, self._config.passcode, timeout=self._connectTimeout)
+                stomp.getDisconnectedDeferred().addCallbacks(self._handleStompDisconnected, self._handleStompDisconnectedError)
+                yield self._replay(stomp)
+                self._stomp = stomp
+                
+                self._disconnected = defer.Deferred()
+                self._reconnected = defer.Deferred()
+                
+                defer.returnValue(self)
+            
+        except Exception as e:
+            self.log.error('Connect failed [%s]' % e)
+            raise
+        
+        finally:
+            self._connecting = None
     
-    def _handleDisconnected(self, result):
+    @defer.inlineCallbacks
+    def _disconnect(self, failure):
+        if not self._stomp:
+            raise StompError('Not connected')
+        
+        try:
+            yield self._stomp.disconnect(failure)
+            defer.returnValue(self)
+        
+        finally:
+            self._disconnecting = None
+    
+    def _handleStompDisconnected(self, result):
         self.log.debug('Handling disconnected deferred callback: %s' % result)
         self._stomp = None
-        self._disconnectedDeferred.callback(result)
+        disconnected, self._disconnected = self._disconnected, None
+        disconnected.callback(result)
     
     @defer.inlineCallbacks
-    def _handleDisconnectedError(self, error):
-        self.log.debug('Handling disconnected deferred errback: %s' % error)
+    def _handleStompDisconnectedError(self, failure):
+        self.log.debug('Handling disconnected deferred errback: %s' % failure)
         self._stomp = None
-        if error.check(StompConnectionError):
-            self.log.debug('Connection lost unxepectedly. Attempting to reconnect ...')
-            reconnectedDeferred, self._reconnectedDeferred = self._reconnectedDeferred, defer.Deferred()
+        if failure.check(StompConnectionError):
+            self.log.warning('Connection lost unxepectedly. Attempting to reconnect ...')
+            reconnected, self._reconnected = self._reconnected, defer.Deferred()
             yield self.connect()
-            reconnectedDeferred.callback(self)
+            reconnected.callback(self)
             
         else:
-            disconnectedDeferred, self._disconnectedDeferred = self._disconnectedDeferred, defer.Deferred()
-            disconnectedDeferred.errback(error)
+            disconnected, self._disconnected = self._disconnected, None
+            disconnected.errback(failure)
     
     @defer.inlineCallbacks
-    def _replay(self):
+    def _replay(self, stomp):
         for (headers, context) in self._session.replay():
             self.log.debug('Replaying subscription %s' % headers)
-            yield self._stomp.subscribe(context['dest'], headers, context['handler'], **context['kwargs'])
+            yield stomp.subscribe(context['dest'], headers, context['handler'], **context['kwargs'])
     
     def _sleep(self, delay):
         if not delay:
             return
         self.log.debug('Delaying connect attempt for %d ms' % int(delay * 1000))
         return task.deferLater(reactor, delay, lambda: None)
+
+class StompConfig(object):
+    def __init__(self, host=None, port=None, uri=None, login='', passcode=''):
+        if not uri:
+            if not (host and port):
+                raise ValueError('host and port missing')
+            uri = 'tcp://%s:%d' % (host, port)
+            warnings.warn('host and port arguments are deprecated. use uri=%s instead!' % uri)
+        self.uri = uri
+        self.login = login
+        self.passcode = passcode
+
+def _endpointFactory(broker):
+    return clientFromString(reactor, '%(protocol)s:host=%(host)s:port=%(port)d' % broker)
