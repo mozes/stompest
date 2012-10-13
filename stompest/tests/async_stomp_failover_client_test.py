@@ -22,7 +22,7 @@ from twisted.python import log
 from stompest.async import StompConfig, StompFailoverClient
 from stompest.error import StompConnectTimeout, StompProtocolError
 from stompest.tests.async_stomp_client_test import AsyncClientBaseTestCase
-from stompest.tests.broker_simulator import BlackHoleStompServer, ErrorOnConnectStompServer, ErrorOnSendStompServer
+from stompest.tests.broker_simulator import BlackHoleStompServer, DisconnectOnSendStompServer, ErrorOnConnectStompServer, ErrorOnSendStompServer
 
 observer = log.PythonLoggingObserver()
 observer.start()
@@ -54,18 +54,43 @@ class AsyncFailoverClientErrorAfterConnectedTestCase(AsyncClientBaseTestCase):
 
     def test_failover_stomp_error_after_connected(self):
         config = StompConfig(uri='failover:(tcp://nosuchhost:65535,tcp://localhost:%d)?startupMaxReconnectAttempts=1,initialReconnectDelay=0,randomize=false' % self.testPort)
+        
         client = StompFailoverClient(config)
         deferred = defer.Deferred()
-        client.connect().addCallback(self.onConnected, deferred)
-        return self.assertFailure(deferred, StompProtocolError)
-
-    def onConnected(self, client, deferred):
         client.getDisconnectedDeferred().chainDeferred(deferred)
+        self._connect_and_send(client)
+        
+        return self.assertFailure(deferred, StompProtocolError)
+    
+    @defer.inlineCallbacks
+    def _connect_and_send(self, client):
+        yield client.connect()
         client.send('/queue/fake', 'fake message')
+
+"""
+class AsyncFailoverClientFailoverOnDisconnectTestCase(AsyncClientBaseTestCase):
+    protocol = DisconnectOnSendStompServer
+
+    def test_failover_stomp_failover_on_disconnect(self):
+        config = StompConfig(uri='failover:(tcp://localhost:%d,tcp://nosuchhost:65535)?startupMaxReconnectAttempts=0,initialReconnectDelay=0,randomize=false,maxReconnectAttempts=1' % self.testPort)
+        client = StompFailoverClient(config)
+        d = client.getReconnectedDeferred().addCallback(self.onReconnect)
+        self._connect_and_send(client)
+        
+        return d
+        
+    @defer.inlineCallbacks
+    def _connect_and_send(self, client):
+        yield client.connect()
+        client.send('/queue/fake', 'fake message')
+
+    def onReconnect(self, reason):
+        print 20 * '$', reason
+        reason.disconnect()
+"""
 
 if __name__ == '__main__':
     import sys
     from twisted.scripts import trial
     sys.argv.extend([sys.argv[0]])
     trial.run()
-       

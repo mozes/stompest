@@ -23,7 +23,8 @@ from twisted.internet.endpoints import clientFromString
 from twisted.internet.error import ConnectionLost
 from twisted.internet.protocol import Factory, Protocol
 
-from stompest.error import StompConnectTimeout, StompError, StompFrameError, StompProtocolError
+from stompest.error import StompConnectTimeout, StompError, StompFrameError, StompProtocolError,\
+    StompConnectionError
 from stompest.protocol import commands
 from stompest.protocol.frame import StompFrame
 from stompest.protocol.parser import StompParser
@@ -188,6 +189,8 @@ class StompClient(Protocol):
     def _handleConnectionLostDisconnect(self):
         if not self._disconnectedDeferred:
             return
+        if not self._disconnecting:
+            self._disconnectError = StompConnectionError('Unexpected connection loss')
         if self._disconnectError:
             #self.log.debug('Calling disconnected deferred errback: %s' % self._disconnectError)
             self._disconnectedDeferred.errback(self._disconnectError)
@@ -204,7 +207,7 @@ class StompClient(Protocol):
             error, self._connectError = self._connectError, None
         else:
             self.log.error('Connection lost before connection was established')
-            error = StompError('Unexpected connection loss')
+            error = StompConnectionError('Unexpected connection loss')
         self.log.debug('Calling connected deferred errback: %s' % error)
         self._connectedDeferred.errback(error)                
         self._connectedDeferred = None
@@ -366,8 +369,11 @@ class StompFailoverClient(object):
         
         self.log = logging.getLogger(LOG_CATEGORY)
         
+        self._disconnectedDeferred = defer.Deferred()
+        self._reconnectedDeferred = defer.Deferred()
+    
     @defer.inlineCallbacks  
-    def connect(self, endpointFactory=None):
+    def connect(self):
         if self._stomp:
             raise StompError('already connected')
         
@@ -375,7 +381,7 @@ class StompFailoverClient(object):
             for (broker, delay) in self._session:
                 yield self._sleep(delay)   
                 
-                endpoint = (endpointFactory or _endpointFactory)(broker)
+                endpoint = _endpointFactory(broker)
                 self.log.debug('Connecting to %(host)s:%(port)s ...' % broker)
                 try:
                     stomp = yield endpoint.connect(StompFactory(**self._kwargs))
@@ -391,7 +397,10 @@ class StompFailoverClient(object):
             raise
     
     def getDisconnectedDeferred(self):
-        return self._stomp and self._stomp.getDisconnectedDeferred()
+        return self._disconnectedDeferred
+    
+    def getReconnectedDeferred(self):
+        return self._reconnectedDeferred
     
     # STOMP commands
     
@@ -418,13 +427,21 @@ class StompFailoverClient(object):
     def _handleDisconnected(self, result):
         self.log.debug('Handling disconnected deferred callback: %s' % result)
         self._stomp = None
-        
+        self._disconnectedDeferred.callback(result)
+    
+    @defer.inlineCallbacks
     def _handleDisconnectedError(self, error):
         self.log.debug('Handling disconnected deferred errback: %s' % error)
         self._stomp = None
-        if error.check(StompProtocolError):
-            return error
-        return self.connect()
+        if error.check(StompConnectionError):
+            self.log.debug('Connection lost unxepectedly. Attempting to reconnect ...')
+            reconnectedDeferred, self._reconnectedDeferred = self._reconnectedDeferred, defer.Deferred()
+            yield self.connect()
+            reconnectedDeferred.callback(self)
+            
+        else:
+            disconnectedDeferred, self._disconnectedDeferred = self._disconnectedDeferred, defer.Deferred()
+            disconnectedDeferred.errback(error)
     
     @defer.inlineCallbacks
     def _replay(self):

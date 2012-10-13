@@ -17,8 +17,7 @@ Copyright 2011, 2012 Mozes, Inc.
 import logging
 
 from twisted.internet import reactor
-from twisted.internet.protocol import Factory 
-from twisted.protocols.basic import LineOnlyReceiver
+from twisted.internet.protocol import Factory, Protocol 
 
 from stompest.error import StompFrameError
 from stompest.protocol.frame import StompFrame
@@ -27,7 +26,7 @@ from stompest.protocol.spec import StompSpec
 
 LOG_CATEGORY = 'stompest.tests.broker_simulator'
 
-class BlackHoleStompServer(LineOnlyReceiver):
+class BlackHoleStompServer(Protocol):
     delimiter = StompSpec.FRAME_DELIMITER
     
     def __init__(self):
@@ -45,23 +44,25 @@ class BlackHoleStompServer(LineOnlyReceiver):
         self.log.debug('Connection made')
 
     def connectionLost(self, reason): 
-        self.log.debug('Connection lost')
-        if 'disconnectDeferred' in self.factory.__dict__:
+        self.log.debug('Connection lost: %s' % reason)
+        if hasattr(self.factory, 'disconnectDeferred'):
             self.factory.disconnectDeferred.callback('Disconnected')
 
-    def lineReceived(self, line):
-        self.parser.add(line + self.delimiter)
-        message = self.parser.getMessage()
-        if not message:
-            return
-        try:
-            self.log.debug('Received frame: %s' % message)
+    def dataReceived(self, data):
+        self._parser.add(data)
+                
+        while True:
+            message = self._parser.getMessage()
+            if not message:
+                break
+            try:
+                self.log.debug('Received frame: %s' % message)
+            except KeyError:
+                raise StompFrameError('Unknown STOMP command: %s' % message)
             self.cmdMap[message['cmd']](message)
-        except KeyError:
-            raise StompFrameError('Unknown STOMP command: %s' % message)
 
     def resetParser(self):
-        self.parser = StompParser()
+        self._parser = StompParser()
 
     def getFrame(self, cmd, headers, body):
         return str(StompFrame(cmd, headers, body))
@@ -94,7 +95,13 @@ class ErrorOnSendStompServer(BlackHoleStompServer):
         
     def handleSend(self, msg):
         self.transport.write(self.getFrame('ERROR', {}, 'Fake error message'))
-    
+
+class DisconnectOnSendStompServer(BlackHoleStompServer):
+    def handleConnect(self, msg):
+        self.transport.write(self.getFrame('CONNECTED', {}, ''))
+
+    def handleSend(self, msg):
+        self.transport.loseConnection()
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.DEBUG)
