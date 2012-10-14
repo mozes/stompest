@@ -33,11 +33,11 @@ class BlackHoleStompServer(Protocol):
         self.log = logging.getLogger(LOG_CATEGORY)
         self.resetParser()
         self.cmdMap = {
-            'CONNECT': self.handleConnect,
-            'DISCONNECT': self.handleDisconnect,
-            'SEND': self.handleSend,
-            'SUBCRIBE': self.handleSubscribe,
-            'ACK': self.handleAck,
+            StompSpec.CONNECT: self.handleConnect,
+            StompSpec.DISCONNECT: self.handleDisconnect,
+            StompSpec.SEND: self.handleSend,
+            StompSpec.SUBSCRIBE: self.handleSubscribe,
+            StompSpec.ACK: self.handleAck,
         }
 
     def connectionMade(self):
@@ -84,25 +84,26 @@ class BlackHoleStompServer(Protocol):
 
 class ErrorOnConnectStompServer(BlackHoleStompServer):
     def handleConnect(self, msg):
-        self.transport.write(self.getFrame('ERROR', {}, 'Fake error message'))
+        self.transport.write(self.getFrame(StompSpec.ERROR, {}, 'Fake error message'))
 
 class ErrorOnSendStompServer(BlackHoleStompServer):
     def handleConnect(self, msg):
-        self.transport.write(self.getFrame('CONNECTED', {}, ''))
+        self.transport.write(self.getFrame(StompSpec.CONNECTED, {}, ''))
 
     def handleDisconnect(self, msg):
         self.transport.loseConnection()
         
     def handleSend(self, msg):
-        self.transport.write(self.getFrame('ERROR', {}, 'Fake error message'))
+        self.transport.write(self.getFrame(StompSpec.ERROR, {}, 'Fake error message'))
 
-class DisconnectOnSendStompServer(BlackHoleStompServer):
+class RemoteControlViaFrameStompServer(BlackHoleStompServer):
     def handleConnect(self, msg):
-        self.transport.write(self.getFrame('CONNECTED', {}, ''))
+        self.transport.write(self.getFrame(StompSpec.CONNECTED, {}, ''))
 
     def handleSend(self, msg):
-        self.transport.loseConnection()
-
+        if msg['body'] == 'disconnect':
+            self.transport.loseConnection()
+        
 if __name__ == '__main__':
     logging.basicConfig(level=logging.DEBUG)
     factory = Factory()

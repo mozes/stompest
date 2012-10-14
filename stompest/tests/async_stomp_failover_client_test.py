@@ -23,7 +23,7 @@ from twisted.trial import unittest
 
 from stompest.async import StompConfig, StompFailoverClient
 from stompest.error import StompConnectTimeout, StompProtocolError
-from stompest.tests.broker_simulator import BlackHoleStompServer, DisconnectOnSendStompServer, ErrorOnConnectStompServer, ErrorOnSendStompServer
+from stompest.tests.broker_simulator import BlackHoleStompServer, ErrorOnConnectStompServer, ErrorOnSendStompServer, RemoteControlViaFrameStompServer
 
 observer = log.PythonLoggingObserver()
 observer.start()
@@ -89,7 +89,7 @@ class AsyncFailoverClientErrorAfterConnectedTestCase(AsyncFailoverClientBaseTest
         client.send('/queue/fake', 'fake message')
 
 class AsyncFailoverClientFailoverOnDisconnectTestCase(AsyncFailoverClientBaseTestCase):
-    protocols = [DisconnectOnSendStompServer, ErrorOnSendStompServer]
+    protocols = [RemoteControlViaFrameStompServer, ErrorOnSendStompServer]
     
     def test_failover_stomp_failover_on_disconnect(self):
         ports = tuple(c.getHost().port for c in self.connections)
@@ -99,13 +99,13 @@ class AsyncFailoverClientFailoverOnDisconnectTestCase(AsyncFailoverClientBaseTes
         self._connect_and_send(client, deferred)
         
         return self.assertFailure(deferred, StompProtocolError)
-        
+    
     @defer.inlineCallbacks
     def _connect_and_send(self, client, deferred):
         yield client.connect()
         client.getReconnectedDeferred().addCallback(self._onReconnect, deferred)
         yield self.connections[0].stopListening()
-        client.send('/queue/fake', 'fake message')
+        client.send('/queue/fake', 'disconnect')
     
     def _onReconnect(self, client, deferred):
         client.getDisconnectedDeferred().chainDeferred(deferred)
