@@ -24,7 +24,7 @@ from twisted.trial import unittest
 from stompest.async import StompConfig, StompCreator
 from stompest.error import StompConnectTimeout, StompProtocolError,\
     StompConnectionError
-from stompest.tests.broker_simulator import BlackHoleStompServer, DisconnectOnSendStompServer, ErrorOnConnectStompServer, ErrorOnSendStompServer
+from stompest.tests.broker_simulator import BlackHoleStompServer, ErrorOnConnectStompServer, ErrorOnSendStompServer, RemoteControlViaFrameStompServer
 
 observer = log.PythonLoggingObserver()
 observer.start()
@@ -75,7 +75,7 @@ class AsyncClientErrorAfterConnectedTestCase(AsyncClientBaseTestCase):
         stomp.send('/queue/fake', 'fake message')
 
 class AsyncClientErrorAfterConnectionLostTestCase(AsyncClientBaseTestCase):
-    protocol = DisconnectOnSendStompServer
+    protocol = RemoteControlViaFrameStompServer
 
     def test_stomp_error_after_connection_lost(self):
         config = StompConfig(uri='tcp://localhost:%d' % self.testPort)
@@ -88,7 +88,7 @@ class AsyncClientErrorAfterConnectionLostTestCase(AsyncClientBaseTestCase):
     def _connect_and_send(self, creator, deferred):
         stomp = yield creator.getConnection()
         stomp.getDisconnectedDeferred().chainDeferred(deferred)
-        stomp.send('/queue/fake', 'fake message')
+        stomp.send('/queue/fake', 'disconnect')
 
 if __name__ == '__main__':
     import sys

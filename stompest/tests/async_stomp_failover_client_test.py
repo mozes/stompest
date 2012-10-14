@@ -33,9 +33,9 @@ class AsyncFailoverClientBaseTestCase(unittest.TestCase):
     protocols = []
     
     def setUp(self):
-        self.connections = map(self._createConnection, self.protocols)
+        self.connections = map(self._create_connection, self.protocols)
     
-    def _createConnection(self, protocol):
+    def _create_connection(self, protocol):
         factory = Factory()
         factory.protocol = protocol
         connection = reactor.listenTCP(0, factory)
@@ -93,7 +93,7 @@ class AsyncFailoverClientFailoverOnDisconnectTestCase(AsyncFailoverClientBaseTes
     
     def test_failover_stomp_failover_on_disconnect(self):
         ports = tuple(c.getHost().port for c in self.connections)
-        config = StompConfig(uri='failover:(tcp://localhost:%d,tcp://localhost:%d)?startupMaxReconnectAttempts=0,initialReconnectDelay=0,randomize=false,maxReconnectAttempts=2' % ports)
+        config = StompConfig(uri='failover:(tcp://localhost:%d,tcp://localhost:%d)?startupMaxReconnectAttempts=0,initialReconnectDelay=0,randomize=false,maxReconnectAttempts=1' % ports)
         client = StompFailoverClient(config)
         deferred = defer.Deferred()
         self._connect_and_send(client, deferred)
@@ -103,13 +103,41 @@ class AsyncFailoverClientFailoverOnDisconnectTestCase(AsyncFailoverClientBaseTes
     @defer.inlineCallbacks
     def _connect_and_send(self, client, deferred):
         yield client.connect()
-        client.getReconnectedDeferred().addCallback(self._onReconnect, deferred)
+        client.getReconnectedDeferred().addCallback(self._on_reconnect, deferred)
         yield self.connections[0].stopListening()
         client.send('/queue/fake', 'disconnect')
     
-    def _onReconnect(self, client, deferred):
+    def _on_reconnect(self, client, deferred):
         client.getDisconnectedDeferred().chainDeferred(deferred)
         client.send('/queue/fake', 'fake message')
+
+"""
+class AsyncFailoverClientReplaySubscription(AsyncFailoverClientBaseTestCase):
+    protocols = [RemoteControlViaFrameStompServer]
+    
+    def test_failover_stomp_failover_on_disconnect(self):
+        ports = tuple(c.getHost().port for c in self.connections)
+        config = StompConfig(uri='failover:(tcp://localhost:%d)?startupMaxReconnectAttempts=0,initialReconnectDelay=0,maxReconnectAttempts=1' % ports)
+        client = StompFailoverClient(config)
+        deferred = defer.Deferred()
+        self._connect_and_send(client, deferred)
+        
+        return deferred.addCallback(self.assertTrue, deferred.called)
+    
+    @defer.inlineCallbacks
+    def _connect_and_send(self, client, deferred):
+        yield client.connect()
+        client.getReconnectedDeferred().addCallback(self._on_reconnect, deferred)
+        client.subscribe('/queue/bla', self._on_message)
+        client.send('/queue/fake', 'disconnect')
+    
+    def _on_reconnect(self, client, deferred):
+        client.getDisconnectedDeferred().chainDeferred(deferred)
+        client.disconnect()
+        
+    def _on_message(self, *args, **kwargs):
+        print '!!!!!!!!!', args, kwargs
+"""
 
 if __name__ == '__main__':
     import sys

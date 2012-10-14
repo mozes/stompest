@@ -78,7 +78,7 @@ class BlackHoleStompServer(Protocol):
 
     def handleSubscribe(self, msg):
         pass
-
+    
     def handleAck(self, msg):
         pass
 
@@ -100,6 +100,9 @@ class RemoteControlViaFrameStompServer(BlackHoleStompServer):
     def handleConnect(self, msg):
         self.transport.write(self.getFrame(StompSpec.CONNECTED, {}, ''))
 
+    def handleDisconnect(self, msg):
+        self.transport.loseConnection()
+        
     def handleSend(self, msg):
         if msg['body'] == 'disconnect':
             self.transport.loseConnection()

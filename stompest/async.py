@@ -380,15 +380,20 @@ class StompFailoverClient(object):
     
     # STOMP commands
     
-    def send(self, *args, **kwargs):
-        self._stomp.send(*args, **kwargs)
+    def send(self, dest, msg='', headers=None):
+        self._stomp.send(dest=dest, msg=msg, headers=headers)
         
-    def sendFrame(self, *args, **kwargs):
-        self._stomp.sendFrame(*args, **kwargs)
+    def sendFrame(self, message):
+        self._stomp.sendFrame(message)
     
-    def subscribe(self, *args, **kwargs):
-        self._stomp.subscribe(*args, **kwargs)
+    def subscribe(self, dest, handler, headers=None, **kwargs):
+        headers = dict(headers or {})
+        self._stomp.subscribe(dest=dest, handler=handler, headers=headers, **kwargs)
+        headers['destination'] = dest
+        self._session.subscribe(headers, context={'handler': handler, 'kwargs': kwargs})
     
+    # TODO: unsubscribe
+        
     # private methods
     
     @defer.inlineCallbacks
@@ -410,8 +415,8 @@ class StompFailoverClient(object):
                 
                 yield stomp.connect(self._config.login, self._config.passcode, timeout=self._connectTimeout)
                 stomp.getDisconnectedDeferred().addCallbacks(self._handleStompDisconnected, self._handleStompDisconnectedError)
-                yield self._replay(stomp)
                 self._stomp = stomp
+                yield self._replay()
                 
                 self._disconnected = defer.Deferred()
                 self._reconnected = defer.Deferred()
@@ -460,10 +465,10 @@ class StompFailoverClient(object):
             disconnected.errback(failure)
     
     @defer.inlineCallbacks
-    def _replay(self, stomp):
+    def _replay(self):
         for (headers, context) in self._session.replay():
             self.log.debug('Replaying subscription %s' % headers)
-            yield stomp.subscribe(context['dest'], headers, context['handler'], **context['kwargs'])
+            yield self.subscribe(dest=headers['destination'], handler=context['handler'], headers=headers, **context['kwargs'])
     
     def _sleep(self, delay):
         if not delay:
