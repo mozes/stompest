@@ -16,45 +16,65 @@ Copyright 2011, 2012 Mozes, Inc.
 """
 import logging
 
-from twisted.internet import defer
+from twisted.internet import defer, reactor
+from twisted.internet.protocol import Factory
 from twisted.python import log
+from twisted.trial import unittest
 
 from stompest.async import StompConfig, StompFailoverClient
 from stompest.error import StompConnectTimeout, StompProtocolError
-from stompest.tests.async_stomp_client_test import AsyncClientBaseTestCase
 from stompest.tests.broker_simulator import BlackHoleStompServer, DisconnectOnSendStompServer, ErrorOnConnectStompServer, ErrorOnSendStompServer
 
 observer = log.PythonLoggingObserver()
 observer.start()
 logging.basicConfig(level=logging.DEBUG)
 
+class AsyncFailoverClientBaseTestCase(unittest.TestCase):
+    protocols = []
+    
+    def setUp(self):
+        self.connections = map(self._createConnection, self.protocols)
+    
+    def _createConnection(self, protocol):
+        factory = Factory()
+        factory.protocol = protocol
+        connection = reactor.listenTCP(0, factory)
+        return connection
+        
+    def tearDown(self):
+        for connection in self.connections:
+            connection.stopListening()
 
-class AsyncFailoverClientConnectTimeoutTestCase(AsyncClientBaseTestCase):
-    protocol = BlackHoleStompServer
+class AsyncFailoverClientConnectTimeoutTestCase(AsyncFailoverClientBaseTestCase):
+    protocols = [BlackHoleStompServer]
 
     def test_connection_timeout(self):
-        config = StompConfig(uri='tcp://localhost:%d' % self.testPort)
+        port = self.connections[0].getHost().port
+        config = StompConfig(uri='tcp://localhost:%d' % port)
         client = StompFailoverClient(config, connectTimeout=0.01)
         return self.assertFailure(client.connect(), StompConnectTimeout)
 
     def test_connection_timeout_after_failover(self):
-        config = StompConfig(uri='failover:(tcp://nosuchhost:65535,tcp://localhost:%d)?startupMaxReconnectAttempts=2,initialReconnectDelay=0,randomize=false' % self.testPort)
+        port = self.connections[0].getHost().port
+        config = StompConfig(uri='failover:(tcp://nosuchhost:65535,tcp://localhost:%d)?startupMaxReconnectAttempts=2,initialReconnectDelay=0,randomize=false' % port)
         client = StompFailoverClient(config, connectTimeout=0.01)
         return self.assertFailure(client.connect(), StompConnectTimeout)
 
-class AsyncFailoverClientConnectErrorTestCase(AsyncClientBaseTestCase):
-    protocol = ErrorOnConnectStompServer
+class AsyncFailoverClientConnectErrorTestCase(AsyncFailoverClientBaseTestCase):
+    protocols = [ErrorOnConnectStompServer]
 
     def test_stomp_error_before_connected(self):
-        config = StompConfig(uri='tcp://localhost:%d' % self.testPort)
+        port = self.connections[0].getHost().port
+        config = StompConfig(uri='tcp://localhost:%d' % port)
         client = StompFailoverClient(config)
         return self.assertFailure(client.connect(), StompProtocolError)
 
-class AsyncFailoverClientErrorAfterConnectedTestCase(AsyncClientBaseTestCase):
-    protocol = ErrorOnSendStompServer
+class AsyncFailoverClientErrorAfterConnectedTestCase(AsyncFailoverClientBaseTestCase):
+    protocols = [ErrorOnSendStompServer]
 
     def test_failover_stomp_error_after_connected(self):
-        config = StompConfig(uri='failover:(tcp://nosuchhost:65535,tcp://localhost:%d)?startupMaxReconnectAttempts=1,initialReconnectDelay=0,randomize=false' % self.testPort)
+        port = self.connections[0].getHost().port
+        config = StompConfig(uri='failover:(tcp://nosuchhost:65535,tcp://localhost:%d)?startupMaxReconnectAttempts=1,initialReconnectDelay=0,randomize=false' % port)
         
         client = StompFailoverClient(config)
         deferred = defer.Deferred()
@@ -67,28 +87,29 @@ class AsyncFailoverClientErrorAfterConnectedTestCase(AsyncClientBaseTestCase):
         yield client.connect()
         client.getDisconnectedDeferred().chainDeferred(deferred)
         client.send('/queue/fake', 'fake message')
-"""
-class AsyncFailoverClientFailoverOnDisconnectTestCase(AsyncClientBaseTestCase):
-    protocol = DisconnectOnSendStompServer
 
+class AsyncFailoverClientFailoverOnDisconnectTestCase(AsyncFailoverClientBaseTestCase):
+    protocols = [DisconnectOnSendStompServer, ErrorOnSendStompServer]
+    
     def test_failover_stomp_failover_on_disconnect(self):
-        config = StompConfig(uri='failover:(tcp://localhost:%d,tcp://nosuchhost:65535)?startupMaxReconnectAttempts=0,initialReconnectDelay=0,randomize=false,maxReconnectAttempts=1' % self.testPort)
+        ports = tuple(c.getHost().port for c in self.connections)
+        config = StompConfig(uri='failover:(tcp://localhost:%d,tcp://localhost:%d)?startupMaxReconnectAttempts=0,initialReconnectDelay=0,randomize=false,maxReconnectAttempts=2' % ports)
         client = StompFailoverClient(config)
         deferred = defer.Deferred()
         self._connect_and_send(client, deferred)
         
-        return deferred.addCallback(self.assertEqual, client)
+        return self.assertFailure(deferred, StompProtocolError)
         
     @defer.inlineCallbacks
     def _connect_and_send(self, client, deferred):
         yield client.connect()
-        client.getReconnectedDeferred().chainDeferred(deferred).addCallback(lambda _: client.disconnect())
+        client.getReconnectedDeferred().addCallback(self._onReconnect, deferred)
+        yield self.connections[0].stopListening()
         client.send('/queue/fake', 'fake message')
-        
-    def onReconnect(self, reason):
-        print 20 * '$', reason
-        reason.disconnect()
-"""
+    
+    def _onReconnect(self, client, deferred):
+        client.getDisconnectedDeferred().chainDeferred(deferred)
+        client.send('/queue/fake', 'fake message')
 
 if __name__ == '__main__':
     import sys

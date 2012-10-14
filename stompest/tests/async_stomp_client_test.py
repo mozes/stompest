@@ -30,7 +30,6 @@ observer = log.PythonLoggingObserver()
 observer.start()
 logging.basicConfig(level=logging.DEBUG)
 
-
 class AsyncClientBaseTestCase(unittest.TestCase):
     protocol = None
 
