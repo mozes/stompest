@@ -398,30 +398,13 @@ class StompFailoverClient(object):
     
     @defer.inlineCallbacks
     def _connect(self):
-        if self._stomp:
-            raise StompError('Already connected')
-
+        yield
+        
         try:
-            for (broker, delay) in self._session:
-                yield self._sleep(delay)   
+            if not self._stomp:
+                yield self.__connect()
                 
-                endpoint = _endpointFactory(broker)
-                self.log.debug('Connecting to %(host)s:%(port)s ...' % broker)
-                try:
-                    stomp = yield endpoint.connect(StompFactory(**self._kwargs))
-                except Exception as e:
-                    self.log.warning('%s [%s]' % ('Could not connect to %(host)s:%(port)d' % broker, e))
-                    continue
-                
-                yield stomp.connect(self._config.login, self._config.passcode, timeout=self._connectTimeout)
-                stomp.getDisconnectedDeferred().addCallbacks(self._handleStompDisconnected, self._handleStompDisconnectedError)
-                self._stomp = stomp
-                yield self._replay()
-                
-                self._disconnected = defer.Deferred()
-                self._reconnected = defer.Deferred()
-                
-                defer.returnValue(self)
+            defer.returnValue(self)
             
         except Exception as e:
             self.log.error('Connect failed [%s]' % e)
@@ -430,6 +413,29 @@ class StompFailoverClient(object):
         finally:
             self._connecting = None
     
+    @defer.inlineCallbacks
+    def __connect(self):
+        for (broker, delay) in self._session:
+            yield self._sleep(delay)   
+            
+            endpoint = _endpointFactory(broker)
+            self.log.debug('Connecting to %(host)s:%(port)s ...' % broker)
+            try:
+                stomp = yield endpoint.connect(StompFactory(**self._kwargs))
+            except Exception as e:
+                self.log.warning('%s [%s]' % ('Could not connect to %(host)s:%(port)d' % broker, e))
+                continue
+            
+            yield stomp.connect(self._config.login, self._config.passcode, timeout=self._connectTimeout)
+            stomp.getDisconnectedDeferred().addCallbacks(self._handleStompDisconnected, self._handleStompDisconnectedError)
+            self._stomp = stomp
+            yield self._replay()
+            
+            self._disconnected = defer.Deferred()
+            self._reconnected = defer.Deferred()
+            
+            defer.returnValue(None)
+
     @defer.inlineCallbacks
     def _disconnect(self, failure):
         if not self._stomp:
