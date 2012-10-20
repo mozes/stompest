@@ -21,9 +21,10 @@ from twisted.internet.protocol import Factory
 from twisted.python import log
 from twisted.trial import unittest
 
-from stompest.async import StompConfig, StompCreator
-from stompest.error import StompConnectTimeout, StompProtocolError,\
-    StompConnectionError
+from stompest.async import StompConfig as DeprecatedStompConfig
+from stompest.async import StompCreator 
+from stompest.protocol import StompConfig
+from stompest.error import StompConnectTimeout, StompProtocolError, StompConnectionError
 from stompest.tests.broker_simulator import BlackHoleStompServer, ErrorOnConnectStompServer, ErrorOnSendStompServer, RemoteControlViaFrameStompServer
 
 observer = log.PythonLoggingObserver()
@@ -63,6 +64,13 @@ class AsyncClientErrorAfterConnectedTestCase(AsyncClientBaseTestCase):
 
     def test_stomp_error_after_connected(self):
         config = StompConfig(uri='tcp://localhost:%d' % self.testPort)
+        creator = StompCreator(config)
+        deferred = defer.Deferred()
+        self._connect_and_send(creator, deferred)
+        return self.assertFailure(deferred, StompProtocolError)
+        
+    def test_stomp_error_after_connected_deprecated_config(self):
+        config = DeprecatedStompConfig('localhost', self.testPort)
         creator = StompCreator(config)
         deferred = defer.Deferred()
         self._connect_and_send(creator, deferred)

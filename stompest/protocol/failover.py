@@ -21,6 +21,12 @@ import socket
 
 from stompest.error import StompConnectTimeout
 
+class StompConfig(object):
+    def __init__(self, uri=None, login='', passcode=''):
+        self.uri = uri
+        self.login = login
+        self.passcode = passcode
+
 class StompFailoverProtocol(object):
     def __init__(self, uri):
         self._failoverUri = StompFailoverUri(uri)
@@ -138,4 +144,3 @@ class StompFailoverUri(object):
         if options:
             _options.update((k, self._SUPPORTED_OPTIONS[k].parser(v)) for (k, _, v) in (o.partition('=') for o in options.split(',')))
         self.options = _options
-

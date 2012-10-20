@@ -15,23 +15,17 @@ Copyright 2012 Mozes, Inc.
    limitations under the License.
 """
 from stompest.error import StompError
-from stompest.protocol.spec import StompSpec
-from stompest.protocol.failover import StompFailoverProtocol
+
+from .spec import StompSpec
 
 class StompSession(object):
     SUPPORTED_VERSIONS = ['1.0', '1.1']
     DEFAULT_VERSION = '1.0'
     
-    def __init__(self, uri, version=None, stompFactory=None):
+    def __init__(self, version=None):
         self.version = version
         self._subscriptions = []
-        self._protocol = StompFailoverProtocol(uri) # syntax of uri: cf. stompest.util
-        self._stompFactory = stompFactory or (lambda broker: broker)
     
-    def __iter__(self):
-        for broker, delay in self._protocol:
-            yield self._stompFactory(broker), delay
-
     def replay(self):
         subscriptions, self._subscriptions = self._subscriptions, []
         return subscriptions

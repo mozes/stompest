@@ -20,9 +20,7 @@ from twisted.internet import reactor
 from twisted.internet.protocol import Factory, Protocol 
 
 from stompest.error import StompFrameError
-from stompest.protocol.frame import StompFrame
-from stompest.protocol.parser import StompParser
-from stompest.protocol.spec import StompSpec
+from stompest.protocol import StompFrame, StompParser, StompSpec
 
 LOG_CATEGORY = 'stompest.tests.broker_simulator'
 

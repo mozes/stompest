@@ -14,7 +14,7 @@ Copyright 2012 Mozes, Inc.
    See the License for the specific language governing permissions and
    limitations under the License.
 """
-from stompest.protocol.spec import StompSpec
+from .spec import StompSpec
 
 class StompFrame(object):    
     def __init__(self, cmd='', headers=None, body=''):

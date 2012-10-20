@@ -18,7 +18,8 @@ import collections
 import cStringIO
 
 from stompest.error import StompFrameError
-from stompest.protocol.spec import StompSpec
+
+from .spec import StompSpec
 
 class StompParser(object):
     def __init__(self, version='1.0'):

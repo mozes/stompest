@@ -16,19 +16,22 @@ Copyright 2012 Mozes, Inc.
 import logging
 import time
 
+import stompest.simple
+
 from stompest.error import StompConnectionError
-from stompest.protocol.session import StompSession as _StompSession
-from stompest.simple import Stomp as _Stomp
+from stompest.protocol.session import StompSession
+from stompest.protocol.failover import StompFailoverProtocol
 
 LOG_CATEGORY = 'stompest.sync'
 
-class Stomp(object):
+class Stomp(object):    
     """A less simple implementation of a failover STOMP session with potentially more than one client"""
-    def __init__(self, uri, login='', passcode=''):
+    def __init__(self, config, version=None):
         self.log = logging.getLogger(LOG_CATEGORY)
-        self._login = login
-        self._passcode = passcode
-        self._session = _StompSession(uri, stompFactory=lambda broker: _Stomp(broker['host'], broker['port']))
+        self._login = config.login
+        self._passcode = config.passcode
+        self._session = StompSession(version)
+        self._protocol = StompFailoverProtocol(config.uri)
         self._stomp = None
         
     def connect(self, **kwargs):
@@ -40,8 +43,8 @@ class Stomp(object):
             except StompConnectionError as e:
                 self.log.warning('Lost connection to %s:%d [%s]' % (self._stomp.host, self._stomp.port, e))
         try:
-            for (stomp, connectDelay) in self._session:
-                self._stomp = stomp
+            for (broker, connectDelay) in self._protocol:
+                self._stomp = stompest.simple.Stomp(broker['host'], broker['port'], self._session.version)
                 if connectDelay:
                     self.log.debug('Delaying connect attempt for %d ms' % int(connectDelay * 1000))
                     time.sleep(connectDelay)

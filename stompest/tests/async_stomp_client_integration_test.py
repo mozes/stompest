@@ -20,8 +20,8 @@ from twisted.internet import reactor, defer
 from twisted.trial import unittest
 
 from stompest.simple import Stomp
-from stompest.async import StompConfig, StompCreator
-from stompest.protocol.spec import StompSpec
+from stompest.async import StompCreator
+from stompest.protocol import StompConfig, StompSpec
 
 logging.basicConfig(level=logging.DEBUG)
 

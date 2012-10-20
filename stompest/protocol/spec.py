@@ -16,7 +16,6 @@ Copyright 2012 Mozes, Inc.
 """
 class StompSpec(object):
     # specification of the STOMP protocol: http://stomp.github.com//index.html
-    
     ABORT = 'ABORT'
     ACK = 'ACK'
     BEGIN = 'BEGIN'

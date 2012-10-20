@@ -21,20 +21,22 @@ import logging
 from twisted.internet import defer, reactor, task
 
 from stompest.error import StompError, StompConnectionError
-from stompest.protocol.session import StompSession
+from stompest.protocol import StompFailoverProtocol, StompSession
 
-from stompest.async.client import StompFactory
-from stompest.async.utils import exclusive, endpointFactory
+from .client import StompFactory
+from .utils import exclusive, endpointFactory
 
 LOG_CATEGORY = 'stompest.async.failover'
 
 class StompFailoverClient(object):
-    def __init__(self, config, connectTimeout=None, **kwargs):
-        self.log = logging.getLogger(LOG_CATEGORY)
+    def __init__(self, config, connectTimeout=None, version=None, **kwargs):
         self._config = config
+        self._protocol = StompFailoverProtocol(config.uri)
+        self._session = StompSession(version)
         self._connectTimeout = connectTimeout
         self._kwargs = kwargs
-        self._session = StompSession(self._config.uri)
+
+        self.log = logging.getLogger(LOG_CATEGORY)
         self._stomp = None
         
     @exclusive
@@ -81,7 +83,7 @@ class StompFailoverClient(object):
     
     @defer.inlineCallbacks
     def _connect(self):
-        for (broker, delay) in self._session:
+        for (broker, delay) in self._protocol:
             yield self._sleep(delay)
             endpoint = endpointFactory(broker)
             self.log.debug('Connecting to %(host)s:%(port)s ...' % broker)

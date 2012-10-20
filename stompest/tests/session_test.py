@@ -14,37 +14,23 @@ Copyright 2012 Mozes, Inc.
    See the License for the specific language governing permissions and
    limitations under the License.
 """
-import itertools
-import mock
 import unittest
 
-from stompest.error import StompConnectTimeout, StompError
-from stompest.protocol.session import StompSession, StompFailoverProtocol
+from stompest.error import StompError
+from stompest.protocol.session import StompSession
    
 class StompSessionTest(unittest.TestCase):
     def test_session_init(self):
-        uri = 'failover:tcp://remote1:61615,tcp://localhost:61616,tcp://remote2:61617?randomize=false'
-        stompFactory = mock.Mock()
-        session = StompSession(uri, stompFactory=stompFactory)
+        session = StompSession()
         self.assertEquals(session.version, StompSession.DEFAULT_VERSION)
-        self.assertEquals(stompFactory.mock_calls, map(mock.call, []))
 
-        session = StompSession(uri, '1.1', stompFactory)
+        session = StompSession('1.1')
         self.assertEquals(session.version, '1.1')
         
-        self.assertRaises(StompError, lambda: StompSession(uri, version='1.2', stompFactory=stompFactory))
+        self.assertRaises(StompError, lambda: StompSession(version='1.2'))
 
-    def _test_session_failover(self):
-        uri = 'failover:tcp://remote1:61615,tcp://localhost:61616,tcp://remote2:61617?randomize=false,startupMaxReconnectAttempts=3,initialReconnectDelay=7,backOffMultiplier=3.0,maxReconnectAttempts=1'
-        session = iter(StompSession(uri))
-        protocol = StompFailoverProtocol(uri)
-        self.assertEquals(itertools.islice(session, 4), itertools.islice(protocol, 4))
-        self.assertRaises(StompConnectTimeout, session.next)
-        
     def test_session_subscribe(self):
-        uri = 'tcp://remote1:61615'
-        
-        session = StompSession(uri)
+        session = StompSession()
         
         headers = {'destination': 'bla1', 'bla2': 'bla3'}
         session.subscribe(headers)
@@ -74,7 +60,7 @@ class StompSessionTest(unittest.TestCase):
         headersWithoutDestination = {'bla2': 'bla3'}
         self.assertRaises(StompError, lambda: session.subscribe(headersWithoutDestination))
     
-        session = StompSession(uri, version='1.1')
+        session = StompSession(version='1.1')
         self.assertRaises(StompError, lambda: session.subscribe(headers))
         self.assertRaises(StompError, lambda: session.unsubscribe(headers))
         session.subscribe(headersWithId1)

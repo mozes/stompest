@@ -16,23 +16,11 @@ Copyright 2011 Mozes, Inc.
    limitations under the License.
 """
 import functools
-import warnings
 
 from twisted.internet import defer, reactor, task
 from twisted.internet.endpoints import clientFromString
 
 from stompest.error import StompStillRunningError
-
-class StompConfig(object):
-    def __init__(self, host=None, port=None, uri=None, login='', passcode=''):
-        if not uri:
-            if not (host and port):
-                raise ValueError('host and port missing')
-            uri = 'tcp://%s:%d' % (host, port)
-            warnings.warn('host and port arguments are deprecated. use uri=%s instead!' % uri)
-        self.uri = uri
-        self.login = login
-        self.passcode = passcode
 
 def endpointFactory(broker):
     return clientFromString(reactor, '%(protocol)s:host=%(host)s:port=%(port)d' % broker)
