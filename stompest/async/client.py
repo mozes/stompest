@@ -85,10 +85,9 @@ class StompClient(Protocol):
             
         return self._disconnectedDeferred
     
-    def subscribe(self, dest, handler, headers=None, **kwargs):
+    def subscribe(self, dest, handler, headers=None, errorDestination=None, **kwargs):
         """Subscribe to a destination and register a function handler to receive messages for that destination
         """
-        errorDestination = kwargs.get('errorDestination')
         # client-individual mode is only supported in AMQ >= 5.2
         # headers[StompSpec.ACK_HEADER] = headers.get(StompSpec.ACK_HEADER, 'client-individual')
         headers = dict(headers or {})

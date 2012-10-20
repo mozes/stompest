@@ -19,8 +19,7 @@ import time
 import stompest.simple
 
 from stompest.error import StompConnectionError
-from stompest.protocol.session import StompSession
-from stompest.protocol.failover import StompFailoverProtocol
+from stompest.protocol import StompSession, StompFailoverProtocol
 
 LOG_CATEGORY = 'stompest.sync'
 
@@ -59,9 +58,9 @@ class Stomp(object):
     def _connect(self, **kwargs):
         self.log.debug('Connecting to %s:%d ...' % (self._stomp.host, self._stomp.port))
         result = self._stomp.connect(self._login, self._passcode, **kwargs)
-        for (headers, _) in self._session.replay():
+        for (dest, headers, _) in self._session.replay():
             self.log.debug('Replaying subscription %s' % headers)
-            self.subscribe(headers)
+            self.subscribe(dest, headers)
         self.log.info('Connection established to %s:%d' % (self._stomp.host, self._stomp.port))
         return result
     
@@ -74,16 +73,12 @@ class Stomp(object):
     def send(self, dest, msg, headers=None):
         return self._stomp.send(dest, msg, headers)
         
-    def subscribe(self, headers):
-        headers = dict(headers)
-        self._stomp.subscribe(headers=headers)
-        self._session.subscribe(headers)
+    def subscribe(self, dest, headers):
+        self._stomp.sendFrame(self._session.subscribe(dest, headers))
         
     def unsubscribe(self, headers):
-        headers = dict(headers)
-        self._stomp.unsubscribe(headers=headers)
-        self._session.unsubscribe(headers)
-    
+        self._stomp.sendFrame(self._session.unsubscribe(headers))
+        
     def begin(self, transactionId):
         self._stomp.begin(transactionId)
         

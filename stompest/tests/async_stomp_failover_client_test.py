@@ -23,7 +23,7 @@ from twisted.trial import unittest
 
 from stompest.async import StompFailoverClient
 from stompest.error import StompConnectTimeout, StompProtocolError
-from stompest.protocol import StompConfig
+from stompest.protocol import StompConfig, StompSpec
 from stompest.tests.broker_simulator import BlackHoleStompServer, ErrorOnConnectStompServer, ErrorOnSendStompServer, RemoteControlViaFrameStompServer
 
 observer = log.PythonLoggingObserver()

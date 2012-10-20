@@ -31,8 +31,8 @@ class SimpleStompIntegrationTest(unittest.TestCase):
     def test_0_integration(self):
         stomp = Stomp(StompConfig(uri='tcp://localhost:61613', login='', passcode=''))
         stomp.connect()
-        stomp.subscribe({StompSpec.DESTINATION_HEADER: self.DEST, StompSpec.ACK_HEADER: 'client'})
-        stomp.subscribe({StompSpec.DESTINATION_HEADER: self.DEST, StompSpec.ID_HEADER: 'bla', StompSpec.ACK_HEADER: 'client'})
+        stomp.subscribe(self.DEST, {StompSpec.ACK_HEADER: 'client'})
+        stomp.subscribe(self.DEST, {StompSpec.ID_HEADER: 'bla', StompSpec.ACK_HEADER: 'client'})
         while stomp.canRead(1):
             stomp.ack(stomp.receiveFrame())
         stomp.disconnect()
@@ -43,7 +43,7 @@ class SimpleStompIntegrationTest(unittest.TestCase):
         stomp.send(self.DEST, 'test message 1')
         stomp.send(self.DEST, 'test message 2')
         self.assertFalse(stomp.canRead(1))
-        stomp.subscribe({StompSpec.DESTINATION_HEADER: self.DEST, StompSpec.ACK_HEADER: 'client-individual'})
+        stomp.subscribe(self.DEST, {StompSpec.ACK_HEADER: 'client-individual'})
         self.assertTrue(stomp.canRead(1))
         stomp.ack(stomp.receiveFrame())
         self.assertTrue(stomp.canRead(1))
@@ -73,8 +73,9 @@ class SimpleStompIntegrationTest(unittest.TestCase):
         stomp = Stomp(StompConfig(uri='tcp://localhost:61613'))
         stomp.connect()
         stomp.send(self.DEST, 'test message 1')
-        headers = {StompSpec.DESTINATION_HEADER: self.DEST, StompSpec.ACK_HEADER: 'client-individual'}
-        stomp.subscribe(headers)
+        headers = {StompSpec.ACK_HEADER: 'client-individual'}
+        stomp.subscribe(self.DEST, headers)
+        headers[StompSpec.DESTINATION_HEADER] = self.DEST
         self.assertEqual(stomp._session._subscriptions, [(headers, None)])
         stomp._stomp.socket.close()
         self.assertRaises(StompConnectionError, stomp.receiveFrame)
@@ -83,8 +84,9 @@ class SimpleStompIntegrationTest(unittest.TestCase):
         stomp.unsubscribe({StompSpec.DESTINATION_HEADER: self.DEST})
         self.assertEqual(stomp._session._subscriptions, [])
         stomp.send(self.DEST, 'test message 2')
-        headers = {StompSpec.DESTINATION_HEADER: self.DEST, 'id': 'bla', StompSpec.ACK_HEADER: 'client-individual'}
-        stomp.subscribe(headers)
+        headers = {'id': 'bla', StompSpec.ACK_HEADER: 'client-individual'}
+        stomp.subscribe(self.DEST, headers)
+        headers[StompSpec.DESTINATION_HEADER] = self.DEST
         self.assertEqual(stomp._session._subscriptions, [(headers, None)])
         stomp._stomp.socket.close()
         self.assertRaises(StompConnectionError, stomp.receiveFrame)

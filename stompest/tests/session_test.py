@@ -17,7 +17,7 @@ Copyright 2012 Mozes, Inc.
 import unittest
 
 from stompest.error import StompError
-from stompest.protocol.session import StompSession
+from stompest.protocol import StompSession, StompSpec
    
 class StompSessionTest(unittest.TestCase):
     def test_session_init(self):
@@ -32,41 +32,36 @@ class StompSessionTest(unittest.TestCase):
     def test_session_subscribe(self):
         session = StompSession()
         
-        headers = {'destination': 'bla1', 'bla2': 'bla3'}
-        session.subscribe(headers)
+        headers = {'bla2': 'bla3'}
+        session.subscribe('bla1', headers)
         
-        headersWithId1 = {'destination': 'bla2', 'id': 'bla2', 'bla3': 'bla4'}
-        session.subscribe(headersWithId1)
+        headersWithId1 = {StompSpec.ID_HEADER: 'bla2', 'bla3': 'bla4'}
+        session.subscribe('bla2', headersWithId1)
         
-        headersWithId2 = {'destination': 'bla2', 'id': 'bla3', 'bla4': 'bla5'}
-        session.subscribe(headersWithId2)
+        headersWithId2 = {StompSpec.ID_HEADER: 'bla3', 'bla4': 'bla5'}
+        session.subscribe('bla2', headersWithId2)
         
-        subscriptions = session.replay()
-        self.assertEquals(subscriptions, [(headers, None), (headersWithId1, None), (headersWithId2, None)])
-        self.assertEquals(session.replay(), [])
+        subscriptions = list(session.replay())
+        self.assertEquals(subscriptions, [('bla1', headers, None), ('bla2', headersWithId1, None), ('bla2', headersWithId2, None)])
+        self.assertEquals(list(session.replay()), [])
         
-        for header, _ in subscriptions:
-            session.subscribe(header)
-        session.unsubscribe({'id': headersWithId1['id']})
+        for dest, headers_, _ in subscriptions:
+            session.subscribe(dest, headers_)
+        session.unsubscribe({StompSpec.ID_HEADER: headersWithId1[StompSpec.ID_HEADER]})
         
-        subscriptions = session.replay()
-        self.assertEquals(subscriptions, [(headers, None), (headersWithId2, None)])
+        subscriptions = list(session.replay())
+        self.assertEquals(subscriptions, [('bla1', headers, None), ('bla2', headersWithId2, None)])
         
-        for header, _ in subscriptions:
-            session.subscribe(header)
-        session.unsubscribe(headers)
-        self.assertEquals(session.replay(), [(headersWithId2, None)])
+        for dest, headers_, _ in subscriptions:
+            session.subscribe(dest, headers_)
+        session.unsubscribe({StompSpec.DESTINATION_HEADER: 'bla1'})
+        self.assertEquals(list(session.replay()), [('bla2', headersWithId2, None)])
         
-        headersWithoutDestination = {'bla2': 'bla3'}
-        self.assertRaises(StompError, lambda: session.subscribe(headersWithoutDestination))
-    
         session = StompSession(version='1.1')
-        self.assertRaises(StompError, lambda: session.subscribe(headers))
-        self.assertRaises(StompError, lambda: session.unsubscribe(headers))
-        session.subscribe(headersWithId1)
-        session.subscribe(headersWithId2)
+        session.subscribe('bla2', headersWithId1)
+        session.subscribe('bla2', headersWithId2)
         session.unsubscribe(headersWithId1)
-        self.assertEquals(session.replay(), [(headersWithId2, None)])
+        self.assertEquals(list(session.replay()), [('bla2', headersWithId2, None)])
         
 if __name__ == '__main__':
     unittest.main()

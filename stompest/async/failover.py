@@ -21,7 +21,7 @@ import logging
 from twisted.internet import defer, reactor, task
 
 from stompest.error import StompError, StompConnectionError
-from stompest.protocol import StompFailoverProtocol, StompSession
+from stompest.protocol import StompFailoverProtocol, StompSession, StompSpec
 
 from .client import StompFactory
 from .util import exclusive, endpointFactory
@@ -55,6 +55,7 @@ class StompFailoverClient(object):
     def disconnect(self, failure=None):
         if not self._stomp:
             raise StompError('Not connected')
+        self._session.replay() # forget subscriptions upon graceful disconnect
         yield self._stomp.disconnect(failure)
         defer.returnValue(None)
     
@@ -71,11 +72,9 @@ class StompFailoverClient(object):
         self._stomp.sendFrame(message)
     
     def subscribe(self, dest, handler, headers=None, **kwargs):
-        headers = dict(headers or {})
         handler = self._createHandler(handler)
-        self._stomp.subscribe(dest=dest, handler=handler, headers=headers, **kwargs)
-        headers['destination'] = dest
-        self._session.subscribe(headers, context={'handler': handler, 'kwargs': kwargs})
+        frame = self._session.subscribe(dest, headers, context={'handler': handler, 'kwargs': kwargs})
+        self._stomp.subscribe(dest=frame.headers[StompSpec.DESTINATION_HEADER], handler=handler, headers=frame.headers, **kwargs)
     
     # TODO: unsubscribe
         
@@ -115,9 +114,9 @@ class StompFailoverClient(object):
     
     @defer.inlineCallbacks
     def _replay(self):
-        for (headers, context) in self._session.replay():
+        for (dest, headers, context) in self._session.replay():
             self.log.debug('Replaying subscription: %s' % headers)
-            yield self.subscribe(dest=headers['destination'], handler=context['handler'], headers=headers, **context['kwargs'])
+            yield self.subscribe(dest, context['handler'], headers, **context['kwargs'])
     
     def _sleep(self, delay):
         if not delay:
