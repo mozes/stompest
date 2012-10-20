@@ -15,41 +15,22 @@ Copyright 2011 Mozes, Inc.
    See the License for the specific language governing permissions and
    limitations under the License.
 """
-import functools
 import logging
-import warnings
 
-from twisted.internet import defer, reactor, task
-from twisted.internet.endpoints import clientFromString
+from twisted.internet import defer, reactor
 from twisted.internet.error import ConnectionLost
 from twisted.internet.protocol import Factory, Protocol
 
-from stompest.error import StompConnectTimeout, StompError, StompFrameError, StompProtocolError,\
-    StompConnectionError
+from stompest.error import StompConnectTimeout, StompFrameError, StompProtocolError, StompConnectionError
 from stompest.protocol import commands
+from stompest.protocol.failover import StompFailoverUri
 from stompest.protocol.frame import StompFrame
 from stompest.protocol.parser import StompParser
-from stompest.protocol.session import StompSession
 from stompest.protocol.spec import StompSpec
 from stompest.util import cloneStompMessage as _cloneStompMessage
-from stompest.protocol.failover import StompFailoverUri
+from stompest.async.utils import endpointFactory
 
-LOG_CATEGORY = 'stompest.async'
-
-def _endpointFactory(broker):
-    return clientFromString(reactor, '%(protocol)s:host=%(host)s:port=%(port)d' % broker)
-
-def exclusive(f):
-    @functools.wraps(f)
-    def _exclusive(*args, **kwargs):
-        if not _exclusive.running.called:
-            raise RuntimeError('%s still running' % f.__name__)
-        _exclusive.running = task.deferLater(reactor, 0, f, *args, **kwargs)
-        return _exclusive.running
-    
-    _exclusive.running = defer.Deferred()
-    _exclusive.running.callback(None)
-    return _exclusive
+LOG_CATEGORY = 'stompest.async.client'
 
 class StompClient(Protocol):
     """A Twisted implementation of a STOMP client"""
@@ -86,7 +67,7 @@ class StompClient(Protocol):
         """Send connect command and return Deferred for caller that will get trigger when connect is complete
         """
         if timeout is not None:
-            self._connectTimeoutDelayedCall = reactor.callLater(timeout, self._connectTimeout, timeout)
+            self._connectTimeoutDelayedCall = reactor.callLater(timeout, self._connectTimeout, timeout) #@UndefinedVariable
         self._connect(login, passcode)
         self._connectedDeferred = defer.Deferred()
         return self._connectedDeferred
@@ -358,103 +339,4 @@ class StompCreator(object):
         brokers = StompFailoverUri(self.config.uri).brokers
         if len(brokers) != 1:
             raise ValueError('failover URI is not supported [%s]' % self.config.failoverUri)
-        return _endpointFactory(brokers[0])
-
-class StompFailoverClient(object):
-    def __init__(self, config, connectTimeout=None, **kwargs):
-        self.log = logging.getLogger(LOG_CATEGORY)
-        self._config = config
-        self._connectTimeout = connectTimeout
-        self._kwargs = kwargs
-        self._session = StompSession(self._config.uri)
-        self._stomp = None
-        
-    @exclusive
-    @defer.inlineCallbacks
-    def connect(self):
-        try:
-            if not self._stomp:
-                yield self._connect()
-            defer.returnValue(self)
-        except Exception as e:
-            self.log.error('Connect failed [%s]' % e)
-            raise
-    
-    @exclusive
-    @defer.inlineCallbacks
-    def disconnect(self, failure=None):
-        if not self._stomp:
-            raise StompError('Not connected')
-        yield self._stomp.disconnect(failure)
-        defer.returnValue(None)
-    
-    @property
-    def disconnected(self):
-        return self._stomp and self._stomp.getDisconnectedDeferred()
-    
-    # STOMP commands
-    
-    def send(self, dest, msg='', headers=None):
-        self._stomp.send(dest=dest, msg=msg, headers=headers)
-        
-    def sendFrame(self, message):
-        self._stomp.sendFrame(message)
-    
-    def subscribe(self, dest, handler, headers=None, **kwargs):
-        headers = dict(headers or {})
-        self._stomp.subscribe(dest=dest, handler=handler, headers=headers, **kwargs)
-        headers['destination'] = dest
-        self._session.subscribe(headers, context={'handler': handler, 'kwargs': kwargs})
-    
-    # TODO: unsubscribe
-        
-    # private methods
-    
-    @defer.inlineCallbacks
-    def _connect(self):
-        for (broker, delay) in self._session:
-            yield self._sleep(delay)
-            endpoint = _endpointFactory(broker)
-            self.log.debug('Connecting to %(host)s:%(port)s ...' % broker)
-            try:
-                stomp = yield endpoint.connect(StompFactory(**self._kwargs))
-            except Exception as e:
-                self.log.warning('%s [%s]' % ('Could not connect to %(host)s:%(port)d' % broker, e))
-                continue
-            self._stomp = yield stomp.connect(self._config.login, self._config.passcode, timeout=self._connectTimeout)
-            self._stomp.getDisconnectedDeferred().addBoth(self._handleDisconnected).addErrback(self._handleDisconnectedError)
-            yield self._replay()
-            defer.returnValue(None)
-    
-    def _handleDisconnected(self, result):
-        self._stomp = None
-        return result
-    
-    def _handleDisconnectedError(self, failure):
-        self.log.debug('Connection lost: %s' % failure)
-        failure.trap(StompConnectionError)
-        self.log.warning('Attempting to reconnect ...')
-        return self.connect()
-    
-    @defer.inlineCallbacks
-    def _replay(self):
-        for (headers, context) in self._session.replay():
-            self.log.debug('Replaying subscription %s' % headers)
-            yield self.subscribe(dest=headers['destination'], handler=context['handler'], headers=headers, **context['kwargs'])
-    
-    def _sleep(self, delay):
-        if not delay:
-            return
-        self.log.debug('Delaying connect attempt for %d ms' % int(delay * 1000))
-        return task.deferLater(reactor, delay, lambda: None)
-
-class StompConfig(object):
-    def __init__(self, host=None, port=None, uri=None, login='', passcode=''):
-        if not uri:
-            if not (host and port):
-                raise ValueError('host and port missing')
-            uri = 'tcp://%s:%d' % (host, port)
-            warnings.warn('host and port arguments are deprecated. use uri=%s instead!' % uri)
-        self.uri = uri
-        self.login = login
-        self.passcode = passcode
+        return endpointFactory(brokers[0])
