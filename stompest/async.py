@@ -15,6 +15,7 @@ Copyright 2011 Mozes, Inc.
    See the License for the specific language governing permissions and
    limitations under the License.
 """
+import functools
 import logging
 import warnings
 
@@ -34,6 +35,21 @@ from stompest.util import cloneStompMessage as _cloneStompMessage
 from stompest.protocol.failover import StompFailoverUri
 
 LOG_CATEGORY = 'stompest.async'
+
+def _endpointFactory(broker):
+    return clientFromString(reactor, '%(protocol)s:host=%(host)s:port=%(port)d' % broker)
+
+def exclusive(f):
+    @functools.wraps(f)
+    def _exclusive(*args, **kwargs):
+        if not _exclusive.running.called:
+            raise RuntimeError('%s still running' % f.__name__)
+        _exclusive.running = task.deferLater(reactor, 0, f, *args, **kwargs)
+        return _exclusive.running
+    
+    _exclusive.running = defer.Deferred()
+    _exclusive.running.callback(None)
+    return _exclusive
 
 class StompClient(Protocol):
     """A Twisted implementation of a STOMP client"""
@@ -347,36 +363,34 @@ class StompCreator(object):
 class StompFailoverClient(object):
     def __init__(self, config, connectTimeout=None, **kwargs):
         self.log = logging.getLogger(LOG_CATEGORY)
-        
         self._config = config
         self._connectTimeout = connectTimeout
         self._kwargs = kwargs
-        
         self._session = StompSession(self._config.uri)
         self._stomp = None
         
-        self._connecting = None
-        self._reconnecting = None
-        self._disconnecting = None
-        
-        self._disconnected = None
-        self._reconnected = None
-    
+    @exclusive
+    @defer.inlineCallbacks
     def connect(self):
-        if not self._connecting:
-            self._connecting = self._connect()
-        return self._connecting
+        try:
+            if not self._stomp:
+                yield self._connect()
+            defer.returnValue(self)
+        except Exception as e:
+            self.log.error('Connect failed [%s]' % e)
+            raise
     
+    @exclusive
+    @defer.inlineCallbacks
     def disconnect(self, failure=None):
-        if not self._disconnecting:
-            self._disconnecting = self._disconnect(failure).chainDeferred(self._disconnected)
-        return self._disconnecting
+        if not self._stomp:
+            raise StompError('Not connected')
+        yield self._stomp.disconnect(failure)
+        defer.returnValue(None)
     
-    def getDisconnectedDeferred(self):
-        return self._disconnected
-    
-    def getReconnectedDeferred(self):
-        return self._reconnected
+    @property
+    def disconnected(self):
+        return self._stomp and self._stomp.getDisconnectedDeferred()
     
     # STOMP commands
     
@@ -398,26 +412,8 @@ class StompFailoverClient(object):
     
     @defer.inlineCallbacks
     def _connect(self):
-        yield
-        
-        try:
-            if not self._stomp:
-                yield self.__connect()
-                
-            defer.returnValue(self)
-            
-        except Exception as e:
-            self.log.error('Connect failed [%s]' % e)
-            raise
-        
-        finally:
-            self._connecting = None
-    
-    @defer.inlineCallbacks
-    def __connect(self):
         for (broker, delay) in self._session:
-            yield self._sleep(delay)   
-            
+            yield self._sleep(delay)
             endpoint = _endpointFactory(broker)
             self.log.debug('Connecting to %(host)s:%(port)s ...' % broker)
             try:
@@ -425,50 +421,20 @@ class StompFailoverClient(object):
             except Exception as e:
                 self.log.warning('%s [%s]' % ('Could not connect to %(host)s:%(port)d' % broker, e))
                 continue
-            
-            yield stomp.connect(self._config.login, self._config.passcode, timeout=self._connectTimeout)
-            stomp.getDisconnectedDeferred().addCallbacks(self._handleStompDisconnected, self._handleStompDisconnectedError)
-            self._stomp = stomp
+            self._stomp = yield stomp.connect(self._config.login, self._config.passcode, timeout=self._connectTimeout)
+            self._stomp.getDisconnectedDeferred().addBoth(self._handleDisconnected).addErrback(self._handleDisconnectedError)
             yield self._replay()
-            
-            self._disconnected = defer.Deferred()
-            self._reconnected = defer.Deferred()
-            
             defer.returnValue(None)
-
-    @defer.inlineCallbacks
-    def _disconnect(self, failure):
-        if not self._stomp:
-            raise StompError('Not connected')
-        
-        try:
-            yield self._stomp.disconnect(failure)
-            defer.returnValue(self)
-        
-        finally:
-            self._disconnecting = None
     
-    def _handleStompDisconnected(self, result):
-        self.log.debug('Handling disconnected deferred callback: %s' % result)
+    def _handleDisconnected(self, result):
         self._stomp = None
-        
-        disconnected, self._disconnected = self._disconnected, None
-        disconnected.callback(result)
+        return result
     
-    @defer.inlineCallbacks
-    def _handleStompDisconnectedError(self, failure):
-        self.log.debug('Handling disconnected deferred errback: %s' % failure)
-        self._stomp = None
-        
-        if failure.check(StompConnectionError):
-            self.log.warning('Connection lost unxepectedly. Attempting to reconnect ...')
-            reconnected, self._reconnected = self._reconnected, defer.Deferred()
-            yield self.connect()
-            reconnected.callback(self)
-            
-        else:
-            disconnected, self._disconnected = self._disconnected, None
-            disconnected.errback(failure)
+    def _handleDisconnectedError(self, failure):
+        self.log.debug('Connection lost: %s' % failure)
+        failure.trap(StompConnectionError)
+        self.log.warning('Attempting to reconnect ...')
+        return self.connect()
     
     @defer.inlineCallbacks
     def _replay(self):
@@ -492,6 +458,3 @@ class StompConfig(object):
         self.uri = uri
         self.login = login
         self.passcode = passcode
-
-def _endpointFactory(broker):
-    return clientFromString(reactor, '%(protocol)s:host=%(host)s:port=%(port)d' % broker)

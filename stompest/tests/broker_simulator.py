@@ -104,9 +104,9 @@ class RemoteControlViaFrameStompServer(BlackHoleStompServer):
         self.transport.loseConnection()
         
     def handleSend(self, msg):
-        if msg['body'] == 'disconnect':
+        if msg['body'] == 'shutdown':
             self.transport.loseConnection()
-        
+    
 if __name__ == '__main__':
     logging.basicConfig(level=logging.DEBUG)
     factory = Factory()

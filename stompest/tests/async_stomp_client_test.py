@@ -88,7 +88,7 @@ class AsyncClientErrorAfterConnectionLostTestCase(AsyncClientBaseTestCase):
     def _connect_and_send(self, creator, deferred):
         stomp = yield creator.getConnection()
         stomp.getDisconnectedDeferred().chainDeferred(deferred)
-        stomp.send('/queue/fake', 'disconnect')
+        stomp.send('/queue/fake', 'shutdown')
 
 if __name__ == '__main__':
     import sys
