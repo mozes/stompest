@@ -58,6 +58,7 @@ class StompSessionTest(unittest.TestCase):
         self.assertEquals(list(session.replay()), [('bla2', headersWithId2, None)])
         
         session = StompSession(version='1.1')
+        self.assertRaises(StompError, lambda: session.subscribe('bla1', headers))
         session.subscribe('bla2', headersWithId1)
         session.subscribe('bla2', headersWithId2)
         session.unsubscribe(headersWithId1)

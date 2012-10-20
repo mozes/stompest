@@ -74,10 +74,10 @@ class Stomp(object):
         return self._stomp.send(dest, msg, headers)
         
     def subscribe(self, dest, headers):
-        self._stomp.sendFrame(self._session.subscribe(dest, headers))
+        self.sendFrame(self._session.subscribe(dest, headers))
         
     def unsubscribe(self, headers):
-        self._stomp.sendFrame(self._session.unsubscribe(headers))
+        self.sendFrame(self._session.unsubscribe(headers))
         
     def begin(self, transactionId):
         self._stomp.begin(transactionId)
