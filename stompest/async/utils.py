@@ -21,6 +21,8 @@ import warnings
 from twisted.internet import defer, reactor, task
 from twisted.internet.endpoints import clientFromString
 
+from stompest.error import StompStillRunningError
+
 class StompConfig(object):
     def __init__(self, host=None, port=None, uri=None, login='', passcode=''):
         if not uri:
@@ -39,7 +41,7 @@ def exclusive(f):
     @functools.wraps(f)
     def _exclusive(*args, **kwargs):
         if not _exclusive.running.called:
-            raise RuntimeError('%s still running' % f.__name__)
+            raise StompStillRunningError('%s still running' % f.__name__)
         _exclusive.running = task.deferLater(reactor, 0, f, *args, **kwargs)
         return _exclusive.running
     

@@ -16,7 +16,7 @@ Copyright 2011, 2012 Mozes, Inc.
 """
 import logging
 
-from twisted.internet import defer, reactor, task
+from twisted.internet import defer, reactor
 from twisted.internet.protocol import Factory
 from twisted.python import log
 from twisted.trial import unittest
@@ -104,28 +104,33 @@ class AsyncFailoverClientFailoverOnDisconnectTestCase(AsyncFailoverClientBaseTes
         except StompProtocolError:
             pass
 
-"""
 class AsyncFailoverClientReplaySubscription(AsyncFailoverClientBaseTestCase):
     protocols = [RemoteControlViaFrameStompServer]
     
     @defer.inlineCallbacks
-    def _test_replay_after_failover(self):
+    def test_replay_after_failover(self):
         ports = tuple(c.getHost().port for c in self.connections)
         config = StompConfig(uri='failover:(tcp://localhost:%d)?startupMaxReconnectAttempts=0,initialReconnectDelay=0,maxReconnectAttempts=1' % ports)
         client = StompFailoverClient(config)
         yield client.connect()
         self._got_message = defer.Deferred()
         client.subscribe('/queue/bla', self._on_message)
-        yield self._got_message
-        client.send('/queue/fake', 'disconnect')
-        client = yield client.disconnect
-        client.disconnect()
+        result = yield self._got_message
+        self.assertEquals(result, None)
+        
+        # reload callback because the client will reconnect and replay subscriptions -> callback will be triggered once more
+        self._got_message = defer.Deferred()
+        client.send('/queue/fake', 'shutdown')
+        client = yield client.disconnected
+        result = yield self._got_message
+        self.assertEquals(result, None)
+        yield client.disconnect()
 
-    def _on_message(self, *args, **kwargs):
-        print '!!!!!!!!!', args ,kwargs
+    def _on_message(self, client, msg):
+        self.assertTrue(isinstance(client, StompFailoverClient))
+        self.assertEquals(msg['body'], 'hi')
         self._got_message.callback(None)
-"""
-
+    
 if __name__ == '__main__':
     import sys
     from twisted.scripts import trial

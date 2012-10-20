@@ -107,6 +107,9 @@ class RemoteControlViaFrameStompServer(BlackHoleStompServer):
         if msg['body'] == 'shutdown':
             self.transport.loseConnection()
     
+    def handleSubscribe(self, msg):
+        self.transport.write(self.getFrame(StompSpec.MESSAGE, {'destination': '/queue/bla', 'message-id': 4711}, 'hi'))
+        
 if __name__ == '__main__':
     logging.basicConfig(level=logging.DEBUG)
     factory = Factory()

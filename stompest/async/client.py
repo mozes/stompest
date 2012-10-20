@@ -227,7 +227,7 @@ class StompClient(Protocol):
         self.log.debug('Handler started for message: %s' % messageId)
     
     def _messageHandlerFailed(self, failure, messageId, msg, errDest):
-        self.log.error('Error in message handler: %s' % failure)
+        self.log.error('Error in message handler: %s' % repr(failure))
         if errDest: #Forward message to error queue if configured
             errorMessage = _cloneStompMessage(msg, persistent=True)
             self.send(errDest, errorMessage['body'], errorMessage['headers'])

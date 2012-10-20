@@ -15,6 +15,7 @@ Copyright 2011 Mozes, Inc.
    See the License for the specific language governing permissions and
    limitations under the License.
 """
+import functools
 import logging
 
 from twisted.internet import defer, reactor, task
@@ -69,6 +70,7 @@ class StompFailoverClient(object):
     
     def subscribe(self, dest, handler, headers=None, **kwargs):
         headers = dict(headers or {})
+        handler = self._createHandler(handler)
         self._stomp.subscribe(dest=dest, handler=handler, headers=headers, **kwargs)
         headers['destination'] = dest
         self._session.subscribe(headers, context={'handler': handler, 'kwargs': kwargs})
@@ -92,6 +94,12 @@ class StompFailoverClient(object):
             self._stomp.getDisconnectedDeferred().addBoth(self._handleDisconnected).addErrback(self._handleDisconnectedError)
             yield self._replay()
             defer.returnValue(None)
+    
+    def _createHandler(self, handler):
+        @functools.wraps(handler)
+        def _handler(_, result):
+            return handler(self, result)
+        return _handler
     
     def _handleDisconnected(self, result):
         self._stomp = None

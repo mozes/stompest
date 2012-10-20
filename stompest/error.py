@@ -33,3 +33,7 @@ class StompConnectionError(StompError):
 class StompConnectTimeout(StompConnectionError):
     """Raised for timeout waiting for connect response from broker
     """
+
+class StompStillRunningError(StompError):
+    """Raised when an in-flight exclusive operation is called more than once
+    """ 
