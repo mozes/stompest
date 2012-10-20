@@ -29,7 +29,7 @@ from stompest.protocol.parser import StompParser
 from stompest.protocol.spec import StompSpec
 from stompest.util import cloneStompMessage as _cloneStompMessage
 
-from stompest.async.utils import endpointFactory
+from stompest.async.util import endpointFactory
 
 LOG_CATEGORY = 'stompest.async.client'
 

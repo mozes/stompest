@@ -17,7 +17,7 @@ Copyright 2012 Mozes, Inc.
 from twisted.internet import defer, reactor, task
 from twisted.trial import unittest
 
-from stompest.async.utils import exclusive
+from stompest.async.util import exclusive
 from stompest.error import StompStillRunningError
 
 class ExclusiveWrapperTest(unittest.TestCase):

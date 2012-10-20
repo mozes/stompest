@@ -24,7 +24,7 @@ from stompest.error import StompError, StompConnectionError
 from stompest.protocol import StompFailoverProtocol, StompSession
 
 from .client import StompFactory
-from .utils import exclusive, endpointFactory
+from .util import exclusive, endpointFactory
 
 LOG_CATEGORY = 'stompest.async.failover'
 
@@ -116,7 +116,7 @@ class StompFailoverClient(object):
     @defer.inlineCallbacks
     def _replay(self):
         for (headers, context) in self._session.replay():
-            self.log.debug('Replaying subscription %s' % headers)
+            self.log.debug('Replaying subscription: %s' % headers)
             yield self.subscribe(dest=headers['destination'], handler=context['handler'], headers=headers, **context['kwargs'])
     
     def _sleep(self, delay):
