@@ -20,11 +20,11 @@ import logging
 
 from twisted.internet import defer, reactor, task
 
-from stompest.error import StompError, StompConnectionError
+from stompest.error import StompError
 from stompest.protocol import StompFailoverProtocol, StompSession, StompSpec
 
 from .client import StompFactory
-from .util import exclusive, endpointFactory
+from .util import endpointFactory, exclusive
 
 LOG_CATEGORY = 'stompest.async.failover'
 
@@ -92,7 +92,7 @@ class StompFailoverClient(object):
                 self.log.warning('%s [%s]' % ('Could not connect to %(host)s:%(port)d' % broker, e))
                 continue
             self._stomp = yield stomp.connect(self._config.login, self._config.passcode, timeout=self._connectTimeout)
-            self._stomp.getDisconnectedDeferred().addBoth(self._handleDisconnected).addErrback(self._handleDisconnectedError)
+            self.disconnected.addBoth(self._handleDisconnected)
             yield self._replay()
             defer.returnValue(None)
     
@@ -105,12 +105,6 @@ class StompFailoverClient(object):
     def _handleDisconnected(self, result):
         self._stomp = None
         return result
-    
-    def _handleDisconnectedError(self, failure):
-        self.log.debug('Connection lost: %s' % failure)
-        failure.trap(StompConnectionError)
-        self.log.warning('Attempting to reconnect ...')
-        return self.connect()
     
     @defer.inlineCallbacks
     def _replay(self):

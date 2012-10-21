@@ -22,8 +22,8 @@ from twisted.python import log
 from twisted.trial import unittest
 
 from stompest.async import StompFailoverClient
-from stompest.error import StompConnectTimeout, StompProtocolError
-from stompest.protocol import StompConfig, StompSpec
+from stompest.error import StompConnectionError, StompConnectTimeout, StompProtocolError 
+from stompest.protocol import StompConfig
 from stompest.tests.broker_simulator import BlackHoleStompServer, ErrorOnConnectStompServer, ErrorOnSendStompServer, RemoteControlViaFrameStompServer
 
 observer = log.PythonLoggingObserver()
@@ -97,7 +97,10 @@ class AsyncFailoverClientFailoverOnDisconnectTestCase(AsyncFailoverClientBaseTes
         yield client.connect()
         self.connections[0].stopListening()
         client.send('/queue/fake', 'shutdown')
-        client = yield client.disconnected
+        try:
+            client = yield client.disconnected
+        except StompConnectionError:
+            yield client.connect()
         client.send('/queue/fake', 'fake message')
         
         try:
@@ -122,7 +125,10 @@ class AsyncFailoverClientReplaySubscription(AsyncFailoverClientBaseTestCase):
         # reload callback because the client will reconnect and replay subscriptions -> callback will be triggered once more
         self._got_message = defer.Deferred()
         client.send('/queue/fake', 'shutdown')
-        client = yield client.disconnected
+        try:
+            client = yield client.disconnected
+        except StompConnectionError:
+            yield client.connect()
         result = yield self._got_message
         self.assertEquals(result, None)
         yield client.disconnect()
