@@ -194,7 +194,7 @@ class GracefulDisconnectTestCase(unittest.TestCase):
     numMsgs = 5
     msgCount = 0
     msg = 'test'
-    queue = '/queue/aysncStompestGracefulDisconnectUnitTest'
+    queue = '/queue/asyncStompestGracefulDisconnectUnitTest'
     
     def setUp(self):
         self.cleanQueues()
@@ -257,6 +257,48 @@ class GracefulDisconnectTestCase(unittest.TestCase):
         self.timeoutDelayedCall.cancel()
         stomp.disconnect()
 
+class SubscribeTestCase(unittest.TestCase):
+    msg = 'test'
+    queue = '/queue/asyncFailoverSubscribeTestCase'
+    
+    def setUp(self):
+        self.cleanQueues()
+    
+    def cleanQueues(self):
+        self.cleanQueue(self.queue)
+    
+    def cleanQueue(self, queue):
+        stomp = Stomp(HOST, PORT)
+        stomp.connect()
+        stomp.subscribe(queue, {StompSpec.ACK_HEADER: 'client'})
+        while stomp.canRead(1):
+            frame = stomp.receiveFrame()
+            stomp.ack(frame)
+            print "Dequeued old message: %s" % frame
+        stomp.disconnect()
+        
+    @defer.inlineCallbacks
+    def test_unsubscribe(self):
+        config = StompConfig(uri='tcp://%s:%d' % (HOST, PORT))
+        creator = StompCreator(config)
+                
+        client = yield creator.getConnection()
+        
+        for _ in xrange(2):
+            client.send(self.queue, self.msg)
+        
+        self.subscription = client.subscribe(self.queue, self._eatOneMsgAndUnsubscribe, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': '1'})
+        client.subscribe(self.queue, self._eatOneMsgAndDisconnect, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': '1'})
+        
+        yield client.disconnected
+                
+    def _eatOneMsgAndUnsubscribe(self, client, msg):
+        client.unsubscribe(self.subscription)
+        yield task.deferLater(reactor, 0.2, lambda: None) # wait for DISCONNECT command to be processed by the server
+        
+    def _eatOneMsgAndDisconnect(self, client, msg):
+        client.disconnect()
+        
 if __name__ == '__main__':
     import sys
     from twisted.scripts import trial

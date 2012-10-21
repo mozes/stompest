@@ -124,7 +124,7 @@ class StompFailoverClient(object):
         try:
             stomp = self.__stomp
         except AttributeError:
-            self.__stomp = stomp = None
+            stomp = self.__stomp = None
         if not stomp:
             raise StompConnectionError('Not connected')
         return stomp

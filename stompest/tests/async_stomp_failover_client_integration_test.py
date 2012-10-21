@@ -16,7 +16,7 @@ Copyright 2011, 2012 Mozes, Inc.
 """
 import logging
 
-from twisted.internet import reactor, defer
+from twisted.internet import reactor, defer, task
 from twisted.trial import unittest
 
 from stompest.simple import Stomp
@@ -35,7 +35,7 @@ class HandlerExceptionWithErrorQueueIntegrationTestCase(unittest.TestCase):
     msg1 = 'choke on this'
     msg1Hdrs = {'food': 'barf', 'persistent': 'true'}
     msg2 = 'follow up message'
-    queue = '/queue/asyncStompestHandlerExceptionWithErrorQueueUnitTest'
+    queue = '/queue/asyncFailoverHandlerExceptionWithErrorQueueUnitTest'
     errorQueue = '/queue/zzz.error.asyncStompestHandlerExceptionWithErrorQueueUnitTest'
         
     def cleanQueues(self):
@@ -194,7 +194,7 @@ class GracefulDisconnectTestCase(unittest.TestCase):
     numMsgs = 5
     msgCount = 0
     msg = 'test'
-    queue = '/queue/aysncStompestGracefulDisconnectUnitTest'
+    queue = '/queue/asyncFailoverGracefulDisconnectUnitTest'
     
     def setUp(self):
         self.cleanQueues()
@@ -230,7 +230,7 @@ class GracefulDisconnectTestCase(unittest.TestCase):
         #Reconnect and subscribe again to make sure that all messages in the queue were ack'ed
         client = yield client.connect()
         self.timeExpired = False
-        self.timeoutDelayedCall = reactor.callLater(1, self._timesUp, client)
+        self.timeoutDelayedCall = reactor.callLater(1, self._timesUp, client) #@UndefinedVariable
         client.subscribe(self.queue, self._eatOneMsgAndDisconnect, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': self.numMsgs})
 
         #Wait for disconnect
@@ -243,7 +243,7 @@ class GracefulDisconnectTestCase(unittest.TestCase):
         self.msgCount += 1
         if self.msgCount < self.numMsgs:
             d = defer.Deferred() 
-            reactor.callLater(1, d.callback, None)
+            reactor.callLater(1, d.callback, None) #@UndefinedVariable
             return d
         else:
             client.disconnect()
@@ -257,6 +257,48 @@ class GracefulDisconnectTestCase(unittest.TestCase):
         self.timeoutDelayedCall.cancel()
         client.disconnect()
 
+class SubscribeTestCase(unittest.TestCase):
+    msg = 'test'
+    queue = '/queue/asyncFailoverSubscribeTestCase'
+    
+    def setUp(self):
+        self.cleanQueues()
+    
+    def cleanQueues(self):
+        self.cleanQueue(self.queue)
+    
+    def cleanQueue(self, queue):
+        stomp = Stomp(HOST, PORT)
+        stomp.connect()
+        stomp.subscribe(queue, {StompSpec.ACK_HEADER: 'client'})
+        while stomp.canRead(1):
+            frame = stomp.receiveFrame()
+            stomp.ack(frame)
+            print "Dequeued old message: %s" % frame
+        stomp.disconnect()
+        
+    @defer.inlineCallbacks
+    def test_unsubscribe(self):
+        config = StompConfig(uri='tcp://%s:%d' % (HOST, PORT))
+        client = StompFailoverClient(config)
+        
+        client = yield client.connect()
+        
+        for _ in xrange(2):
+            client.send(self.queue, self.msg)
+        
+        self.subscription = client.subscribe(self.queue, self._eatOneMsgAndUnsubscribe, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': '1'})
+        client.subscribe(self.queue, self._eatOneMsgAndDisconnect, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': '1'})
+        
+        yield client.disconnected
+                
+    def _eatOneMsgAndUnsubscribe(self, client, msg):
+        client.unsubscribe(self.subscription)
+        yield task.deferLater(reactor, 0.2, lambda: None) # wait for DISCONNECT command to be processed by the server
+        
+    def _eatOneMsgAndDisconnect(self, client, msg):
+        client.disconnect()
+        
 if __name__ == '__main__':
     import sys
     from twisted.scripts import trial
