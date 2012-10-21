@@ -16,8 +16,9 @@ Copyright 2012 Mozes, Inc.
 """
 import unittest
 
-from stompest.error import StompError
+from stompest.error import StompProtocolError
 from stompest.protocol import StompSession, StompSpec
+from stompest.protocol.frame import StompFrame
    
 class StompSessionTest(unittest.TestCase):
     def test_session_init(self):
@@ -27,16 +28,18 @@ class StompSessionTest(unittest.TestCase):
         session = StompSession('1.1')
         self.assertEquals(session.version, '1.1')
         
-        self.assertRaises(StompError, lambda: StompSession(version='1.2'))
+        self.assertRaises(StompProtocolError, lambda: StompSession(version='1.2'))
 
     def test_session_subscribe(self):
         session = StompSession()
         
         headers = {'bla2': 'bla3'}
-        session.subscribe('bla1', headers)
+        subscription = session.subscribe('bla1', headers)
+        self.assertEquals(subscription, StompFrame(StompSpec.SUBSCRIBE, {'destination': 'bla1', 'bla2': 'bla3'}))
         
         headersWithId1 = {StompSpec.ID_HEADER: 'bla2', 'bla3': 'bla4'}
-        session.subscribe('bla2', headersWithId1)
+        subscriptionWithId1 = session.subscribe('bla2', headersWithId1)
+        self.assertEquals(subscriptionWithId1, StompFrame(StompSpec.SUBSCRIBE, {'destination': 'bla2', StompSpec.ID_HEADER: 'bla2', 'bla3': 'bla4'}))
         
         headersWithId2 = {StompSpec.ID_HEADER: 'bla3', 'bla4': 'bla5'}
         session.subscribe('bla2', headersWithId2)
@@ -45,20 +48,23 @@ class StompSessionTest(unittest.TestCase):
         self.assertEquals(subscriptions, [('bla1', headers, None), ('bla2', headersWithId1, None), ('bla2', headersWithId2, None)])
         self.assertEquals(list(session.replay()), [])
         
-        for dest, headers_, _ in subscriptions:
-            session.subscribe(dest, headers_)
-        session.unsubscribe({StompSpec.ID_HEADER: headersWithId1[StompSpec.ID_HEADER]})
-        
-        subscriptions = list(session.replay())
-        self.assertEquals(subscriptions, [('bla1', headers, None), ('bla2', headersWithId2, None)])
-        
-        for dest, headers_, _ in subscriptions:
-            session.subscribe(dest, headers_)
-        session.unsubscribe({StompSpec.DESTINATION_HEADER: 'bla1'})
-        self.assertEquals(list(session.replay()), [('bla2', headersWithId2, None)])
-        
+        for s in ({StompSpec.ID_HEADER: headersWithId1[StompSpec.ID_HEADER]}, subscriptionWithId1):
+            for dest, headers_, _ in subscriptions:
+                session.subscribe(dest, headers_)
+            session.unsubscribe(s)
+            
+            subscriptions = list(session.replay())
+            self.assertEquals(subscriptions, [('bla1', headers, None), ('bla2', headersWithId2, None)])
+            
+        for s in ({StompSpec.DESTINATION_HEADER: 'bla1'}, subscription):
+            for dest, headers_, _ in subscriptions:
+                session.subscribe(dest, headers_)
+            session.unsubscribe(s)
+            self.assertEquals(list(session.replay()), [('bla2', headersWithId2, None)])
+
         session = StompSession(version='1.1')
-        self.assertRaises(StompError, lambda: session.subscribe('bla1', headers))
+        self.assertRaises(StompProtocolError, lambda: session.subscribe('bla1', headers))
+        self.assertRaises(StompProtocolError, lambda: session.unsubscribe({StompSpec.DESTINATION_HEADER: 'bla1'}))
         session.subscribe('bla2', headersWithId1)
         session.subscribe('bla2', headersWithId2)
         session.unsubscribe(headersWithId1)

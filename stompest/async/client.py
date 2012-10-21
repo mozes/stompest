@@ -30,6 +30,7 @@ from stompest.protocol.spec import StompSpec
 from stompest.util import cloneStompMessage as _cloneStompMessage
 
 from stompest.async.util import endpointFactory
+from stompest.protocol.session import StompSession
 
 LOG_CATEGORY = 'stompest.async.client'
 
@@ -90,23 +91,41 @@ class StompClient(Protocol):
         """
         # client-individual mode is only supported in AMQ >= 5.2
         # headers[StompSpec.ACK_HEADER] = headers.get(StompSpec.ACK_HEADER, 'client-individual')
-        headers = dict(headers or {})
-        headers[StompSpec.ACK_HEADER] = headers.get(StompSpec.ACK_HEADER, 'client')
-        self._destinations[dest] = {'handler': handler, StompSpec.ACK_HEADER: headers[StompSpec.ACK_HEADER], 'errorDestination': errorDestination}
-        self._subscribe(dest, headers)
+        frame = StompSession().subscribe(dest, headers)
+        ack = frame.headers.setdefault(StompSpec.ACK_HEADER, 'client')
+        self._destinations[dest] = {'handler': handler, 'ack': ack, 'errorDestination': errorDestination}
+        self.log.debug('Sending %s command for destination %s with ack mode %s' % (StompSpec.SUBSCRIBE, dest, ack))
+        self.sendFrame(frame)
         
+    def unsubscribe(self, subscription):
+        frame = StompSession().unsubscribe(subscription)
+        dest = frame.headers[StompSpec.DESTINATION_HEADER]
+        try:
+            self._destinations.pop(dest)
+        except:
+            self.log.warning('Cannot unsubscribe (destination unknown): %s' % dest)
+        else:
+            self.sendFrame(frame)
+    
     def send(self, dest, msg='', headers=None):
         """Do the send command to enqueue a message to a destination
         """
         headers = dict(headers or {})
-        if self.log.isEnabledFor(logging.DEBUG):
-            self.log.debug('Sending message to %s: [%s...]' % (dest, msg[:self.MESSAGE_INFO_LENGTH]))
         self.sendFrame(commands.send(dest, msg, headers))
     
     def sendFrame(self, message):
-        self._write(str(self._toFrame(message)))
+        frame = self._toFrame(message)
+        if self.log.isEnabledFor(logging.DEBUG):
+            self.log.debug('Sending %s frame: %s%s' % (frame.cmd, repr(frame.headers), frame.body and ('[: %s...]' % repr(frame.body[:self.MESSAGE_INFO_LENGTH]))))
+        self._write(str(frame))
     
     def getDisconnectedDeferred(self):
+        import warnings
+        warnings.warn('StompClient.getDisconnectedDeferred() is deprecated. Use StompClient.disconnected instead!')
+        return self.disconnected
+    
+    @property
+    def disconnected(self):
         return self._disconnectedDeferred
     
     #
@@ -144,21 +163,12 @@ class StompClient(Protocol):
     # Methods for sending raw STOMP commands
     #
     def _connect(self, login, passcode):
-        self.log.debug('Sending CONNECT command')
         self.sendFrame(commands.connect(login, passcode))
 
     def _disconnect(self):
-        self.log.debug('Sending DISCONNECT command')
         self.sendFrame(commands.disconnect())
 
-    def _subscribe(self, dest, headers):
-        ack = headers.get(StompSpec.ACK_HEADER)
-        self.log.debug('Sending SUBSCRIBE command for destination %s with ack mode %s' % (dest, ack))
-        headers[StompSpec.DESTINATION_HEADER] = dest
-        self.sendFrame(commands.subscribe(headers))
-
     def _ack(self, messageId):
-        self.log.debug('Sending ACK command for message: %s' % messageId)
         self.sendFrame(commands.ack({StompSpec.MESSAGE_ID_HEADER: messageId}))
     
     def _toFrame(self, message):
@@ -167,7 +177,7 @@ class StompClient(Protocol):
         return message
     
     def _write(self, data):
-        #self.log.debug('sending data:\n%s' % data)
+        #self.log.debug('sending data:\n%s' % repr(data))
         self.transport.write(data)
 
     #
@@ -281,7 +291,7 @@ class StompClient(Protocol):
             self._postProcessMessage(messageId)
         
     def _isClientAck(self, dest):
-        return self._destinations[dest][StompSpec.ACK_HEADER] in self.CLIENT_ACK_MODES
+        return self._destinations[dest]['ack'] in self.CLIENT_ACK_MODES
 
     def _postProcessMessage(self, messageId):
         self._handlerFinished(messageId)

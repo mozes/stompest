@@ -78,7 +78,7 @@ class HandlerExceptionWithErrorQueueIntegrationTestCase(unittest.TestCase):
         
         #Client disconnected and returned error
         try:
-            yield stomp.getDisconnectedDeferred()
+            yield stomp.disconnected
         except StompestTestError:
             pass
         else:
@@ -89,14 +89,14 @@ class HandlerExceptionWithErrorQueueIntegrationTestCase(unittest.TestCase):
         stomp.subscribe(self.queue, self._eatOneMsgAndDisconnect, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': 1}, errorDestination=self.errorQueue)
         
         #Client disconnects without error
-        yield stomp.getDisconnectedDeferred()
+        yield stomp.disconnected
         
         #Reconnect and subscribe to error queue
         stomp = yield creator.getConnection()
         stomp.subscribe(self.errorQueue, self._saveErrMsgAndDisconnect, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': 1})
         
         #Wait for disconnect
-        yield stomp.getDisconnectedDeferred()
+        yield stomp.disconnected
         
         #Verify that first message was in error queue
         self.assertEquals(self.msg1, self.errQMsg['body'])
@@ -122,14 +122,14 @@ class HandlerExceptionWithErrorQueueIntegrationTestCase(unittest.TestCase):
         stomp.subscribe(self.queue, self._barfOneEatOneAndDisonnect, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': 1}, errorDestination=self.errorQueue)
         
         #Client disconnects without error
-        yield stomp.getDisconnectedDeferred()
+        yield stomp.disconnected
         
         #Reconnect and subscribe to error queue
         stomp = yield creator.getConnection()
         stomp.subscribe(self.errorQueue, self._saveErrMsgAndDisconnect, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': 1})
         
         #Wait for disconnect
-        yield stomp.getDisconnectedDeferred()
+        yield stomp.disconnected
         
         #Verify that one message was in error queue (can't guarantee order)
         self.assertNotEquals(None, self.errQMsg)
@@ -151,7 +151,7 @@ class HandlerExceptionWithErrorQueueIntegrationTestCase(unittest.TestCase):
         
         #Client disconnected and returned error
         try:
-            yield stomp.getDisconnectedDeferred()
+            yield stomp.disconnected
         except StompestTestError:
             pass
         else:
@@ -162,7 +162,7 @@ class HandlerExceptionWithErrorQueueIntegrationTestCase(unittest.TestCase):
         stomp.subscribe(self.queue, self._eatOneMsgAndDisconnect, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': 1})
         
         #Client disconnects without error
-        yield stomp.getDisconnectedDeferred()
+        yield stomp.disconnected
         
         #Verify that message was retried
         self.assertEquals(self.msg1, self.unhandledMsg['body'])
@@ -225,7 +225,7 @@ class GracefulDisconnectTestCase(unittest.TestCase):
         stomp.subscribe(self.queue, self._msgHandler, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': self.numMsgs})
         
         #Wait for disconnect
-        yield stomp.getDisconnectedDeferred()
+        yield stomp.disconnected
         
         #Reconnect and subscribe again to make sure that all messages in the queue were ack'ed
         stomp = yield creator.getConnection()
@@ -234,7 +234,7 @@ class GracefulDisconnectTestCase(unittest.TestCase):
         stomp.subscribe(self.queue, self._eatOneMsgAndDisconnect, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': self.numMsgs})
 
         #Wait for disconnect
-        yield stomp.getDisconnectedDeferred()
+        yield stomp.disconnected
         
         #Time should have expired if there were no messages left in the queue
         self.assertTrue(self.timeExpired)

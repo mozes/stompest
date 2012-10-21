@@ -20,7 +20,7 @@ import logging
 
 from twisted.internet import defer, reactor, task
 
-from stompest.error import StompError
+from stompest.error import StompConnectionError
 from stompest.protocol import StompFailoverProtocol, StompSession, StompSpec
 
 from .client import StompFactory
@@ -44,7 +44,7 @@ class StompFailoverClient(object):
         try:
             try:
                 self._stomp
-            except StompError:
+            except StompConnectionError:
                 yield self._connect()
             defer.returnValue(self)
         except Exception as e:
@@ -60,7 +60,7 @@ class StompFailoverClient(object):
     
     @property
     def disconnected(self):
-        return self._stomp and self._stomp.getDisconnectedDeferred()
+        return self._stomp and self._stomp.disconnected
     
     @property
     def _stomp(self):
@@ -69,7 +69,7 @@ class StompFailoverClient(object):
         except AttributeError:
             self.__stomp = stomp = None
         if not stomp:
-            raise StompError('Not connected')
+            raise StompConnectionError('Not connected')
         return stomp
         
     @_stomp.setter
@@ -85,12 +85,14 @@ class StompFailoverClient(object):
         self._stomp.sendFrame(message)
     
     def subscribe(self, dest, handler, headers=None, **kwargs):
-        handler = self._createHandler(handler)
         frame = self._session.subscribe(dest, headers, context={'handler': handler, 'kwargs': kwargs})
-        self._stomp.subscribe(dest=frame.headers[StompSpec.DESTINATION_HEADER], handler=handler, headers=frame.headers, **kwargs)
+        self._stomp.subscribe(dest=frame.headers[StompSpec.DESTINATION_HEADER], handler=self._createHandler(handler), headers=frame.headers, **kwargs)
+        return frame
     
-    # TODO: unsubscribe
-        
+    def unsubscribe(self, subscription):
+        frame = self._session.unsubscribe(subscription)
+        self._stomp.unsubscribe(frame.headers)
+    
     # private methods
     
     @defer.inlineCallbacks

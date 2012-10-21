@@ -61,43 +61,43 @@ class AsyncClientConnectErrorTestCase(AsyncClientBaseTestCase):
 
 class AsyncClientErrorAfterConnectedTestCase(AsyncClientBaseTestCase):
     protocol = ErrorOnSendStompServer
-
-    def test_stomp_error_after_connected(self):
-        config = StompConfig(uri='tcp://localhost:%d' % self.testPort)
-        creator = StompCreator(config)
-        deferred = defer.Deferred()
-        self._connect_and_send(creator, deferred)
-        return self.assertFailure(deferred, StompProtocolError)
-        
-    def test_stomp_error_after_connected_deprecated_config(self):
-        config = DeprecatedStompConfig('localhost', self.testPort)
-        creator = StompCreator(config)
-        deferred = defer.Deferred()
-        self._connect_and_send(creator, deferred)
-        return self.assertFailure(deferred, StompProtocolError)
-        
+    
     @defer.inlineCallbacks
-    def _connect_and_send(self, creator, deferred):
+    def test_stomp_error_after_connected(self):
+        yield self._connect_and_send(StompConfig(uri='tcp://localhost:%d' % self.testPort))
+    
+    @defer.inlineCallbacks    
+    def test_stomp_error_after_connected_deprecated_config(self):
+        yield self._connect_and_send(DeprecatedStompConfig('localhost', self.testPort))
+    
+    @defer.inlineCallbacks
+    def _connect_and_send(self, config):
+        creator = StompCreator(config)
         stomp = yield creator.getConnection()
-        stomp.getDisconnectedDeferred().chainDeferred(deferred)
         stomp.send('/queue/fake', 'fake message')
-
+        try:
+            yield stomp.disconnected
+        except StompProtocolError:
+            pass
+        else:
+            self.assertTrue(False)
+        
 class AsyncClientErrorAfterConnectionLostTestCase(AsyncClientBaseTestCase):
     protocol = RemoteControlViaFrameStompServer
-
+    
+    @defer.inlineCallbacks
     def test_stomp_error_after_connection_lost(self):
         config = StompConfig(uri='tcp://localhost:%d' % self.testPort)
         creator = StompCreator(config)
-        deferred = defer.Deferred()
-        self._connect_and_send(creator, deferred)
-        return self.assertFailure(deferred, StompConnectionError)
-        
-    @defer.inlineCallbacks
-    def _connect_and_send(self, creator, deferred):
         stomp = yield creator.getConnection()
-        stomp.getDisconnectedDeferred().chainDeferred(deferred)
         stomp.send('/queue/fake', 'shutdown')
-
+        try:
+            yield stomp.disconnected
+        except StompConnectionError:
+            pass
+        else:
+            self.assertTrue(False)
+        
 if __name__ == '__main__':
     import sys
     from twisted.scripts import trial

@@ -22,7 +22,7 @@ from twisted.python import log
 from twisted.trial import unittest
 
 from stompest.async import StompFailoverClient
-from stompest.error import StompConnectionError, StompConnectTimeout, StompProtocolError 
+from stompest.error import StompConnectionError, StompConnectTimeout, StompProtocolError
 from stompest.protocol import StompConfig
 from stompest.tests.broker_simulator import BlackHoleStompServer, ErrorOnConnectStompServer, ErrorOnSendStompServer, RemoteControlViaFrameStompServer
 
@@ -39,7 +39,7 @@ class AsyncFailoverClientBaseTestCase(unittest.TestCase):
     def _create_connection(self, protocol):
         factory = Factory()
         factory.protocol = protocol
-        connection = reactor.listenTCP(0, factory)
+        connection = reactor.listenTCP(0, factory) #@UndefinedVariable
         return connection
         
     def tearDown(self):
@@ -60,7 +60,17 @@ class AsyncFailoverClientConnectTimeoutTestCase(AsyncFailoverClientBaseTestCase)
         config = StompConfig(uri='failover:(tcp://nosuchhost:65535,tcp://localhost:%d)?startupMaxReconnectAttempts=2,initialReconnectDelay=0,randomize=false' % port)
         client = StompFailoverClient(config, connectTimeout=0.01)
         return self.assertFailure(client.connect(), StompConnectTimeout)
-
+    
+    @defer.inlineCallbacks
+    def test_not_connected(self):
+        port = self.connections[0].getHost().port
+        config = StompConfig(uri='tcp://localhost:%d' % port)
+        client = StompFailoverClient(config, connectTimeout=0.01)
+        try:
+            yield client.send('/queue/fake')
+        except StompConnectionError:
+            pass
+        
 class AsyncFailoverClientConnectErrorTestCase(AsyncFailoverClientBaseTestCase):
     protocols = [ErrorOnConnectStompServer]
 
@@ -116,9 +126,12 @@ class AsyncFailoverClientReplaySubscription(AsyncFailoverClientBaseTestCase):
         ports = tuple(c.getHost().port for c in self.connections)
         config = StompConfig(uri='failover:(tcp://localhost:%d)?startupMaxReconnectAttempts=0,initialReconnectDelay=0,maxReconnectAttempts=1' % ports)
         client = StompFailoverClient(config)
+        try:
+            client.subscribe('/queue/bla', self._on_message)
+        except StompConnectionError: # we're not yet connected, but the subscription is in the journal now
+            pass
         yield client.connect()
         self._got_message = defer.Deferred()
-        client.subscribe('/queue/bla', self._on_message)
         result = yield self._got_message
         self.assertEquals(result, None)
         

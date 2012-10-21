@@ -14,7 +14,7 @@ Copyright 2012 Mozes, Inc.
    See the License for the specific language governing permissions and
    limitations under the License.
 """
-from stompest.error import StompError
+from stompest.error import StompProtocolError
 from stompest.protocol import StompFrame
 
 from .spec import StompSpec
@@ -35,25 +35,26 @@ class StompSession(object):
 
     def subscribe(self, dest, headers, context=None):
         if (self.version != '1.0') and (StompSpec.ID_HEADER not in headers):
-            raise StompError('invalid subscription (id header missing) [%s]' % headers)
+            raise StompProtocolError('invalid subscription (id header missing) [%s]' % headers)
         headers = dict(headers or [])
         headers[StompSpec.DESTINATION_HEADER] = dest
         self._subscriptions.append((dict(headers), context))
         return StompFrame(StompSpec.SUBSCRIBE, headers)
     
-    def unsubscribe(self, headers):
-        header, value = self._getUnsubscribeHeader(headers)
+    def unsubscribe(self, subscription):
+        header, value = self._getUnsubscribeHeader(subscription)
         self._subscriptions = [(h, c) for (h, c) in self._subscriptions if (header not in h) or (h[header] != value)]
-        return StompFrame(cmd=StompSpec.SUBSCRIBE, headers={header: value})
+        return StompFrame(cmd=StompSpec.UNSUBSCRIBE, headers={header: value})
     
-    def _getUnsubscribeHeader(self, headers):
+    def _getUnsubscribeHeader(self, subscription):
+        headers = getattr(subscription, 'headers', subscription)
         for header in (StompSpec.ID_HEADER, StompSpec.DESTINATION_HEADER):
             try:
                 return header, headers[header]
             except KeyError:
                 if (self.version, header) == ('1.0', StompSpec.ID_HEADER):
                     continue
-            raise StompError('invalid unsubscription (%s header missing) [%s]' % (header, headers))
+            raise StompProtocolError('invalid unsubscription (%s header missing) [%s]' % (header, headers))
     
     @property
     def version(self):
@@ -63,6 +64,6 @@ class StompSession(object):
     def version(self, version):
         version = version or self.DEFAULT_VERSION
         if version not in self.SUPPORTED_VERSIONS:
-            raise StompError('version is not supported [%s]' % version)
+            raise StompProtocolError('version is not supported [%s]' % version)
         self._version = version
 
