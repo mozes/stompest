@@ -37,13 +37,14 @@ class StompFailoverClient(object):
         self._kwargs = kwargs
 
         self.log = logging.getLogger(LOG_CATEGORY)
-        self._stomp = None
         
     @exclusive
     @defer.inlineCallbacks
     def connect(self):
         try:
-            if not self._stomp:
+            try:
+                self._stomp
+            except StompError:
                 yield self._connect()
             defer.returnValue(self)
         except Exception as e:
@@ -53,8 +54,6 @@ class StompFailoverClient(object):
     @exclusive
     @defer.inlineCallbacks
     def disconnect(self, failure=None):
-        if not self._stomp:
-            raise StompError('Not connected')
         self._session.replay() # forget subscriptions upon graceful disconnect
         yield self._stomp.disconnect(failure)
         defer.returnValue(None)
@@ -63,6 +62,20 @@ class StompFailoverClient(object):
     def disconnected(self):
         return self._stomp and self._stomp.getDisconnectedDeferred()
     
+    @property
+    def _stomp(self):
+        try:
+            stomp = self.__stomp
+        except AttributeError:
+            self.__stomp = stomp = None
+        if not stomp:
+            raise StompError('Not connected')
+        return stomp
+        
+    @_stomp.setter
+    def _stomp(self, stomp):
+        self.__stomp = stomp
+        
     # STOMP commands
     
     def send(self, dest, msg='', headers=None):
