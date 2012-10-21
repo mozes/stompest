@@ -74,7 +74,9 @@ class Stomp(object):
         return self._stomp.send(dest, msg, headers)
         
     def subscribe(self, dest, headers):
-        self.sendFrame(self._session.subscribe(dest, headers))
+        frame = self._session.subscribe(dest, headers)
+        self.sendFrame(frame)
+        return frame
         
     def unsubscribe(self, headers):
         self.sendFrame(self._session.unsubscribe(headers))

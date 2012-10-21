@@ -84,7 +84,9 @@ class Stomp(object):
         headers = dict(headers or {})
         headers.setdefault(StompSpec.ACK_HEADER, 'auto')
         headers.setdefault('activemq.prefetchSize', 1)
-        self.sendFrame(commands.subscribe(dest, headers, self.version))
+        frame = commands.subscribe(dest, headers, self.version)
+        self.sendFrame(frame)
+        return frame
         
     def unsubscribe(self, dest=None, headers=None):
         # made dest parameter optional since an unsubscribe frame with ID_HEADER header precludes a DESTINATION_HEADER
@@ -133,7 +135,7 @@ class Stomp(object):
     
     def sendFrame(self, message):
         self._write(str(self._toFrame(message)))
-    
+        
     def _checkConnected(self):
         if not self._connected():
             raise StompConnectionError('Not connected')

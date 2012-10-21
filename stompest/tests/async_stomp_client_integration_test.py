@@ -16,7 +16,7 @@ Copyright 2011, 2012 Mozes, Inc.
 """
 import logging
 
-from twisted.internet import reactor, defer
+from twisted.internet import defer, reactor, task
 from twisted.trial import unittest
 
 from stompest.simple import Stomp
@@ -230,7 +230,7 @@ class GracefulDisconnectTestCase(unittest.TestCase):
         #Reconnect and subscribe again to make sure that all messages in the queue were ack'ed
         stomp = yield creator.getConnection()
         self.timeExpired = False
-        self.timeoutDelayedCall = reactor.callLater(1, self._timesUp, stomp)
+        self.timeoutDelayedCall = reactor.callLater(1, self._timesUp, stomp) #@UndefinedVariable
         stomp.subscribe(self.queue, self._eatOneMsgAndDisconnect, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': self.numMsgs})
 
         #Wait for disconnect
@@ -243,7 +243,7 @@ class GracefulDisconnectTestCase(unittest.TestCase):
         self.msgCount += 1
         if self.msgCount < self.numMsgs:
             d = defer.Deferred() 
-            reactor.callLater(1, d.callback, None)
+            reactor.callLater(1, d.callback, None) #@UndefinedVariable
             return d
         else:
             stomp.disconnect()

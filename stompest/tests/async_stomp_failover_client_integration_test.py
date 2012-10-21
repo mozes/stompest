@@ -158,6 +158,7 @@ class HandlerExceptionWithErrorQueueIntegrationTestCase(unittest.TestCase):
             self.assertTrue(False)
             
         #Reconnect and subscribe again - consuming retried message and disconnecting
+        client = StompFailoverClient(config) # take a fresh client to prevent replay (we were disconnected by an error)
         client = yield client.connect()
         client.subscribe(self.queue, self._eatOneMsgAndDisconnect, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': 1})
         

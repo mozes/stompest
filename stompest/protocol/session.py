@@ -36,7 +36,7 @@ class StompSession(object):
     def send(self, destination, body, headers):
         return commands.send(destination, body, headers)
     
-    def subscribe(self, destination, headers, context=None):
+    def subscribe(self, destination, headers=None, context=None):
         frame = commands.subscribe(destination, headers, self.version)
         self._subscriptions.append((dict(frame.headers), context))
         return frame

@@ -35,6 +35,7 @@ class StompSessionTest(unittest.TestCase):
         
         headers = {'bla2': 'bla3'}
         subscription = session.subscribe('bla1', headers)
+        subscription.headers.pop(StompSpec.ID_HEADER)
         self.assertEquals(subscription, StompFrame(StompSpec.SUBSCRIBE, {'destination': 'bla1', 'bla2': 'bla3'}))
         
         headersWithId1 = {StompSpec.ID_HEADER: 'bla2', 'bla3': 'bla4'}
@@ -45,6 +46,7 @@ class StompSessionTest(unittest.TestCase):
         session.subscribe('bla2', headersWithId2)
         
         subscriptions = list(session.replay())
+        subscriptions[0][1].pop(StompSpec.ID_HEADER)
         self.assertEquals(subscriptions, [('bla1', headers, None), ('bla2', headersWithId1, None), ('bla2', headersWithId2, None)])
         self.assertEquals(list(session.replay()), [])
         
@@ -53,13 +55,15 @@ class StompSessionTest(unittest.TestCase):
                 session.subscribe(dest, headers_)
             session.unsubscribe(s)
             
-            subscriptions = list(session.replay())
-            self.assertEquals(subscriptions, [('bla1', headers, None), ('bla2', headersWithId2, None)])
-            
+            subscriptions_ = list(session.replay())
+            subscriptions_[0][1].pop(StompSpec.ID_HEADER)
+            self.assertEquals(subscriptions_, [('bla1', headers, None), ('bla2', headersWithId2, None)])
+        
         for s in ({StompSpec.DESTINATION_HEADER: 'bla1'}, subscription):
-            for dest, headers_, _ in subscriptions:
+            for dest, headers_, _ in subscriptions_:
                 session.subscribe(dest, headers_)
             session.unsubscribe(s)
+            
             self.assertEquals(list(session.replay()), [('bla2', headersWithId2, None)])
 
         session = StompSession(version='1.1')
@@ -68,7 +72,9 @@ class StompSessionTest(unittest.TestCase):
         session.subscribe('bla2', headersWithId1)
         session.subscribe('bla2', headersWithId2)
         session.unsubscribe(headersWithId1)
-        self.assertEquals(list(session.replay()), [('bla2', headersWithId2, None)])
+        
+        subscriptions = list(session.replay())
+        self.assertEquals(subscriptions, [('bla2', headersWithId2, None)])
         
 if __name__ == '__main__':
     unittest.main()
