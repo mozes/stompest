@@ -81,20 +81,17 @@ class Stomp(object):
         self.sendFrame(commands.send(dest, msg, headers))
         
     def subscribe(self, dest=None, headers=None):
-        # made dest parameter optional since it is better to just specify the destination in the headers (see unsubscribe)
         headers = dict(headers or {})
-        headers[StompSpec.DESTINATION_HEADER] = dest or headers[StompSpec.DESTINATION_HEADER]
         headers.setdefault(StompSpec.ACK_HEADER, 'auto')
         headers.setdefault('activemq.prefetchSize', 1)
-        self.sendFrame(commands.subscribe(headers))
+        self.sendFrame(commands.subscribe(dest, headers, self.version))
         
     def unsubscribe(self, dest=None, headers=None):
         # made dest parameter optional since an unsubscribe frame with ID_HEADER header precludes a DESTINATION_HEADER
-        if StompSpec.ID_HEADER in headers:
-            headers = {StompSpec.ID_HEADER: headers[StompSpec.ID_HEADER]}
-        else:
-            headers = {'headers': dest or headers[StompSpec.DESTINATION_HEADER]}
-        self.sendFrame(commands.unsubscribe(headers))
+        headers = dict(headers or [])
+        if dest:
+            headers[StompSpec.DESTINATION_HEADER] = dest
+        self.sendFrame(commands.unsubscribe(headers, self.version))
     
     def begin(self, transactionId):
         self.sendFrame(commands.begin(commands.transaction(transactionId)))

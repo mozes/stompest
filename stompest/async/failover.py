@@ -62,31 +62,17 @@ class StompFailoverClient(object):
     def disconnected(self):
         return self._stomp and self._stomp.disconnected
     
-    @property
-    def _stomp(self):
-        try:
-            stomp = self.__stomp
-        except AttributeError:
-            self.__stomp = stomp = None
-        if not stomp:
-            raise StompConnectionError('Not connected')
-        return stomp
-        
-    @_stomp.setter
-    def _stomp(self, stomp):
-        self.__stomp = stomp
-        
     # STOMP commands
     
-    def send(self, dest, msg='', headers=None):
-        self._stomp.send(dest=dest, msg=msg, headers=headers)
+    def send(self, destination, body='', headers=None):
+        self.sendFrame(self._session.send(destination, body, headers))
         
     def sendFrame(self, message):
         self._stomp.sendFrame(message)
     
-    def subscribe(self, dest, handler, headers=None, **kwargs):
-        frame = self._session.subscribe(dest, headers, context={'handler': handler, 'kwargs': kwargs})
-        self._stomp.subscribe(dest=frame.headers[StompSpec.DESTINATION_HEADER], handler=self._createHandler(handler), headers=frame.headers, **kwargs)
+    def subscribe(self, destination, handler, headers=None, **kwargs):
+        frame = self._session.subscribe(destination, headers, context={'handler': handler, 'kwargs': kwargs})
+        self._stomp.subscribe(frame.headers[StompSpec.DESTINATION_HEADER], self._createHandler(handler), frame.headers, **kwargs)
         return frame
     
     def unsubscribe(self, subscription):
@@ -123,12 +109,28 @@ class StompFailoverClient(object):
     
     @defer.inlineCallbacks
     def _replay(self):
-        for (dest, headers, context) in self._session.replay():
+        for (destination, headers, context) in self._session.replay():
             self.log.debug('Replaying subscription: %s' % headers)
-            yield self.subscribe(dest, context['handler'], headers, **context['kwargs'])
+            yield self.subscribe(destination, context['handler'], headers, **context['kwargs'])
     
     def _sleep(self, delay):
         if not delay:
             return
         self.log.debug('Delaying connect attempt for %d ms' % int(delay * 1000))
         return task.deferLater(reactor, delay, lambda: None)
+    
+    @property
+    def _stomp(self):
+        try:
+            stomp = self.__stomp
+        except AttributeError:
+            self.__stomp = stomp = None
+        if not stomp:
+            raise StompConnectionError('Not connected')
+        return stomp
+        
+    @_stomp.setter
+    def _stomp(self, stomp):
+        self.__stomp = stomp
+        
+

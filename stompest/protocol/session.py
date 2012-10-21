@@ -15,8 +15,8 @@ Copyright 2012 Mozes, Inc.
    limitations under the License.
 """
 from stompest.error import StompProtocolError
-from stompest.protocol import StompFrame
 
+import commands
 from .spec import StompSpec
 
 class StompSession(object):
@@ -30,31 +30,22 @@ class StompSession(object):
     def replay(self):
         subscriptions, self._subscriptions = self._subscriptions, []
         for (headers, context) in subscriptions:
-            dest = headers.pop(StompSpec.DESTINATION_HEADER)
-            yield dest, headers, context
-
-    def subscribe(self, dest, headers, context=None):
-        if (self.version != '1.0') and (StompSpec.ID_HEADER not in headers):
-            raise StompProtocolError('invalid subscription (id header missing) [%s]' % headers)
-        headers = dict(headers or [])
-        headers[StompSpec.DESTINATION_HEADER] = dest
-        self._subscriptions.append((dict(headers), context))
-        return StompFrame(StompSpec.SUBSCRIBE, headers)
+            destination = headers.pop(StompSpec.DESTINATION_HEADER)
+            yield destination, headers, context
+    
+    def send(self, destination, body, headers):
+        return commands.send(destination, body, headers)
+    
+    def subscribe(self, destination, headers, context=None):
+        frame = commands.subscribe(destination, headers, self.version)
+        self._subscriptions.append((dict(frame.headers), context))
+        return frame
     
     def unsubscribe(self, subscription):
-        header, value = self._getUnsubscribeHeader(subscription)
+        frame = commands.unsubscribe(subscription, self.version)
+        header, value = dict(frame.headers).popitem()
         self._subscriptions = [(h, c) for (h, c) in self._subscriptions if (header not in h) or (h[header] != value)]
-        return StompFrame(cmd=StompSpec.UNSUBSCRIBE, headers={header: value})
-    
-    def _getUnsubscribeHeader(self, subscription):
-        headers = getattr(subscription, 'headers', subscription)
-        for header in (StompSpec.ID_HEADER, StompSpec.DESTINATION_HEADER):
-            try:
-                return header, headers[header]
-            except KeyError:
-                if (self.version, header) == ('1.0', StompSpec.ID_HEADER):
-                    continue
-            raise StompProtocolError('invalid unsubscription (%s header missing) [%s]' % (header, headers))
+        return frame
     
     @property
     def version(self):

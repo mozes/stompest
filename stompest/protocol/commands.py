@@ -14,13 +14,15 @@ Copyright 2012 Mozes, Inc.
    See the License for the specific language governing permissions and
    limitations under the License.
 """
+import uuid
+
+from stompest.error import StompProtocolError
+
 from .frame import StompFrame
 from .spec import StompSpec
 
-import uuid
-
 def connect(username, password, headers=None):
-    headers = dict(headers) if headers else {}
+    headers = dict(headers or [])
     headers.update({StompSpec.LOGIN_HEADER: username, StompSpec.PASSCODE_HEADER: password})
     return StompFrame(StompSpec.CONNECT, headers)
 
@@ -35,14 +37,25 @@ def nack(headers):
     headers = dict((key, value) for (key, value) in headers.iteritems() if key in (StompSpec.SUBSCRIPTION_HEADER, StompSpec.MESSAGE_ID_HEADER, StompSpec.TRANSACTION_HEADER))
     return StompFrame(StompSpec.NACK, headers)
     
-def subscribe(headers):
+def subscribe(destination, headers, version='1.0'):
+    if (version != '1.0') and (StompSpec.ID_HEADER not in headers):
+        raise StompProtocolError('invalid subscription (id header missing) [%s]' % headers)
+    headers = dict(headers or [])
+    headers[StompSpec.DESTINATION_HEADER] = destination    
     return StompFrame(StompSpec.SUBSCRIBE, headers)
-
-def unsubscribe(headers):
-    return StompFrame(StompSpec.UNSUBSCRIBE, headers)
+    
+def unsubscribe(subscription, version='1.0'):
+    headers = getattr(subscription, 'headers', subscription)
+    for header in (StompSpec.ID_HEADER, StompSpec.DESTINATION_HEADER):
+        try:
+            return StompFrame(StompSpec.UNSUBSCRIBE, {header: headers[header]})
+        except KeyError:
+            if (version, header) == ('1.0', StompSpec.ID_HEADER):
+                continue
+        raise StompProtocolError('invalid unsubscription (%s header missing) [%s]' % (header, headers))
 
 def send(destination, body='', headers=None):
-    headers = dict(headers) if headers else {}
+    headers = dict(headers or [])
     headers[StompSpec.DESTINATION_HEADER] = destination
     return StompFrame(StompSpec.SEND, headers, body)
     

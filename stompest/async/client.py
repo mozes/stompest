@@ -110,7 +110,6 @@ class StompClient(Protocol):
     def send(self, dest, msg='', headers=None):
         """Do the send command to enqueue a message to a destination
         """
-        headers = dict(headers or {})
         self.sendFrame(commands.send(dest, msg, headers))
     
     def sendFrame(self, message):
