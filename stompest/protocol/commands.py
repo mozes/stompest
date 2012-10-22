@@ -14,7 +14,6 @@ Copyright 2012 Mozes, Inc.
    See the License for the specific language governing permissions and
    limitations under the License.
 """
-import itertools
 import uuid
 
 from stompest.error import StompProtocolError

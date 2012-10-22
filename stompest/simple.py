@@ -18,10 +18,7 @@ import select
 import socket
 
 from stompest.error import StompConnectionError, StompProtocolError
-from stompest.protocol import commands
-from stompest.protocol.frame import StompFrame
-from stompest.protocol.parser import StompParser
-from stompest.protocol.spec import StompSpec
+from stompest.protocol import commands, StompFrame, StompParser, StompSpec
 
 class Stomp(object):
     """A simple implementation of a STOMP client"""

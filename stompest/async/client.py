@@ -22,11 +22,7 @@ from twisted.internet.error import ConnectionLost
 from twisted.internet.protocol import Factory, Protocol
 
 from stompest.error import StompConnectTimeout, StompFrameError, StompProtocolError, StompConnectionError
-from stompest.protocol import commands
-from stompest.protocol.failover import StompFailoverUri
-from stompest.protocol.frame import StompFrame
-from stompest.protocol.parser import StompParser
-from stompest.protocol.spec import StompSpec
+from stompest.protocol import commands, StompFailoverUri, StompFrame, StompParser, StompSpec
 from stompest.util import cloneStompMessage as _cloneStompMessage
 
 from stompest.async.util import endpointFactory

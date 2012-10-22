@@ -16,7 +16,7 @@ Copyright 2011, 2012 Mozes, Inc.
 """
 from copy import deepcopy
 
-from stompest.protocol.spec import StompSpec
+from stompest.protocol import StompSpec
 
 _RESERVED_HEADERS = [StompSpec.MESSAGE_ID_HEADER, StompSpec.DESTINATION_HEADER, 'timestamp', 'expires', 'priority']
 
