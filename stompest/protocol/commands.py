@@ -38,14 +38,11 @@ def nack(headers):
     headers = dict((key, value) for (key, value) in headers.iteritems() if key in (StompSpec.SUBSCRIPTION_HEADER, StompSpec.MESSAGE_ID_HEADER, StompSpec.TRANSACTION_HEADER))
     return StompFrame(StompSpec.NACK, headers)
 
-_nextId = itertools.count().next
 def subscribe(destination, headers, version):
     if (version != '1.0') and (StompSpec.ID_HEADER not in headers):
         raise StompProtocolError('invalid subscription (id header missing) [%s]' % headers)
     headers = dict(headers or [])
     headers[StompSpec.DESTINATION_HEADER] = destination
-    if StompSpec.ID_HEADER not in headers:
-        headers[StompSpec.ID_HEADER] = str(_nextId())
     return StompFrame(StompSpec.SUBSCRIBE, headers)
     
 def unsubscribe(subscription, version):

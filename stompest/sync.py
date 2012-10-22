@@ -65,21 +65,22 @@ class Stomp(object):
         return result
     
     def disconnect(self):
+        self._session.flush() # flush subscriptions on user requested disconnect
         return self._stomp.disconnect()
 
     def canRead(self, timeout=None):
         return self._stomp.canRead(timeout)
         
     def send(self, dest, msg, headers=None):
-        return self._stomp.send(dest, msg, headers)
+        self._stomp.send(dest, msg, headers)
         
     def subscribe(self, dest, headers):
         frame = self._session.subscribe(dest, headers)
         self.sendFrame(frame)
-        return frame
-        
-    def unsubscribe(self, headers):
-        self.sendFrame(self._session.unsubscribe(headers))
+        return self._session.token(frame)
+    
+    def unsubscribe(self, subscription):
+        self.sendFrame(self._session.unsubscribe(subscription))
         
     def begin(self, transactionId):
         self._stomp.begin(transactionId)

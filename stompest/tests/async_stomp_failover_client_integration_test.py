@@ -84,6 +84,8 @@ class HandlerExceptionWithErrorQueueIntegrationTestCase(unittest.TestCase):
         else:
             self.assertTrue(False)
         
+        client = StompFailoverClient(config) # take a fresh client to prevent replay (we were disconnected by an error)
+        
         #Reconnect and subscribe again - consuming second message then disconnecting
         client = yield client.connect()
         client.subscribe(self.queue, self._eatOneMsgAndDisconnect, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': 1}, errorDestination=self.errorQueue)
@@ -138,7 +140,7 @@ class HandlerExceptionWithErrorQueueIntegrationTestCase(unittest.TestCase):
     @defer.inlineCallbacks
     def test_onhandlerException_disconnect(self):
         config = StompConfig(uri='tcp://%s:%d' % (HOST, PORT))
-        client = StompFailoverClient(config)
+        client = StompFailoverClient(config, alwaysDisconnectOnUnhandledMsg=True)
         
         #Connect
         client = yield client.connect()
@@ -156,7 +158,7 @@ class HandlerExceptionWithErrorQueueIntegrationTestCase(unittest.TestCase):
             pass
         else:
             self.assertTrue(False)
-            
+         
         #Reconnect and subscribe again - consuming retried message and disconnecting
         client = StompFailoverClient(config) # take a fresh client to prevent replay (we were disconnected by an error)
         client = yield client.connect()
@@ -287,16 +289,22 @@ class SubscribeTestCase(unittest.TestCase):
         
         for _ in xrange(2):
             client.send(self.queue, self.msg)
-        
+            
         self.subscription = client.subscribe(self.queue, self._eatOneMsgAndUnsubscribe, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': '1'})
-        client.subscribe(self.queue, self._eatOneMsgAndDisconnect, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': '1'})
         
+        self.signal = defer.Deferred()
+        yield self.signal
+        
+        client.subscribe(self.queue, self._eatOneMsgAndDisconnect, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': '1'})
+
         yield client.disconnected
-                
+              
+    @defer.inlineCallbacks  
     def _eatOneMsgAndUnsubscribe(self, client, msg):
         client.unsubscribe(self.subscription)
-        yield task.deferLater(reactor, 0.2, lambda: None) # wait for DISCONNECT command to be processed by the server
-        
+        yield task.deferLater(reactor, 0.25, lambda: None) # wait for UNSUBSCRIBE command to be processed by the server
+        self.signal.callback(None)
+                
     def _eatOneMsgAndDisconnect(self, client, msg):
         client.disconnect()
         

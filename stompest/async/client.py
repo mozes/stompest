@@ -31,6 +31,7 @@ from stompest.util import cloneStompMessage as _cloneStompMessage
 
 from stompest.async.util import endpointFactory
 from stompest.protocol.session import StompSession
+import functools
 
 LOG_CATEGORY = 'stompest.async.client'
 
@@ -38,8 +39,10 @@ class StompClient(Protocol):
     """A Twisted implementation of a STOMP client"""
     MESSAGE_INFO_LENGTH = 20
     CLIENT_ACK_MODES = set(['client', 'client-individual'])
-
-    def __init__(self, alwaysDisconnectOnUnhandledMsg=False):
+    DEFAULT_ACK_MODE = 'client'
+    
+    def __init__(self, session=None, alwaysDisconnectOnUnhandledMsg=False):
+        self._session = session or StompSession()
         self._alwaysDisconnectOnUnhandledMsg = alwaysDisconnectOnUnhandledMsg
         
         # leave the used logger public in case the user wants to override it
@@ -86,24 +89,25 @@ class StompClient(Protocol):
             
         return self._disconnectedDeferred
     
-    def subscribe(self, dest, handler, headers=None, errorDestination=None):
+    def subscribe(self, dest, handler, headers=None, **kwargs):
         """Subscribe to a destination and register a function handler to receive messages for that destination
         """
-        # client-individual mode is only supported in AMQ >= 5.2
-        # headers[StompSpec.ACK_HEADER] = headers.get(StompSpec.ACK_HEADER, 'client-individual')
-        frame = StompSession().subscribe(dest, headers)
+        errorDestination = kwargs.get('errorDestination')
+        frame = self._session.subscribe(dest, headers, context={'handler': handler, 'kwargs': kwargs})
         headers = frame.headers
-        ack = headers.setdefault(StompSpec.ACK_HEADER, 'client')
-        self._subscriptions[headers[StompSpec.ID_HEADER]] = {'destination': headers[StompSpec.DESTINATION_HEADER], 'handler': handler, 'ack': ack, 'errorDestination': errorDestination}
+        ack = headers.setdefault(StompSpec.ACK_HEADER, self.DEFAULT_ACK_MODE)
+        token = self._session.token(frame)
+        self._subscriptions[token] = {'destination': headers[StompSpec.DESTINATION_HEADER], 'handler': self._createHandler(handler), 'ack': ack, 'errorDestination': errorDestination}
         self.sendFrame(frame)
-        
+        return token
+    
     def unsubscribe(self, subscription):
-        frame = StompSession().unsubscribe(subscription)
-        id_ = frame.headers[StompSpec.ID_HEADER]
+        frame = self._session.unsubscribe(subscription)
+        token = self._session.token(frame)
         try:
-            self._subscriptions.pop(id_)
+            self._subscriptions.pop(token)
         except:
-            self.log.warning('Cannot unsubscribe (subscription id unknown): %s' % id_)
+            self.log.warning('Cannot unsubscribe (subscription id unknown): %s=%s' % token)
         else:
             self.sendFrame(frame)
     
@@ -166,7 +170,10 @@ class StompClient(Protocol):
 
     def _disconnect(self):
         self.sendFrame(commands.disconnect())
-
+        self.transport.loseConnection()
+        if not self._disconnectError:
+            list(self._session.replay()) # forget subscriptions upon graceful disconnect
+            
     def _ack(self, messageId):
         self.sendFrame(commands.ack({StompSpec.MESSAGE_ID_HEADER: messageId}))
     
@@ -189,6 +196,12 @@ class StompClient(Protocol):
         self._connectTimeoutDelayedCall.cancel()
         self._connectTimeoutDelayedCall = None
     
+    def _createHandler(self, handler):
+        @functools.wraps(handler)
+        def _handler(_, result):
+            return handler(self, result)
+        return _handler
+
     def _handleConnectionLostDisconnect(self):
         if not self._disconnectedDeferred:
             return
@@ -250,7 +263,7 @@ class StompClient(Protocol):
         self._connectTimeoutDelayedCall = None
         self._connectError = StompConnectTimeout('Connect command timed out after %s seconds' % timeout)
         self.transport.loseConnection()
-        
+    
     def _handleConnected(self, msg):
         """Handle STOMP CONNECTED commands
         """
@@ -258,6 +271,7 @@ class StompClient(Protocol):
         self.log.debug('Connected to stomp broker with session: %s' % sessionId)
         self._cancelConnectTimeout('successfully connected')
         self._disconnectedDeferred = defer.Deferred()
+        self._replay()
         self._connectedDeferred.callback(self)
         self._connectedDeferred = None
     
@@ -268,16 +282,15 @@ class StompClient(Protocol):
         headers = msg['headers']
         messageId = headers[StompSpec.MESSAGE_ID_HEADER]
         try:
-            subscription = self._subscription(headers)
-            details = self._subscriptions[subscription]
+            token = self._session.token(headers)
+            subscription = self._subscriptions[token]
         except:
             self.log.warning('Ignoring STOMP message (no handler found): %s [headers=%s]' % (messageId, headers))
             return
-        destination = details['destination']
         
         #Do not process any more messages if we're disconnecting
         if self._disconnecting:
-            self.log.debug('Ignoring STOMP message (disconnecting): %s [destination=%s, subscription=%s]' % (messageId, destination, subscription))
+            self.log.debug('Ignoring STOMP message (disconnecting): %s [headers=%s]' % (messageId, headers))
             return
         
         if self.log.isEnabledFor(logging.DEBUG):
@@ -286,31 +299,34 @@ class StompClient(Protocol):
         #Call message handler (can return deferred to be async)
         self._handlerStarted(messageId)
         try:
-            yield defer.maybeDeferred(details['handler'], self, msg)
+            yield defer.maybeDeferred(subscription['handler'], self, msg)
         except Exception as e:
-            self._messageHandlerFailed(e, messageId, msg, details['errorDestination'])
+            self._messageHandlerFailed(e, messageId, msg, subscription['errorDestination'])
         else:
-            if self._isClientAck(details):
+            if self._isClientAck(subscription):
                 self._ack(messageId)
         finally:
             self._postProcessMessage(messageId)
         
-    def _isClientAck(self, details):
-        return details['ack'] in self.CLIENT_ACK_MODES
+    def _isClientAck(self, subscription):
+        return subscription['ack'] in self.CLIENT_ACK_MODES
 
     def _postProcessMessage(self, messageId):
         self._handlerFinished(messageId)
+        self._finish()
+        
+    def _finish(self):
         #If someone's waiting to know that all handlers are done, call them back
-        if self._finishedHandlersDeferred and not self._handlersInProgress():
-            self._finishedHandlersDeferred.callback(self)
-            self._finishedHandlersDeferred = None
-    
-    def _subscription(self, headers):
-        try:
-            return headers[StompSpec.SUBSCRIPTION_HEADER]
-        except: # TODO: implement SHOULD for STOMP 1.0, MUST for STOMP 1.1
-            return [s for (s, details) in self._subscriptions.iteritems() if details['destination'] == headers[StompSpec.DESTINATION_HEADER]][0]
-    
+        if (not self._finishedHandlersDeferred) or self._handlersInProgress():
+            return
+        self._finishedHandlersDeferred.callback(self)
+        self._finishedHandlersDeferred = None
+        
+    def _replay(self):
+        for (destination, headers, context) in self._session.replay():
+            self.log.debug('Replaying subscription: %s' % headers)
+            self.subscribe(destination, context['handler'], headers, **context['kwargs'])
+            
     def _handleError(self, msg):
         """Handle STOMP ERROR commands
         """

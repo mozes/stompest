@@ -127,30 +127,44 @@ class AsyncFailoverClientReplaySubscription(AsyncFailoverClientBaseTestCase):
         config = StompConfig(uri='failover:(tcp://localhost:%d)?startupMaxReconnectAttempts=0,initialReconnectDelay=0,maxReconnectAttempts=1' % ports)
         client = StompFailoverClient(config)
         try:
-            client.subscribe('/queue/bla', self._on_message)
-        except StompConnectionError: # we're not yet connected, but the subscription is in the journal now
-            pass
-        yield client.connect()
-        self._got_message = defer.Deferred()
-        result = yield self._got_message
-        self.assertEquals(result, None)
-        
-        # reload callback because the client will reconnect and replay subscriptions -> callback will be triggered once more
-        self._got_message = defer.Deferred()
-        client.send('/queue/fake', 'shutdown')
-        try:
-            client = yield client.disconnected
+            client.subscribe('/queue/bla', self._on_message) # client is not connected, so it won't accept subscriptions
         except StompConnectionError:
-            yield client.connect()
+            pass
+        else:
+            self.assertTrue(False)
+            
+        self.assertEquals(client._session._subscriptions, {}) # check that no subscriptions have been accepted
+        yield client.connect()
+        
+        self.shutdown = True # the callback handler will kill the broker connection ... 
+        client.subscribe('/queue/bla', self._on_message)
+        try:
+            client = yield client.disconnected # the callback handler has killed the broker connection
+        except StompConnectionError:
+            pass
+        else:
+            self.assertFalse(True)
+            
+        self.shutdown = False # the callback handler will not kill the broker connection, but callback self._got_message
+        self._got_message = defer.Deferred()
+        
+        yield client.connect()
+        self.assertNotEquals(client._session._subscriptions, []) # the subscriptions have been replayed ...
+        
         result = yield self._got_message
-        self.assertEquals(result, None)
+        self.assertEquals(result, None) # ... and the message comes back
+        
         yield client.disconnect()
+        self.assertEquals(list(client._session.replay()), []) # after a clean disconnect, the subscriptions are forgotten.
 
     def _on_message(self, client, msg):
         self.assertTrue(isinstance(client, StompFailoverClient))
         self.assertEquals(msg['body'], 'hi')
-        self._got_message.callback(None)
-    
+        if self.shutdown:
+            client.send('/queue/fake', 'shutdown')
+        else:
+            self._got_message.callback(None)
+        
 if __name__ == '__main__':
     import sys
     from twisted.scripts import trial

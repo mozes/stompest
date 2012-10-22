@@ -21,7 +21,7 @@ import logging
 from twisted.internet import defer, reactor, task
 
 from stompest.error import StompConnectionError
-from stompest.protocol import StompFailoverProtocol, StompSession, StompSpec
+from stompest.protocol import StompFailoverProtocol, StompSession
 
 from .client import StompFactory
 from .util import endpointFactory, exclusive
@@ -54,7 +54,6 @@ class StompFailoverClient(object):
     @exclusive
     @defer.inlineCallbacks
     def disconnect(self, failure=None):
-        self._session.replay() # forget subscriptions upon graceful disconnect
         yield self._stomp.disconnect(failure)
         defer.returnValue(None)
     
@@ -65,19 +64,16 @@ class StompFailoverClient(object):
     # STOMP commands
     
     def send(self, destination, body='', headers=None):
-        self.sendFrame(self._session.send(destination, body, headers))
+        self._stomp.send(destination, body, headers)
         
     def sendFrame(self, message):
         self._stomp.sendFrame(message)
     
     def subscribe(self, destination, handler, headers=None, **kwargs):
-        frame = self._session.subscribe(destination, headers, context={'handler': handler, 'kwargs': kwargs})
-        self._stomp.subscribe(frame.headers[StompSpec.DESTINATION_HEADER], self._createHandler(handler), frame.headers, **kwargs)
-        return frame
+        return self._stomp.subscribe(destination, self._createHandler(handler), headers, **kwargs)
     
     def unsubscribe(self, subscription):
-        frame = self._session.unsubscribe(subscription)
-        self._stomp.unsubscribe(frame.headers)
+        self._stomp.unsubscribe(subscription)
     
     # private methods
     
@@ -88,13 +84,12 @@ class StompFailoverClient(object):
             endpoint = endpointFactory(broker)
             self.log.debug('Connecting to %(host)s:%(port)s ...' % broker)
             try:
-                stomp = yield endpoint.connect(StompFactory(**self._kwargs))
+                stomp = yield endpoint.connect(StompFactory(session=self._session, **self._kwargs))
             except Exception as e:
                 self.log.warning('%s [%s]' % ('Could not connect to %(host)s:%(port)d' % broker, e))
                 continue
             self._stomp = yield stomp.connect(self._config.login, self._config.passcode, timeout=self._connectTimeout)
             self.disconnected.addBoth(self._handleDisconnected)
-            yield self._replay()
             defer.returnValue(None)
     
     def _createHandler(self, handler):
@@ -106,12 +101,6 @@ class StompFailoverClient(object):
     def _handleDisconnected(self, result):
         self._stomp = None
         return result
-    
-    @defer.inlineCallbacks
-    def _replay(self):
-        for (destination, headers, context) in self._session.replay():
-            self.log.debug('Replaying subscription: %s' % headers)
-            yield self.subscribe(destination, context['handler'], headers, **context['kwargs'])
     
     def _sleep(self, delay):
         if not delay:

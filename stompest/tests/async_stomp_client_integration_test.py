@@ -286,15 +286,21 @@ class SubscribeTestCase(unittest.TestCase):
         
         for _ in xrange(2):
             client.send(self.queue, self.msg)
-        
+            
         self.subscription = client.subscribe(self.queue, self._eatOneMsgAndUnsubscribe, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': '1'})
-        client.subscribe(self.queue, self._eatOneMsgAndDisconnect, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': '1'})
         
+        self.signal = defer.Deferred()
+        yield self.signal
+        
+        client.subscribe(self.queue, self._eatOneMsgAndDisconnect, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': '1'})
+
         yield client.disconnected
-                
+              
+    @defer.inlineCallbacks  
     def _eatOneMsgAndUnsubscribe(self, client, msg):
         client.unsubscribe(self.subscription)
-        yield task.deferLater(reactor, 0.2, lambda: None) # wait for DISCONNECT command to be processed by the server
+        yield task.deferLater(reactor, 0.25, lambda: None) # wait for UNSUBSCRIBE command to be processed by the server
+        self.signal.callback(None)
         
     def _eatOneMsgAndDisconnect(self, client, msg):
         client.disconnect()

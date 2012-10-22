@@ -17,7 +17,8 @@ Copyright 2012 Mozes, Inc.
 from stompest.error import StompProtocolError
 
 import commands
-from .spec import StompSpec
+import copy
+import itertools
 
 class StompSession(object):
     SUPPORTED_VERSIONS = ['1.0', '1.1']
@@ -25,12 +26,15 @@ class StompSession(object):
     
     def __init__(self, version=None):
         self.version = version
-        self._subscriptions = []
+        self._subscriptions = {}
+        self._nextSubscription = itertools.count().next
     
+    def flush(self):
+        list(self.replay())
+     
     def replay(self):
-        subscriptions, self._subscriptions = self._subscriptions, []
-        for (headers, context) in subscriptions:
-            destination = headers.pop(StompSpec.DESTINATION_HEADER)
+        subscriptions, self._subscriptions = self._subscriptions, {}
+        for (_, destination, headers, context) in sorted(subscriptions.itervalues()):
             yield destination, headers, context
     
     def send(self, destination, body, headers):
@@ -38,13 +42,23 @@ class StompSession(object):
     
     def subscribe(self, destination, headers=None, context=None):
         frame = commands.subscribe(destination, headers, self.version)
-        self._subscriptions.append((dict(frame.headers), context))
+        token = self.token(frame)
+        
+        if token in self._subscriptions:
+            raise StompProtocolError('already subscribed: %s=%s' % token)
+        self._subscriptions[token] = (self._nextSubscription(), destination, copy.copy(headers), context)
         return frame
     
+    def token(self, subscription):
+        return subscription if isinstance(subscription, tuple) else commands.unsubscribe(subscription, self.version).headers.popitem()
+    
     def unsubscribe(self, subscription):
-        frame = commands.unsubscribe(subscription, self.version)
-        header, value = dict(frame.headers).popitem()
-        self._subscriptions = [(h, c) for (h, c) in self._subscriptions if (header not in h) or (h[header] != value)]
+        token = self.token(subscription)
+        frame = commands.unsubscribe(dict([token]), self.version)
+        try:
+            self._subscriptions.pop(token)
+        except KeyError:
+            raise StompProtocolError('no such subscription: %s=%s' % token)
         return frame
     
     @property

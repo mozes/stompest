@@ -106,7 +106,13 @@ class RemoteControlViaFrameStompServer(BlackHoleStompServer):
             self.transport.loseConnection()
     
     def handleSubscribe(self, msg):
-        self.transport.write(self.getFrame(StompSpec.MESSAGE, {'destination': '/queue/bla', 'message-id': 4711}, 'hi'))
+        headers = msg['headers']
+        replyHeaders = {StompSpec.DESTINATION_HEADER: headers[StompSpec.DESTINATION_HEADER], StompSpec.MESSAGE_ID_HEADER: 4711}
+        try:
+            replyHeaders[StompSpec.SUBSCRIPTION_HEADER] = headers[StompSpec.ID_HEADER]
+        except:
+            pass
+        self.transport.write(self.getFrame(StompSpec.MESSAGE, replyHeaders, 'hi'))
         
 if __name__ == '__main__':
     logging.basicConfig(level=logging.DEBUG)

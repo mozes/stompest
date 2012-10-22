@@ -183,7 +183,6 @@ class SimpleStompTest(unittest.TestCase):
         stomp.subscribe(dest, headers)
         args, _ = stomp._write.call_args
         sentFrame = self.parseFrame(args[0])
-        sentFrame['headers'].pop(StompSpec.ID_HEADER)
         self.assertEquals({
             'cmd': 'SUBSCRIBE',
             'headers': {StompSpec.DESTINATION_HEADER: dest, StompSpec.ACK_HEADER: 'auto', 'activemq.prefetchSize': '1', 'foo': 'bar', 'fuzz': 'ball'},
