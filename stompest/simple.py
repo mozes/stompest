@@ -114,7 +114,7 @@ class Stomp(object):
         self.sendFrame(commands.ack(message['headers']))
     
     def nack(self, message):
-        self.sendFrame(commands.nack(message['headers']))
+        self.sendFrame(commands.nack(message['headers'], self.version))
     
     def receiveFrame(self):
         while True:

@@ -33,7 +33,7 @@ class SimpleStompIntegrationTest(unittest.TestCase):
         stomp.connect()
         stomp.subscribe(self.DEST, {StompSpec.ACK_HEADER: 'client'})
         stomp.subscribe(self.DEST, {StompSpec.ID_HEADER: 'bla', StompSpec.ACK_HEADER: 'client'})
-        while stomp.canRead(1):
+        while stomp.canRead(0.5):
             stomp.ack(stomp.receiveFrame())
         stomp.disconnect()
 
@@ -42,13 +42,13 @@ class SimpleStompIntegrationTest(unittest.TestCase):
         stomp.connect()
         stomp.send(self.DEST, 'test message 1')
         stomp.send(self.DEST, 'test message 2')
-        self.assertFalse(stomp.canRead(1))
+        self.assertFalse(stomp.canRead(0.5))
         stomp.subscribe(self.DEST, {StompSpec.ACK_HEADER: 'client-individual'})
-        self.assertTrue(stomp.canRead(1))
+        self.assertTrue(stomp.canRead(0.5))
         stomp.ack(stomp.receiveFrame())
-        self.assertTrue(stomp.canRead(1))
+        self.assertTrue(stomp.canRead(0.5))
         stomp.ack(stomp.receiveFrame())
-        self.assertFalse(stomp.canRead(1))
+        self.assertFalse(stomp.canRead(0.5))
         stomp.disconnect()
 
     def test_2_timeout(self):
@@ -70,16 +70,16 @@ class SimpleStompIntegrationTest(unittest.TestCase):
         stomp.disconnect()
         
     def test_3_socket_failure_and_replay(self):
-        stomp = Stomp(StompConfig(uri='tcp://localhost:61613'))
+        stomp = Stomp(StompConfig(uri='tcp://localhost:61613'), version='1.0')
         stomp.connect()
         stomp.send(self.DEST, 'test message 1')
         headers = {StompSpec.ACK_HEADER: 'client-individual'}
-        frame = stomp.subscribe(self.DEST, headers)
+        token = stomp.subscribe(self.DEST, headers)
         stomp._stomp.socket.close()
         self.assertRaises(StompConnectionError, stomp.receiveFrame)
         stomp.connect()
         stomp.ack(stomp.receiveFrame())
-        stomp.unsubscribe(frame)
+        stomp.unsubscribe(token)
         stomp.send(self.DEST, 'test message 2')
         headers = {'id': 'bla', StompSpec.ACK_HEADER: 'client-individual'}
         stomp.subscribe(self.DEST, headers)
@@ -91,5 +91,19 @@ class SimpleStompIntegrationTest(unittest.TestCase):
         stomp.unsubscribe({'id': 'bla'})
         stomp.disconnect()
         
+    def test_4_integration_stomp_1_1(self):
+        stomp = Stomp(StompConfig(uri='tcp://localhost:61613'), version='1.1')
+        stomp.connect()
+        stomp.send(self.DEST, 'test message 1')
+        stomp.send(self.DEST, 'test message 2')
+        self.assertFalse(stomp.canRead(0.5))
+        stomp.subscribe(self.DEST, {StompSpec.ID_HEADER: 4711, StompSpec.ACK_HEADER: 'client-individual'})
+        self.assertTrue(stomp.canRead(0.5))
+        stomp.ack(stomp.receiveFrame())
+        self.assertTrue(stomp.canRead(0.5))
+        stomp.ack(stomp.receiveFrame())
+        self.assertFalse(stomp.canRead(0.5))
+        stomp.disconnect()
+
 if __name__ == '__main__':
     unittest.main()

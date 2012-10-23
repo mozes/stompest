@@ -59,11 +59,17 @@ class HandlerExceptionWithErrorQueueIntegrationTestCase(unittest.TestCase):
         self.errQMsg = None
         self.consumedMsg = None
         self.msgsHandled = 0
-
+    
+    def test_onhandlerException_ackMessage_filterReservedHdrs_send2ErrorQ_and_disconnect_version_1_0(self):
+        return self._test_onhandlerException_ackMessage_filterReservedHdrs_send2ErrorQ_and_disconnect('1.0')
+        
+    def test_onhandlerException_ackMessage_filterReservedHdrs_send2ErrorQ_and_disconnect_version_1_1(self):
+        return self._test_onhandlerException_ackMessage_filterReservedHdrs_send2ErrorQ_and_disconnect('1.1')
+        
     @defer.inlineCallbacks
-    def test_onhandlerException_ackMessage_filterReservedHdrs_send2ErrorQ_and_disconnect(self):
+    def _test_onhandlerException_ackMessage_filterReservedHdrs_send2ErrorQ_and_disconnect(self, version):
         config = StompConfig(uri='tcp://%s:%d' % (HOST, PORT))
-        client = StompFailoverClient(config, alwaysDisconnectOnUnhandledMsg=True)
+        client = StompFailoverClient(config, alwaysDisconnectOnUnhandledMsg=True, version=version)
         
         #Connect
         client = yield client.connect()
@@ -74,7 +80,10 @@ class HandlerExceptionWithErrorQueueIntegrationTestCase(unittest.TestCase):
         
         #Barf on first message so it will get put in error queue
         #Use selector to guarantee message order.  AMQ doesn't not guarantee order by default
-        client.subscribe(self.queue, self._saveMsgAndBarf, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': 1, 'selector': "food = 'barf'"}, errorDestination=self.errorQueue)
+        headers = {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': 1, 'selector': "food = 'barf'"}
+        if version != '1.0':
+            headers[StompSpec.ID_HEADER] = '4711'
+        client.subscribe(self.queue, self._saveMsgAndBarf, headers, errorDestination=self.errorQueue)
         
         #Client disconnected and returned error
         try:
@@ -88,7 +97,8 @@ class HandlerExceptionWithErrorQueueIntegrationTestCase(unittest.TestCase):
         
         #Reconnect and subscribe again - consuming second message then disconnecting
         client = yield client.connect()
-        client.subscribe(self.queue, self._eatOneMsgAndDisconnect, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': 1}, errorDestination=self.errorQueue)
+        headers.pop('selector')
+        client.subscribe(self.queue, self._eatOneMsgAndDisconnect, headers, errorDestination=self.errorQueue)
         
         #Client disconnects without error
         yield client.disconnected

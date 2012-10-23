@@ -69,11 +69,26 @@ class StompFailoverClient(object):
     def sendFrame(self, message):
         self._stomp.sendFrame(message)
     
+    def ack(self, headers):
+        self._stomp.ack(headers)
+        
+    def nack(self, headers):
+        self._stomp.nack(headers)
+    
+    def begin(self):
+        return self._stomp.begin()
+        
+    def commit(self, transaction):
+        return self._stomp.commit(transaction)
+        
+    def abort(self, transaction):
+        return self._stomp.abort(transaction)
+    
     def subscribe(self, destination, handler, headers=None, **kwargs):
         return self._stomp.subscribe(destination, self._createHandler(handler), headers, **kwargs)
     
     def unsubscribe(self, subscription):
-        self._stomp.unsubscribe(subscription)
+        return self._stomp.unsubscribe(subscription)
     
     # private methods
     

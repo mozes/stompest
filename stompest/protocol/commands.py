@@ -33,26 +33,31 @@ def ack(headers):
     headers = dict((key, value) for (key, value) in headers.iteritems() if key in (StompSpec.SUBSCRIPTION_HEADER, StompSpec.MESSAGE_ID_HEADER, StompSpec.TRANSACTION_HEADER))
     return StompFrame(StompSpec.ACK, headers)
     
-def nack(headers):
+def nack(headers, version):
+    if version == '1.0':
+        raise StompProtocolError('Unsupported command (version %s): %s' % (version, StompSpec.NACK))
+    for header in (StompSpec.SUBSCRIPTION_HEADER, StompSpec.MESSAGE_ID_HEADER):
+        if header not in headers:
+            raise StompProtocolError('Mandatory header missing: %s [headers=%s]' % (header, headers))
     headers = dict((key, value) for (key, value) in headers.iteritems() if key in (StompSpec.SUBSCRIPTION_HEADER, StompSpec.MESSAGE_ID_HEADER, StompSpec.TRANSACTION_HEADER))
     return StompFrame(StompSpec.NACK, headers)
 
 def subscribe(destination, headers, version):
     if (version != '1.0') and (StompSpec.ID_HEADER not in headers):
-        raise StompProtocolError('invalid subscription (id header missing) [%s]' % headers)
+        raise StompProtocolError('Invalid subscription (%s header mandatory in version %s) [headers=%s]' % (StompSpec.ID_HEADER, version, headers))
     headers = dict(headers or [])
     headers[StompSpec.DESTINATION_HEADER] = destination
     return StompFrame(StompSpec.SUBSCRIBE, headers)
     
 def unsubscribe(subscription, version):
-    headers = getattr(subscription, 'headers', subscription)
+    headers = dict(getattr(subscription, 'headers', subscription))
     for header in (StompSpec.ID_HEADER, StompSpec.DESTINATION_HEADER):
         try:
             return StompFrame(StompSpec.UNSUBSCRIBE, {header: headers[header]})
         except KeyError:
             if (version, header) == ('1.0', StompSpec.ID_HEADER):
                 continue
-        raise StompProtocolError('invalid unsubscription (%s header missing) [%s]' % (header, headers))
+        raise StompProtocolError('Invalid unsubscription (%s header missing) [headers=%s]' % (header, headers))
 
 def send(destination, body='', headers=None):
     headers = dict(headers or [])
@@ -60,7 +65,7 @@ def send(destination, body='', headers=None):
     return StompFrame(StompSpec.SEND, headers, body)
     
 def transaction(transactionId=None):
-    return {StompSpec.TRANSACTION_HEADER: transactionId or uuid.uuid4()}
+    return {StompSpec.TRANSACTION_HEADER: str(transactionId or uuid.uuid4())}
 
 def abort(transaction):
     return StompFrame(StompSpec.ABORT, transaction)

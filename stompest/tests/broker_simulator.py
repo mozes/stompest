@@ -86,7 +86,12 @@ class ErrorOnConnectStompServer(BlackHoleStompServer):
 
 class ErrorOnSendStompServer(BlackHoleStompServer):
     def handleConnect(self, msg):
-        self.transport.write(self.getFrame(StompSpec.CONNECTED, {}, ''))
+        headers = {}
+        if StompSpec.ACCEPT_VERSION_HEADER not in msg['headers']:
+            headers[StompSpec.SESSION_HEADER] = 'YMCA'
+        else:
+            headers = {'%s:1.1' % StompSpec.VERSION_HEADER}
+        self.transport.write(self.getFrame(StompSpec.CONNECTED, headers, ''))
 
     def handleDisconnect(self, msg):
         self.transport.loseConnection()
@@ -96,7 +101,12 @@ class ErrorOnSendStompServer(BlackHoleStompServer):
 
 class RemoteControlViaFrameStompServer(BlackHoleStompServer):
     def handleConnect(self, msg):
-        self.transport.write(self.getFrame(StompSpec.CONNECTED, {}, ''))
+        headers = {}
+        if StompSpec.ACCEPT_VERSION_HEADER not in msg['headers']:
+            headers[StompSpec.SESSION_HEADER] = 'YMCA'
+        else:
+            headers = {'%s:1.1' % StompSpec.VERSION_HEADER}
+        self.transport.write(self.getFrame(StompSpec.CONNECTED, headers, ''))
 
     def handleDisconnect(self, msg):
         self.transport.loseConnection()
