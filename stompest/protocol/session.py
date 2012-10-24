@@ -22,14 +22,13 @@ import itertools
 from stompest.protocol.spec import StompSpec
 
 class StompSession(object):
-    SUPPORTED_VERSIONS = ['1.0', '1.1']
-    DEFAULT_VERSION = '1.0'
-    
     CONNECTED = 'connected'
+    CONNECTING = 'connecting'
     DISCONNECTED = 'disconnected'
     
-    def __init__(self, version=None):
+    def __init__(self, version=None, check=False):
         self.version = version
+        self._check = check
         self._nextSubscription = itertools.count().next
         self._reset()
     
@@ -39,9 +38,7 @@ class StompSession(object):
     
     @version.setter
     def version(self, version):
-        version = version or self.DEFAULT_VERSION
-        if version not in self.SUPPORTED_VERSIONS:
-            raise StompProtocolError('Version is not supported [%s]' % version)
+        version = commands.version(version)
         if not hasattr(self, '__version'):
             self.__version = version
             version = None
@@ -50,15 +47,19 @@ class StompSession(object):
     # STOMP commands
     
     def send(self, destination, body, headers):
+        self.__check(self.CONNECTED)
         return commands.send(destination, body, headers)
     
     def ack(self, headers):
+        self.__check(self.CONNECTED)
         return commands.ack(self._untokenize(headers))
         
     def nack(self, headers):
+        self.__check(self.CONNECTED)
         return commands.nack(self._untokenize(headers), self.version)
         
     def subscribe(self, destination, headers=None, context=None):
+        self.__check(self.CONNECTED)
         frame = commands.subscribe(destination, headers, self.version)
         token = self._tokenize(commands.unsubscribe(self._untokenize(frame), self.version))
         if token in self._subscriptions:
@@ -67,6 +68,7 @@ class StompSession(object):
         return frame, token
     
     def subscription(self, subscription):
+        self.__check(self.CONNECTED)
         subscription = self._untokenize(subscription)
         if StompSpec.SUBSCRIPTION_HEADER in subscription:
             subscription[StompSpec.ID_HEADER] = subscription.pop(StompSpec.SUBSCRIPTION_HEADER)
@@ -80,17 +82,20 @@ class StompSession(object):
         return token
     
     def unsubscribe(self, subscription):
+        self.__check(self.CONNECTED)
         token = self.subscription(subscription)
         self._subscriptions.pop(token)
         return commands.unsubscribe(self._untokenize(token), self.version), token
 
     def begin(self):
+        self.__check(self.CONNECTED)
         frame = commands.begin(commands.transaction())
         token = self._tokenize(frame)
         self._transactions.add(token)
         return frame, token
         
     def commit(self, transaction):
+        self.__check(self.CONNECTED)
         frame = commands.commit(self._untokenize(transaction))
         token = self._tokenize(frame)
         try:
@@ -100,6 +105,7 @@ class StompSession(object):
         return frame, token
     
     def abort(self, transaction):
+        self.__check(self.CONNECTED)
         frame = commands.abort(self._untokenize(transaction))
         token = self._tokenize(frame)
         try:
@@ -108,26 +114,21 @@ class StompSession(object):
             raise StompProtocolError('Transaction unknown [%s=%s]' % token)
         return frame, token
     
-    def connect(self, username, password, headers=None):
-        headers = dict(headers or {})
-        if self.version != '1.0':
-            headers[StompSpec.ACCEPT_VERSION_HEADER] = ','.join(self._versions)
-        return commands.connect(username, password, headers)
+    def connect(self, login=None, passcode=None, headers=None, versions=None, host=None):
+        self.__check(self.DISCONNECTED)
+        frame = commands.connect(login, passcode, headers, versions=list(commands.versions(self.version)))
+        self._state = self.CONNECTING
+        return frame
     
     def connected(self, headers):
-        self.version = headers.get(StompSpec.VERSION_HEADER, '1.0')
-        if self.version != '1.0':
-            self._server = headers.get(StompSpec.SERVER_HEADER)
-        try:
-            self._id = headers[StompSpec.SESSION_HEADER]
-        except KeyError:
-            if self.version == '1.0':
-                raise StompProtocolError('Invalid CONNECTED frame (%s header is missing) [headers=%s]' % (StompSpec.SESSION_HEADER, headers))
+        self.__check(self.CONNECTING)
+        self.version, self._server, self._id = commands.connected(headers, version=self.version)
         self._state = self.CONNECTED
         
-    def disconnect(self):
+    def disconnect(self, receipt=None):
+        self.__check(self.CONNECTED)
         self._reset()
-        return commands.disconnect()
+        return commands.disconnect(receipt, self.version)
     
     @property
     def id(self):
@@ -151,13 +152,6 @@ class StompSession(object):
     
     # helpers
     
-    @property
-    def _versions(self):
-        for version in self.SUPPORTED_VERSIONS:
-            yield version
-            if version == self.version:
-                break
-        
     def _flush(self):
         self._subscriptions = {}
         self._transactions = set()
@@ -180,3 +174,8 @@ class StompSession(object):
         as a dict.
         """
         return dict([token] if isinstance(token, tuple) else getattr(token, 'headers', token))
+
+    def __check(self, state):
+        if self._check and (self.state != state):
+            raise StompProtocolError('Cannot handle command in state %s != %s' % (self.state, state))
+ 

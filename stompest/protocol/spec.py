@@ -16,6 +16,10 @@ Copyright 2012 Mozes, Inc.
 """
 class StompSpec(object):
     # specification of the STOMP protocol: http://stomp.github.com//index.html
+    VERSION_1_0, VERSION_1_1 = '1.0', '1.1'
+    VERSIONS = [VERSION_1_0, VERSION_1_1]
+    DEFAULT_VERSION = VERSION_1_0
+    
     ABORT = 'ABORT'
     ACK = 'ACK'
     BEGIN = 'BEGIN'

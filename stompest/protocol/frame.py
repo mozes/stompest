@@ -19,7 +19,7 @@ from .spec import StompSpec
 class StompFrame(object):    
     def __init__(self, cmd='', headers=None, body=''):
         self.cmd = cmd
-        self.headers = {} if (headers is None) else headers
+        self.headers = {} if (headers is None) else dict(map(str, item) for item in headers.iteritems())
         self.body = body
     
     def __repr__(self):
