@@ -116,7 +116,7 @@ class StompSession(object):
     
     def connect(self, login=None, passcode=None, headers=None, versions=None, host=None):
         self.__check(self.DISCONNECTED)
-        frame = commands.connect(login, passcode, headers, versions=list(commands.versions(self.version)))
+        frame = commands.connect(login, passcode, headers, versions=list(commands.versions(versions or self.version)), host=host)
         self._state = self.CONNECTING
         return frame
     
