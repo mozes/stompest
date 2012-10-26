@@ -19,8 +19,7 @@ import logging
 from twisted.internet import reactor, defer, task
 from twisted.trial import unittest
 
-from stompest.sync import Stomp
-from stompest.async import StompFailoverClient
+from stompest import async, sync
 from stompest.protocol import StompConfig, StompSpec
 
 logging.basicConfig(level=logging.DEBUG)
@@ -45,7 +44,7 @@ class HandlerExceptionWithErrorQueueIntegrationTestCase(unittest.TestCase):
         self.cleanQueue(self.errorQueue)
     
     def cleanQueue(self, queue):
-        stomp = Stomp(CONFIG)
+        stomp = sync.Stomp(CONFIG)
         stomp.connect()
         stomp.subscribe(queue, {StompSpec.ACK_HEADER: 'client'})
         while stomp.canRead(1):
@@ -71,7 +70,7 @@ class HandlerExceptionWithErrorQueueIntegrationTestCase(unittest.TestCase):
     @defer.inlineCallbacks
     def _test_onhandlerException_ackMessage_filterReservedHdrs_send2ErrorQ_and_disconnect(self, version):
         config = StompConfig(uri='tcp://%s:%d' % (HOST, PORT))
-        client = StompFailoverClient(config, alwaysDisconnectOnUnhandledMsg=True, version=version)
+        client = async.Stomp(config, alwaysDisconnectOnUnhandledMsg=True, version=version)
         
         #Connect
         client = yield client.connect()
@@ -95,7 +94,7 @@ class HandlerExceptionWithErrorQueueIntegrationTestCase(unittest.TestCase):
         else:
             self.assertTrue(False)
         
-        client = StompFailoverClient(config) # take a fresh client to prevent replay (we were disconnected by an error)
+        client = async.Stomp(config) # take a fresh client to prevent replay (we were disconnected by an error)
         
         #Reconnect and subscribe again - consuming second message then disconnecting
         client = yield client.connect()
@@ -123,7 +122,7 @@ class HandlerExceptionWithErrorQueueIntegrationTestCase(unittest.TestCase):
     @defer.inlineCallbacks
     def test_onhandlerException_ackMessage_filterReservedHdrs_send2ErrorQ_and_no_disconnect(self):
         config = StompConfig(uri='tcp://%s:%d' % (HOST, PORT))
-        client = StompFailoverClient(config)
+        client = async.Stomp(config)
         
         #Connect
         client = yield client.connect()
@@ -152,7 +151,7 @@ class HandlerExceptionWithErrorQueueIntegrationTestCase(unittest.TestCase):
     @defer.inlineCallbacks
     def test_onhandlerException_disconnect(self):
         config = StompConfig(uri='tcp://%s:%d' % (HOST, PORT))
-        client = StompFailoverClient(config, alwaysDisconnectOnUnhandledMsg=True)
+        client = async.Stomp(config, alwaysDisconnectOnUnhandledMsg=True)
         
         #Connect
         client = yield client.connect()
@@ -172,7 +171,7 @@ class HandlerExceptionWithErrorQueueIntegrationTestCase(unittest.TestCase):
             self.assertTrue(False)
          
         #Reconnect and subscribe again - consuming retried message and disconnecting
-        client = StompFailoverClient(config) # take a fresh client to prevent replay (we were disconnected by an error)
+        client = async.Stomp(config) # take a fresh client to prevent replay (we were disconnected by an error)
         client = yield client.connect()
         client.subscribe(self.queue, self._eatOneMsgAndDisconnect, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': 1})
         
@@ -218,7 +217,7 @@ class GracefulDisconnectTestCase(unittest.TestCase):
         self.cleanQueue(self.queue)
     
     def cleanQueue(self, queue):
-        stomp = Stomp(CONFIG)
+        stomp = sync.Stomp(CONFIG)
         stomp.connect()
         stomp.subscribe(queue, {StompSpec.ACK_HEADER: 'client'})
         while stomp.canRead(1):
@@ -230,7 +229,7 @@ class GracefulDisconnectTestCase(unittest.TestCase):
     @defer.inlineCallbacks
     def test_onDisconnect_waitForOutstandingMessagesToFinish(self):
         config = StompConfig(uri='tcp://%s:%d' % (HOST, PORT))
-        client = StompFailoverClient(config)
+        client = async.Stomp(config)
         
         #Connect
         client = yield client.connect()
@@ -283,7 +282,7 @@ class SubscribeTestCase(unittest.TestCase):
         self.cleanQueue(self.queue)
     
     def cleanQueue(self, queue):
-        stomp = Stomp(CONFIG)
+        stomp = sync.Stomp(CONFIG)
         stomp.connect()
         stomp.subscribe(queue, {StompSpec.ACK_HEADER: 'client'})
         while stomp.canRead(1):
@@ -295,7 +294,7 @@ class SubscribeTestCase(unittest.TestCase):
     @defer.inlineCallbacks
     def test_unsubscribe(self):
         config = StompConfig(uri='tcp://%s:%d' % (HOST, PORT))
-        client = StompFailoverClient(config)
+        client = async.Stomp(config)
         
         client = yield client.connect()
         
