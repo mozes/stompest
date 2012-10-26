@@ -73,12 +73,11 @@ class SimpleStompIntegrationTest(unittest.TestCase):
     def test_integration_stomp_version_1_1(self):
         stomp = Stomp('localhost', 61613, version='1.1')
         try:
-            reply = stomp.connect()
+            stomp.connect()
         except StompProtocolError as e:
             self.assertEquals(str(e), 'Incompatible server version: 1.0 [client version: 1.1]')
             return
-        self.assertEquals(reply['headers']['version'], '1.1')
-        
+                
         stomp.send(self.DEST, 'test message1')
         stomp.send(self.DEST, 'test message2')
         self.assertFalse(stomp.canRead(0))

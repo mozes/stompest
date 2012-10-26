@@ -18,6 +18,7 @@ import unittest
 
 from stompest.error import StompProtocolError
 from stompest.protocol import StompSession, StompSpec, commands
+from stompest.protocol.frame import StompFrame
    
 class StompSessionTest(unittest.TestCase):
     def test_session_init(self):
@@ -46,7 +47,7 @@ class StompSessionTest(unittest.TestCase):
         frame = session.connect(login='', passcode='')
         self.assertEquals(session.state, StompSession.CONNECTING)
         self.assertEquals(frame, commands.connect(login='', passcode='', versions=None))
-        session.connected({StompSpec.SESSION_HEADER: 'hi'})
+        session.connected(StompFrame(StompSpec.CONNECTED, {StompSpec.SESSION_HEADER: 'hi'}))
         self.assertEquals(session.state, StompSession.CONNECTED)
         self.assertEquals(session.version, StompSpec.VERSION_1_0)
         self.assertEquals(session.server, None)
@@ -61,7 +62,7 @@ class StompSessionTest(unittest.TestCase):
         frame = session.connect(login='', passcode='')
         self.assertEquals(frame, commands.connect('', '', {}, ['1.0', '1.1']))
         self.assertEquals(session.state, StompSession.CONNECTING)
-        session.connected({StompSpec.SERVER_HEADER: 'moon', StompSpec.SESSION_HEADER: '4711', StompSpec.VERSION_HEADER: StompSpec.VERSION_1_1})
+        session.connected(StompFrame(StompSpec.CONNECTED, {StompSpec.SERVER_HEADER: 'moon', StompSpec.SESSION_HEADER: '4711', StompSpec.VERSION_HEADER: StompSpec.VERSION_1_1}))
         self.assertEquals(session.state, StompSession.CONNECTED)
         frame = session.disconnect(4711)
         self.assertEquals(frame, commands.disconnect('4711', '1.1'))
@@ -73,17 +74,16 @@ class StompSessionTest(unittest.TestCase):
         session = StompSession()
         headers = {'bla2': 'bla3'}
         frame, token = session.subscribe('bla1', headers)
-        self.assertEquals(frame, commands.subscribe('bla1', headers, version='1.0'))
+        self.assertEquals((frame, token), commands.subscribe('bla1', headers, version='1.0'))
         
         self.assertEquals(token, (StompSpec.DESTINATION_HEADER, 'bla1'))
-        self.assertEquals(token, session.subscription(token))
-        self.assertEquals(token, session.subscription(frame))
-        self.assertEquals(token, session.subscription(frame.headers))
+        self.assertEquals(token, commands.message(StompFrame(StompSpec.MESSAGE, dict([token, (StompSpec.MESSAGE_ID_HEADER, '4711')])), version='1.0'))
         
         headersWithId1 = {StompSpec.ID_HEADER: 'bla2', 'bla3': 'bla4'}
         frame, tokenWithId1 = session.subscribe('bla2', headersWithId1)
-        self.assertEquals(frame, commands.subscribe('bla2', headersWithId1, version='1.0'))
+        self.assertEquals((frame, tokenWithId1), commands.subscribe('bla2', headersWithId1, version='1.0'))
         self.assertEquals(tokenWithId1, (StompSpec.ID_HEADER, 'bla2'))
+        self.assertEquals(tokenWithId1, commands.message(StompFrame(StompSpec.MESSAGE, dict([(StompSpec.SUBSCRIPTION_HEADER, 'bla2'), (StompSpec.DESTINATION_HEADER, 'bla2'), (StompSpec.MESSAGE_ID_HEADER, '4711')])), version='1.0'))
         
         headersWithId2 = {StompSpec.ID_HEADER: 'bla3', 'bla4': 'bla5'}
         session.subscribe('bla2', headersWithId2)
@@ -93,7 +93,15 @@ class StompSessionTest(unittest.TestCase):
         self.assertEquals(list(session.replay()), [])
 
         session.subscribe('bla2', headersWithId2)
+        self.assertEquals(list(session.replay()), [('bla2', headersWithId2, None)])
+        session.subscribe('bla2', headersWithId2)
+        self.assertRaises(StompProtocolError, session.subscribe, 'bla2', headersWithId2)
+        self.assertEquals(list(session.replay()), [('bla2', headersWithId2, None)])
+        session.subscribe('bla2', headersWithId2)
         session.disconnect()
+        self.assertEquals(list(session.replay()), [('bla2', headersWithId2, None)])
+        session.subscribe('bla2', headersWithId2)
+        session.flush()
         self.assertEquals(list(session.replay()), [])
         
         subscriptionsWithoutId1 = [('bla1', headers, None), ('bla2', headersWithId2, None)]
@@ -102,33 +110,17 @@ class StompSessionTest(unittest.TestCase):
         session.unsubscribe(s[1][1])
         self.assertEquals(list(session.replay()), subscriptionsWithoutId1)
         
-        s = [session.subscribe(dest, headers_) for dest, headers_, _ in subscriptions]
-        session.unsubscribe(s[1][0].headers)
-        self.assertEquals(list(session.replay()), subscriptionsWithoutId1)
-
-        s = [session.subscribe(dest, headers_) for dest, headers_, _ in subscriptions]
-        session.unsubscribe(s[1][0])
-        self.assertEquals(list(session.replay()), subscriptionsWithoutId1)
-        
         subscriptionWithId2 = [('bla2', headersWithId2, None)]
         
         s = [session.subscribe(dest, headers_) for dest, headers_, _ in subscriptionsWithoutId1]
         session.unsubscribe(s[0][1])
         self.assertEquals(list(session.replay()), subscriptionWithId2)
         
-        s = [session.subscribe(dest, headers_) for dest, headers_, _ in subscriptionsWithoutId1]
-        session.unsubscribe(s[0][0].headers)
-        self.assertEquals(list(session.replay()), subscriptionWithId2)
-        
-        s = [session.subscribe(dest, headers_) for dest, headers_, _ in subscriptionsWithoutId1]
-        session.unsubscribe(s[0][0])
-        self.assertEquals(list(session.replay()), subscriptionWithId2)
-        
         session.disconnect()
 
         session = StompSession()
         session.connect(login='', passcode='')
-        session.connected({StompSpec.SESSION_HEADER: 'hi'})
+        session.connected(StompFrame(StompSpec.CONNECTED, {StompSpec.SESSION_HEADER: 'hi'}))
 
         session.subscribe('bla1', headers)
         self.assertRaises(StompProtocolError, lambda: session.unsubscribe((StompSpec.ID_HEADER, 'blub')))
@@ -141,7 +133,7 @@ class StompSessionTest(unittest.TestCase):
         
         session = StompSession(version='1.1')
         session.connect(login='', passcode='')
-        session.connected({StompSpec.SERVER_HEADER: 'moon', StompSpec.SESSION_HEADER: '4711', StompSpec.VERSION_HEADER: StompSpec.VERSION_1_1})
+        session.connected(StompFrame(StompSpec.CONNECTED, {StompSpec.SERVER_HEADER: 'moon', StompSpec.SESSION_HEADER: '4711', StompSpec.VERSION_HEADER: StompSpec.VERSION_1_1}))
         
         self.assertRaises(StompProtocolError, lambda: session.subscribe('bla1', headers))
         self.assertRaises(StompProtocolError, lambda: session.unsubscribe((StompSpec.DESTINATION_HEADER, 'bla1')))
@@ -152,14 +144,20 @@ class StompSessionTest(unittest.TestCase):
 
         subscriptions = list(session.replay())
         self.assertEquals(subscriptions, subscriptionWithId2)
-    
+        
+        session.subscribe('bla2', headersWithId2)
+        session.flush()
+        self.assertEquals(list(session.replay()), [])        
+        
     def test_session_disconnect(self):
         session = StompSession('1.1', check=True)
         session.connect(login='', passcode='')
-        session.connected({StompSpec.SESSION_HEADER: 'hi'})
-        session.subscribe('bla', {StompSpec.ID_HEADER: 4711})
+        session.connected(StompFrame(StompSpec.CONNECTED, {StompSpec.SESSION_HEADER: 'hi'}))
+        headers = {StompSpec.ID_HEADER: 4711}
+        session.subscribe('bla', headers)
         frame = session.disconnect()
         self.assertEquals(frame, commands.disconnect())
+        self.assertEquals(list(session.replay()), [('bla', headers, None)])
         self.assertEquals(list(session.replay()), [])
         self.assertEquals(session.state, session.DISCONNECTED)
         
@@ -167,75 +165,50 @@ class StompSessionTest(unittest.TestCase):
         
     def test_session_nack(self):
         session = StompSession(version='1.1')
-        
+        frame_ = lambda h: StompFrame(StompSpec.MESSAGE, h)
         for headers in [
             {StompSpec.MESSAGE_ID_HEADER: '4711', StompSpec.SUBSCRIPTION_HEADER: 'bla'},
             {StompSpec.MESSAGE_ID_HEADER: '4711', StompSpec.SUBSCRIPTION_HEADER: 'bla', 'foo': 'bar'}
         ]:
-            self.assertEquals(session.nack(headers), commands.nack(headers, version='1.1'))
+            self.assertEquals(session.nack(frame_(headers)), commands.nack(frame_(headers), version='1.1'))
             
-        self.assertRaises(StompProtocolError, session.nack, {})
-        self.assertRaises(StompProtocolError, session.nack, {StompSpec.MESSAGE_ID_HEADER: '4711'})
-        self.assertRaises(StompProtocolError, session.nack, {StompSpec.SUBSCRIPTION_HEADER: 'bla'})
+        self.assertRaises(StompProtocolError, session.nack, frame_({}))
+        self.assertRaises(StompProtocolError, session.nack, frame_({StompSpec.MESSAGE_ID_HEADER: '4711'}))
+        self.assertRaises(StompProtocolError, session.nack, frame_({StompSpec.SUBSCRIPTION_HEADER: 'bla'}))
     
         session = StompSession(version='1.1', check=True)
-        self.assertRaises(StompProtocolError, lambda: session.nack({StompSpec.MESSAGE_ID_HEADER: '4711', StompSpec.SUBSCRIPTION_HEADER: 'bla'}))
+        self.assertRaises(StompProtocolError, lambda: session.nack(frame_({StompSpec.MESSAGE_ID_HEADER: '4711', StompSpec.SUBSCRIPTION_HEADER: 'bla'})))
         
     def test_session_transaction(self):
         session = StompSession()
         
-        frame, token = session.begin()
-        self.assertEquals(frame, commands.begin(dict([token])))
-        self.assertEquals(frame.headers, dict([token]))
-        frame, token_ = session.abort(token)
-        self.assertEquals(token, token_)
-        self.assertEquals(frame, commands.abort(dict([token])))
-        self.assertRaises(StompProtocolError, lambda: session.abort(token))
+        transaction = session.transactionId()
+        headers = {StompSpec.TRANSACTION_HEADER: transaction, StompSpec.RECEIPT_HEADER: 'bla'}
+        frame = session.begin(transaction, receipt='bla')
+        self.assertEquals(frame, commands.begin(transaction, receipt='bla'))
+        self.assertEquals(frame, StompFrame(StompSpec.BEGIN, headers))
+        self.assertRaises(StompProtocolError, session.begin, transaction, receipt='bla')
+        frame = session.abort(transaction, receipt='bla')
+        self.assertEquals(frame, commands.abort(transaction, receipt='bla'))
+        self.assertEquals(frame, StompFrame(StompSpec.ABORT, headers))
+        self.assertRaises(StompProtocolError, session.abort, transaction)
+        self.assertRaises(StompProtocolError, session.commit, transaction)
         
-        frame, token = session.begin()
-        self.assertEquals(frame, commands.begin(dict([token])))
-        self.assertEquals(frame.headers, dict([token]))
-        frame, token_ = session.abort(dict([token]))
-        self.assertEquals(token, token_)
-        self.assertEquals(frame, commands.abort(dict([token])))
-        self.assertRaises(StompProtocolError, lambda: session.abort(dict([token])))
-        
-        frame, token = session.begin()
-        self.assertEquals(frame, commands.begin(dict([token])))
-        self.assertEquals(frame.headers, dict([token]))
-        frame, token_ = session.abort(frame)
-        self.assertEquals(token, token_)
-        self.assertEquals(frame, commands.abort(dict([token])))
-        self.assertRaises(StompProtocolError, lambda: session.abort(frame))
-        
-        frame, token = session.begin()
-        self.assertEquals(frame, commands.begin(dict([token])))
-        self.assertEquals(frame.headers, dict([token]))
-        frame, token_ = session.commit(token)
-        self.assertEquals(token, token_)
-        self.assertEquals(frame, commands.commit(dict([token])))
-        self.assertRaises(StompProtocolError, lambda: session.commit(token))
-        
-        frame, token = session.begin()
-        self.assertEquals(frame, commands.begin(dict([token])))
-        self.assertEquals(frame.headers, dict([token]))
-        frame, token_ = session.commit(dict([token]))
-        self.assertEquals(token, token_)
-        self.assertEquals(frame, commands.commit(dict([token])))
-        self.assertRaises(StompProtocolError, lambda: session.commit(dict([token])))
-        
-        frame, token = session.begin()
-        self.assertEquals(frame, commands.begin(dict([token])))
-        self.assertEquals(frame.headers, dict([token]))
-        frame, token_ = session.commit(frame)
-        self.assertEquals(token, token_)
-        self.assertEquals(frame, commands.commit(dict([token])))
-        self.assertRaises(StompProtocolError, lambda: session.commit(frame))
+        transaction = session.transactionId(4711)
+        headers = {StompSpec.TRANSACTION_HEADER: '4711'}
+        frame = session.begin(transaction)
+        self.assertEquals(frame, commands.begin(transaction))
+        self.assertEquals(frame, StompFrame(StompSpec.BEGIN, headers))
+        frame = session.commit(transaction)
+        self.assertEquals(frame, commands.commit(transaction))
+        self.assertEquals(frame, StompFrame(StompSpec.COMMIT, headers))
+        self.assertRaises(StompProtocolError, session.commit, transaction)
+        self.assertRaises(StompProtocolError, session.abort, transaction)
         
         session = StompSession(check=True)
-        self.assertRaises(StompProtocolError, session.begin)
-        self.assertRaises(StompProtocolError, lambda: session.abort(None))
-        self.assertRaises(StompProtocolError, lambda: session.commit(None))
+        self.assertRaises(StompProtocolError, session.begin, 4711)
+        self.assertRaises(StompProtocolError, session.abort, None)
+        self.assertRaises(StompProtocolError, session.commit, None)
 
 if __name__ == '__main__':
     unittest.main()

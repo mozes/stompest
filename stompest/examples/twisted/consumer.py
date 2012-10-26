@@ -45,7 +45,7 @@ class Consumer(object):
         """
         NOTE: you can return a Deferred here
         """
-        data = simplejson.loads(frame['body'])
+        data = simplejson.loads(frame.body)
         print "Received msg with count %s" % data['count']
     
 if __name__ == '__main__':

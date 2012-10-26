@@ -22,6 +22,8 @@ from stompest.error import StompProtocolError
 from .frame import StompFrame
 from .spec import StompSpec
 
+# outgoing frames
+
 def stomp(versions, host, login=None, passcode=None, headers=None):
     if (versions is None) or (list(versions) == [StompSpec.VERSION_1_0]):
         raise StompProtocolError('Unsupported command (version %s): %s' % (StompSpec.VERSION_1_0, StompSpec.NACK))
@@ -46,9 +48,94 @@ def connect(login=None, passcode=None, headers=None, versions=None, host=None):
         headers[StompSpec.PASSCODE_HEADER] = passcode
     return StompFrame(StompSpec.CONNECT, headers)
 
-def connected(headers, version=None):
+def disconnect(receipt=None, version=None):
+    headers = {}
+    version = _version(version)
+    if receipt is not None:
+        if version == StompSpec.VERSION_1_0:
+            raise StompProtocolError('%s not supported (version %s)' % (StompSpec.RECEIPT_HEADER, version))
+        headers[StompSpec.RECEIPT_HEADER] = receipt
+    return StompFrame(StompSpec.DISCONNECT, headers)
+
+def send(destination, body='', headers=None, receipt=None):
+    frame = StompFrame(StompSpec.SEND, dict(headers or []), body)
+    frame.headers[StompSpec.DESTINATION_HEADER] = destination
+    _addReceiptHeader(frame, receipt)
+    return frame
+    
+def subscribe(destination, headers, receipt=None, version=None):
+    version = _version(version)
+    frame = StompFrame(StompSpec.SUBSCRIBE, dict(headers or []))
+    frame.headers[StompSpec.DESTINATION_HEADER] = destination
+    _addReceiptHeader(frame, receipt)
+    subscription = None
+    try:
+        subscription = _checkHeader(frame, StompSpec.ID_HEADER, version)
+    except StompProtocolError:
+        if (version != StompSpec.VERSION_1_0):
+            raise
+    token = (StompSpec.DESTINATION_HEADER, destination) if (subscription is None) else (StompSpec.ID_HEADER, subscription) 
+    return frame, token
+
+def unsubscribe(token, receipt=None, version=None):
+    version = _version(version)
+    frame = StompFrame(StompSpec.UNSUBSCRIBE, dict([token]))
+    _addReceiptHeader(frame, receipt)
+    try:
+        _checkHeader(frame, StompSpec.ID_HEADER, version)
+    except StompProtocolError:
+        if version != StompSpec.VERSION_1_0:
+            raise
+        _checkHeader(frame, StompSpec.DESTINATION_HEADER)
+    return frame
+
+def ack(frame, receipt=None, version=None):
+    frame = StompFrame(StompSpec.ACK, _ackHeaders(frame, version))
+    _addReceiptHeader(frame, receipt)
+    return frame
+
+def nack(frame, receipt=None, version=None):
+    version = _version(version)
+    if version == StompSpec.VERSION_1_0:
+        raise StompProtocolError('%s not supported (version %s)' % (StompSpec.NACK, version))
+    frame = StompFrame(StompSpec.NACK, _ackHeaders(frame, version))
+    _addReceiptHeader(frame, receipt)
+    return frame
+
+def transactionId(transactionId=None):
+    return str(transactionId or uuid.uuid4())
+
+def begin(transactionId, receipt=None):
+    frame = StompFrame(StompSpec.BEGIN, {StompSpec.TRANSACTION_HEADER: transactionId})
+    _addReceiptHeader(frame, receipt)
+    return frame
+
+def abort(transactionId, receipt=None):
+    frame = StompFrame(StompSpec.ABORT, {StompSpec.TRANSACTION_HEADER: transactionId})
+    _addReceiptHeader(frame, receipt)
+    return frame
+
+def commit(transactionId, receipt=None):
+    frame = StompFrame(StompSpec.COMMIT, {StompSpec.TRANSACTION_HEADER: transactionId})
+    _addReceiptHeader(frame, receipt)
+    return frame
+
+# incoming frames
+
+def handle(frame, version):
+    _checkCommand(frame, StompSpec.SERVER_COMMANDS)
+    return {
+        StompSpec.CONNECTED: connected,
+        StompSpec.MESSAGE: message,
+        StompSpec.RECEIPT: receipt,
+        StompSpec.ERROR: error
+    }[frame.cmd](frame, version)
+
+def connected(frame, version=None):
     clientVersion = _version(version)
     serverVersion = clientVersion
+    _checkCommand(frame, [StompSpec.CONNECTED])
+    headers = frame.headers
     try:
         if clientVersion != StompSpec.VERSION_1_0:
             serverVersion = _version(headers.get(StompSpec.VERSION_HEADER, StompSpec.VERSION_1_0))
@@ -63,75 +150,36 @@ def connected(headers, version=None):
         id_ = headers[StompSpec.SESSION_HEADER]
     except KeyError:
         if serverVersion == StompSpec.VERSION_1_0:
-            raise StompProtocolError('Invalid CONNECTED frame (%s header is missing) [headers=%s]' % (StompSpec.SESSION_HEADER, headers))
+            raise StompProtocolError('Invalid %s frame (%s header is missing) [headers=%s]' % (StompSpec.CONNECTED, StompSpec.SESSION_HEADER, headers))
         id_ = None
         
     return serverVersion, server, id_
 
-def disconnect(receipt=None, version=None):
-    headers = {}
+def message(frame, version):
     version = _version(version)
-    if receipt is not None:
-        if version == StompSpec.VERSION_1_0:
-            raise StompProtocolError('%s not supported (version %s)' % (StompSpec.RECEIPT_HEADER, version))
-        headers[StompSpec.RECEIPT_HEADER] = receipt
-    return StompFrame(StompSpec.DISCONNECT, headers)
+    _checkCommand(frame, [StompSpec.MESSAGE])
+    _checkHeader(frame, StompSpec.MESSAGE_ID_HEADER)
+    destination = _checkHeader(frame, StompSpec.DESTINATION_HEADER)
+    subscription = None
+    try:
+        subscription = _checkHeader(frame, StompSpec.SUBSCRIPTION_HEADER, version)
+    except StompProtocolError:
+        if version != StompSpec.VERSION_1_0:
+            raise
+    token = (StompSpec.DESTINATION_HEADER, destination) if (subscription is None) else (StompSpec.ID_HEADER, subscription)
+    return token
 
-def ack(headers, version=None):
-    headers = _checkAck(headers, version)        
-    return StompFrame(StompSpec.ACK, headers)
-
-def _checkAck(headers, version):
+def receipt(frame, version):
     version = _version(version)
-    if StompSpec.MESSAGE_ID_HEADER not in headers:
-        raise StompProtocolError('Invalid ACK (%s header mandatory in version %s) [headers=%s]' % (StompSpec.MESSAGE_ID_HEADER, version, headers))
-    if version != StompSpec.VERSION_1_0:
-        if StompSpec.SUBSCRIPTION_HEADER not in headers:
-            raise StompProtocolError('Invalid ACK (%s header mandatory in version %s) [headers=%s]' % (StompSpec.SUBSCRIPTION_HEADER, version, headers))
-    return dict((key, value) for (key, value) in headers.iteritems() if key in (StompSpec.SUBSCRIPTION_HEADER, StompSpec.MESSAGE_ID_HEADER, StompSpec.TRANSACTION_HEADER))
-    
-def nack(headers, version):
+    _checkCommand(frame, [StompSpec.RECEIPT])
+    _checkHeader(frame, StompSpec.RECEIPT_ID_HEADER)
+    return frame.headers[StompSpec.RECEIPT_ID_HEADER]
+
+def error(frame, version):
     version = _version(version)
-    if version == StompSpec.VERSION_1_0:
-        raise StompProtocolError('Unsupported command (version %s): %s' % (version, StompSpec.NACK))
-    headers = _checkAck(headers, version)
-    return StompFrame(StompSpec.NACK, headers)
+    _checkCommand(frame, [StompSpec.ERROR])
 
-def subscribe(destination, headers, version):
-    version = _version(version)
-    if (version != StompSpec.VERSION_1_0) and (StompSpec.ID_HEADER not in headers):
-        raise StompProtocolError('Invalid SUBSCRIBE (%s header mandatory in version %s) [headers=%s]' % (StompSpec.ID_HEADER, version, headers))
-    headers = dict(headers or [])
-    headers[StompSpec.DESTINATION_HEADER] = destination
-    return StompFrame(StompSpec.SUBSCRIBE, headers)
-    
-def unsubscribe(subscription, version):
-    version = _version(version)
-    headers = dict(getattr(subscription, 'headers', subscription))
-    for header in (StompSpec.ID_HEADER, StompSpec.DESTINATION_HEADER):
-        try:
-            return StompFrame(StompSpec.UNSUBSCRIBE, {header: headers[header]})
-        except KeyError:
-            if (version, header) == (StompSpec.VERSION_1_0, StompSpec.ID_HEADER):
-                continue
-        raise StompProtocolError('Invalid UNSUBSCRIBE (%s header mandatory in version %s) [headers=%s]' % (header, version, headers))
-
-def send(destination, body='', headers=None):
-    headers = dict(headers or [])
-    headers[StompSpec.DESTINATION_HEADER] = destination
-    return StompFrame(StompSpec.SEND, headers, body)
-    
-def transaction(transactionId=None):
-    return {StompSpec.TRANSACTION_HEADER: str(transactionId or uuid.uuid4())}
-
-def abort(transaction):
-    return StompFrame(StompSpec.ABORT, transaction)
-
-def begin(transaction):
-    return StompFrame(StompSpec.BEGIN, transaction)
-    
-def commit(transaction):
-    return StompFrame(StompSpec.COMMIT, transaction)
+# STOMP protocol version
 
 def versions(version):
     version = _version(version)
@@ -148,3 +196,28 @@ def version(version=None):
         raise StompProtocolError('Version is not supported [%s]' % version)
     return version
 _version = version
+
+# private helper methods
+
+def _ackHeaders(frame, version):
+    version = _version(version)
+    _checkCommand(frame, [StompSpec.MESSAGE])
+    _checkHeader(frame, StompSpec.MESSAGE_ID_HEADER, version)
+    if version != StompSpec.VERSION_1_0:
+        _checkHeader(frame, StompSpec.SUBSCRIPTION_HEADER, version)
+    return dict((key, value) for (key, value) in frame.headers.iteritems() if key in (StompSpec.SUBSCRIPTION_HEADER, StompSpec.MESSAGE_ID_HEADER, StompSpec.TRANSACTION_HEADER))
+
+def _addReceiptHeader(frame, receipt):
+    if receipt is not None:
+        frame.headers[StompSpec.RECEIPT_HEADER] = receipt
+
+def _checkCommand(frame, commands=None):
+    if frame.cmd not in (commands or StompSpec.COMMANDS):
+        raise StompProtocolError('Cannot handle command: %s [expected=%s, headers=%s]' % (frame.cmd, ', '.join(commands), frame.headers))
+
+def _checkHeader(frame, header, version=None):
+    try:
+        return frame.headers[header]
+    except KeyError:
+        version = ('in version %s' % version) if version else ''
+        raise StompProtocolError('Invalid %s frame (%s header mandatory%s) [headers=%s]' % (frame.cmd, header, version, frame.headers))

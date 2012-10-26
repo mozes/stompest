@@ -50,14 +50,14 @@ class BlackHoleStompServer(Protocol):
         self._parser.add(data)
                 
         while True:
-            message = self._parser.getMessage()
-            if not message:
+            frame = self._parser.get()
+            if not frame:
                 break
             try:
-                self.log.debug('Received frame: %s' % message)
+                self.log.debug('Received frame: %s' % repr(frame))
             except KeyError:
-                raise StompFrameError('Unknown STOMP command: %s' % message)
-            self.cmdMap[message['cmd']](message)
+                raise StompFrameError('Unknown STOMP command: %s' % repr(frame))
+            self.cmdMap[frame.cmd](frame)
 
     def resetParser(self):
         self._parser = StompParser()
@@ -65,58 +65,58 @@ class BlackHoleStompServer(Protocol):
     def getFrame(self, cmd, headers, body):
         return str(StompFrame(cmd, headers, body))
         
-    def handleConnect(self, msg):
+    def handleConnect(self, frame):
         pass
 
-    def handleDisconnect(self, msg):
+    def handleDisconnect(self, frame):
         pass
 
-    def handleSend(self, msg):
+    def handleSend(self, frame):
         pass
 
-    def handleSubscribe(self, msg):
+    def handleSubscribe(self, frame):
         pass
     
-    def handleAck(self, msg):
+    def handleAck(self, frame):
         pass
 
 class ErrorOnConnectStompServer(BlackHoleStompServer):
-    def handleConnect(self, msg):
+    def handleConnect(self, frame):
         self.transport.write(self.getFrame(StompSpec.ERROR, {}, 'Fake error message'))
 
 class ErrorOnSendStompServer(BlackHoleStompServer):
-    def handleConnect(self, msg):
+    def handleConnect(self, frame):
         headers = {}
-        if StompSpec.ACCEPT_VERSION_HEADER not in msg['headers']:
+        if StompSpec.ACCEPT_VERSION_HEADER not in frame.headers:
             headers[StompSpec.SESSION_HEADER] = 'YMCA'
         else:
             headers = {'%s:1.1' % StompSpec.VERSION_HEADER}
         self.transport.write(self.getFrame(StompSpec.CONNECTED, headers, ''))
 
-    def handleDisconnect(self, msg):
+    def handleDisconnect(self, frame):
         self.transport.loseConnection()
         
-    def handleSend(self, msg):
+    def handleSend(self, frame):
         self.transport.write(self.getFrame(StompSpec.ERROR, {}, 'Fake error message'))
 
 class RemoteControlViaFrameStompServer(BlackHoleStompServer):
-    def handleConnect(self, msg):
+    def handleConnect(self, frame):
         headers = {}
-        if StompSpec.ACCEPT_VERSION_HEADER not in msg['headers']:
+        if StompSpec.ACCEPT_VERSION_HEADER not in frame.headers:
             headers[StompSpec.SESSION_HEADER] = 'YMCA'
         else:
             headers = {'%s:1.1' % StompSpec.VERSION_HEADER}
         self.transport.write(self.getFrame(StompSpec.CONNECTED, headers, ''))
 
-    def handleDisconnect(self, msg):
+    def handleDisconnect(self, frame):
         self.transport.loseConnection()
         
-    def handleSend(self, msg):
-        if msg['body'] == 'shutdown':
+    def handleSend(self, frame):
+        if frame.body == 'shutdown':
             self.transport.loseConnection()
     
-    def handleSubscribe(self, msg):
-        headers = msg['headers']
+    def handleSubscribe(self, frame):
+        headers = frame.headers
         replyHeaders = {StompSpec.DESTINATION_HEADER: headers[StompSpec.DESTINATION_HEADER], StompSpec.MESSAGE_ID_HEADER: 4711}
         try:
             replyHeaders[StompSpec.SUBSCRIPTION_HEADER] = headers[StompSpec.ID_HEADER]

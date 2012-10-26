@@ -16,7 +16,7 @@ Copyright 2012 Mozes, Inc.
 """
 from .spec import StompSpec
 
-class StompFrame(object):    
+class StompFrame(object):
     def __init__(self, cmd='', headers=None, body=''):
         self.cmd = cmd
         self.headers = {} if (headers is None) else dict(map(str, item) for item in headers.iteritems())

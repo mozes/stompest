@@ -46,7 +46,7 @@ class IncrementTransformer(object):
         """
         NOTE: you can return a Deferred here
         """
-        data = simplejson.loads(frame['body'])
+        data = simplejson.loads(frame.body)
         data['count'] += 1
         stomp.send(self.OUT_QUEUE, simplejson.dumps(data))
     

@@ -59,28 +59,27 @@ class StompParserTest(unittest.TestCase):
         parser = StompParser()
         
         parser.add(str(frame))
-        self.assertEqual(parser.getMessage(), {'cmd': frame.cmd, 'headers': frame.headers, 'body': frame.body})
-        self.assertEqual(parser.getMessage(), None)
+        self.assertEqual(parser.get(), frame)
+        self.assertEqual(parser.get(), None)
         
     def test_frame_without_header_or_body_succeeds(self):
         parser = StompParser()
         parser.add(str(commands.disconnect()))
-        msg = parser.getMessage()
-        self.assertEqual(msg, {'cmd': 'DISCONNECT', 'headers': {}, 'body': ''})
+        self.assertEqual(parser.get(), commands.disconnect())
 
     def test_frames_with_optional_newlines_succeeds(self):
         parser = StompParser()
         frame = '\n%s\n' % commands.disconnect()
         parser.add(2 * frame)
         for _ in xrange(2):
-            self.assertEqual(parser.getMessage(), {'cmd': 'DISCONNECT', 'headers': {}, 'body': ''})
-        self.assertEqual(parser.getMessage(), None)
+            self.assertEqual(parser.get(), commands.disconnect())
+        self.assertEqual(parser.get(), None)
 
     def test_getMessage_returns_None_if_not_done(self):
         parser = StompParser()
-        self.assertEqual(None, parser.getMessage())
+        self.assertEqual(None, parser.get())
         parser.add('CONNECT')
-        self.assertEqual(None, parser.getMessage())
+        self.assertEqual(None, parser.get())
         
     def test_processLine_throws_FrameError_on_invalid_command(self):
         parser = StompParser()

@@ -19,11 +19,12 @@ import cStringIO
 
 from stompest.error import StompFrameError
 
+from .frame import StompFrame
 from .spec import StompSpec
 
 class StompParser(object):
-    def __init__(self, version='1.0'):
-        self.version = version
+    def __init__(self, version=None):
+        self.version = version or StompSpec.DEFAULT_VERSION
         self._parsers = {
             'cmd': self._parseCommand,
             'headers': self._parseHeader,
@@ -35,7 +36,7 @@ class StompParser(object):
     def canRead(self):
         return bool(self._messages)
     
-    def getMessage(self):
+    def get(self):
         if self.canRead():
             return self._messages.popleft()
     
@@ -47,7 +48,7 @@ class StompParser(object):
         self._buffer = cStringIO.StringIO()
 
     def _next(self):
-        self._message = {'cmd': '', 'headers': {}, 'body': ''}
+        self._message = StompFrame()
         self._length = -1
         self._read = 0
         self._transition('cmd')
@@ -66,7 +67,7 @@ class StompParser(object):
             return
         if command not in StompSpec.COMMANDS[self.version]:
             raise StompFrameError('Invalid command: %s' % repr(command))
-        self._message['cmd'] = command
+        self._message.cmd = command
         self._transition('headers')
         
     def _parseHeader(self, character):
@@ -79,10 +80,10 @@ class StompParser(object):
                 name, value = header.split(StompSpec.HEADER_SEPARATOR, 1)
             except ValueError:
                 raise StompFrameError('No separator in header line: %s' % header)
-            self._message['headers'][name] = value
+            self._message.headers[name] = value
             self._transition('headers')
         else:
-            self._length = int(self._message['headers'].get(StompSpec.CONTENT_LENGTH_HEADER, -1))
+            self._length = int(self._message.headers.get(StompSpec.CONTENT_LENGTH_HEADER, -1))
             self._transition('body')
         
     def _parseBody(self, character):
@@ -90,6 +91,6 @@ class StompParser(object):
         if (self._read <= self._length) or (character != StompSpec.FRAME_DELIMITER):
             self._buffer.write(character)
             return
-        self._message['body'] = self._buffer.getvalue()
+        self._message.body = self._buffer.getvalue()
         self._messages.append(self._message)
         self._next()

@@ -14,23 +14,19 @@ Copyright 2011, 2012 Mozes, Inc.
    See the License for the specific language governing permissions and
    limitations under the License.
 """
-from copy import deepcopy
+import copy
 
 from stompest.protocol import StompSpec
 
 _RESERVED_HEADERS = [StompSpec.MESSAGE_ID_HEADER, StompSpec.DESTINATION_HEADER, 'timestamp', 'expires', 'priority']
 
 def filterReservedHeaders(headers):
-    filtered = headers.copy()
-    for hdr in _RESERVED_HEADERS:
-        if hdr in filtered:
-            del filtered[hdr]
-    return filtered
+    return dict((header, value) for (header, value) in headers.iteritems() if header not in _RESERVED_HEADERS)
     
-def cloneStompMessage(msg, persistent=None):
-    msg = deepcopy(msg)
-    headers = filterReservedHeaders(msg['headers'])
+def cloneFrame(frame, persistent=None):
+    frame = copy.deepcopy(frame)
+    headers = filterReservedHeaders(frame.headers)
     if persistent is not None:
         headers['persistent'] = str(bool(persistent)).lower()
-    msg['headers'] = headers
-    return msg
+    frame.headers = headers
+    return frame

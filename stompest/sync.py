@@ -20,7 +20,6 @@ import stompest.simple
 
 from stompest.error import StompConnectionError
 from stompest.protocol import StompSession, StompFailoverProtocol
-from stompest.protocol.frame import StompFrame
 
 LOG_CATEGORY = 'stompest.sync'
 
@@ -56,10 +55,10 @@ class Stomp(object):
             self.log.error('Reconnect failed [%s]' % e)
             raise
 
-    def _connect(self, **kwargs):
+    def _connect(self, headers=None, versions=None, host=None):
         self.log.debug('Connecting to %s:%d ...' % (self._stomp.host, self._stomp.port))
-        result = self._stomp.connect(self._login, self._passcode, **kwargs)
-        self._session.connect(self._login, self._passcode)
+        result = self._stomp.connect(self._login, self._passcode, headers, versions, host)
+        self._session.connect(self._login, self._passcode, headers, versions, host)
         for (dest, headers, _) in self._session.replay():
             self.log.debug('Replaying subscription %s' % headers)
             self.subscribe(dest, headers)
@@ -76,18 +75,13 @@ class Stomp(object):
     def send(self, dest, msg, headers=None):
         self._stomp.send(dest, msg, headers)
         
-    def subscribe(self, dest, headers):
-        frame, token = self._session.subscribe(dest, headers)
+    def subscribe(self, destination, headers):
+        frame, token = self._session.subscribe(destination, headers)
         self.sendFrame(frame)
         return token
     
-    def subscription(self, subscription):
-        return self._session.subscription(subscription)
-    
-    def unsubscribe(self, subscription):
-        frame, token = self._session.unsubscribe(subscription)
-        self.sendFrame(frame)
-        return token
+    def unsubscribe(self, token):
+        self.sendFrame(self._session.unsubscribe(token))
         
     def ack(self, headers):
         self.sendFrame(self._session.ack(headers))
@@ -95,23 +89,20 @@ class Stomp(object):
     def nack(self, headers):
         self.sendFrame(self._session.nack(headers))
     
-    def begin(self):
-        frame, token = self._session.begin()
-        self.sendFrame(frame)
-        return token
+    def transactionId(self, transactionId=None):
+        return self._session.transactionId(transactionId)
+    
+    def begin(self, transactionId):
+        self._sendFrame(self._session.begin(transactionId))
         
-    def abort(self, transaction):
-        frame, token = self._session.abort(transaction)
-        self.sendFrame(frame)
-        return token
+    def abort(self, transactionId):
+        self._sendFrame(self._session.abort(transactionId))
         
-    def commit(self, transaction):
-        frame, token = self._session.commit(transaction)
-        self.sendFrame(frame)
-        return token
+    def commit(self, transactionId):
+        self._sendFrame(self._session.commit(transactionId))
         
     def sendFrame(self, message):
         self._stomp.sendFrame(message)
     
     def receiveFrame(self):
-        return StompFrame(**self._stomp.receiveFrame())
+        return self._stomp.receiveFrame()

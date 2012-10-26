@@ -159,7 +159,7 @@ class AsyncFailoverClientReplaySubscription(AsyncFailoverClientBaseTestCase):
 
     def _on_message(self, client, msg):
         self.assertTrue(isinstance(client, StompFailoverClient))
-        self.assertEquals(msg['body'], 'hi')
+        self.assertEquals(msg.body, 'hi')
         if self.shutdown:
             client.send('/queue/fake', 'shutdown')
         else:

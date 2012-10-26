@@ -88,7 +88,7 @@ class SimpleStompIntegrationTest(unittest.TestCase):
         self.assertRaises(StompConnectionError, stomp.receiveFrame)
         stomp.connect()
         stomp.ack(stomp.receiveFrame())
-        stomp.unsubscribe({'id': 'bla'})
+        stomp.unsubscribe(('id', 'bla'))
         stomp.disconnect()
         
     def test_4_integration_stomp_1_1(self):

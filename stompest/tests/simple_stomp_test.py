@@ -57,9 +57,9 @@ class SimpleStompTest(unittest.TestCase):
         
         stomp = self._get_receive_mock(frameBytes)
         frame = stomp.receiveFrame()
-        self.assertEquals('MESSAGE', frame['cmd'])
-        self.assertEquals(hdrs, frame['headers'])
-        self.assertEquals(body, frame['body'])
+        self.assertEquals('MESSAGE', frame.cmd)
+        self.assertEquals(hdrs, frame.headers)
+        self.assertEquals(body, frame.body)
         
         self.assertEquals(1, stomp.socket.recv.call_count)
 
@@ -71,9 +71,9 @@ class SimpleStompTest(unittest.TestCase):
         
         stomp = self._get_receive_mock(frameBytes)
         frame = stomp.receiveFrame()
-        self.assertEquals('MESSAGE', frame['cmd'])
-        self.assertEquals(hdrs, frame['headers'])
-        self.assertEquals(body, frame['body'])
+        self.assertEquals('MESSAGE', frame.cmd)
+        self.assertEquals(hdrs, frame.headers)
+        self.assertEquals(body, frame.body)
         
         self.assertEquals(1, stomp.socket.recv.call_count)
 
@@ -84,9 +84,9 @@ class SimpleStompTest(unittest.TestCase):
         
         stomp = self._get_receive_mock(frameBytes)
         frame = stomp.receiveFrame()
-        self.assertEquals('MESSAGE', frame['cmd'])
-        self.assertEquals(hdrs, frame['headers'])
-        self.assertEquals(body, frame['body'])
+        self.assertEquals('MESSAGE', frame.cmd)
+        self.assertEquals(hdrs, frame.headers)
+        self.assertEquals(body, frame.body)
         
         self.assertEquals(1, stomp.socket.recv.call_count)
         
@@ -100,16 +100,16 @@ class SimpleStompTest(unittest.TestCase):
         
         #Read first frame
         frame = stomp.receiveFrame()
-        self.assertEquals('MESSAGE', frame['cmd'])
-        self.assertEquals(hdrs, frame['headers'])
-        self.assertEquals(body1, frame['body'])
+        self.assertEquals('MESSAGE', frame.cmd)
+        self.assertEquals(hdrs, frame.headers)
+        self.assertEquals(body1, frame.body)
         self.assertEquals(1, stomp.socket.recv.call_count)
 
         #Read next frame
         frame = stomp.receiveFrame()
-        self.assertEquals('MESSAGE', frame['cmd'])
-        self.assertEquals(hdrs, frame['headers'])
-        self.assertEquals(body2, frame['body'])
+        self.assertEquals('MESSAGE', frame.cmd)
+        self.assertEquals(hdrs, frame.headers)
+        self.assertEquals(body2, frame.body)
         self.assertEquals(1, stomp.socket.recv.call_count)
     
     def test_canRead_raises_exception_before_connect(self):
@@ -136,7 +136,7 @@ class SimpleStompTest(unittest.TestCase):
         stomp = Stomp(HOST, PORT)
         stomp._socketConnect = Mock()
         stomp.receiveFrame = Mock()
-        stomp.receiveFrame.return_value = {'cmd': 'ERROR', 'headers': {}, 'body': 'fake error'}
+        stomp.receiveFrame.return_value = StompFrame('ERROR', body='fake error')
         stomp.socket = Mock()
         self.assertRaises(StompProtocolError, lambda: stomp.connect())
         self.assertEquals(stomp.receiveFrame.call_count, 1, "receiveFrame not called")
@@ -147,16 +147,12 @@ class SimpleStompTest(unittest.TestCase):
         stomp = Stomp(HOST, PORT)
         stomp._socketConnect = Mock()
         stomp.receiveFrame = Mock()
-        stomp.receiveFrame.return_value = {'cmd': 'CONNECTED', 'headers': {}, 'body': ''}
+        stomp.receiveFrame.return_value = StompFrame('CONNECTED', {StompSpec.SESSION_HEADER: '4711'})
         stomp.socket = Mock()
-        stomp.connect(login=login,passcode=passcode)
+        stomp.connect(login=login, passcode=passcode)
         args, _ = stomp.socket.sendall.call_args
         sentFrame = self.parseFrame(args[0])
-        self.assertEquals({
-           'cmd': 'CONNECT',
-           'headers': {'login': login, 'passcode': passcode},
-           'body': ''
-        }, sentFrame)
+        self.assertEquals(StompFrame('CONNECT', {'login': login, 'passcode': passcode}), sentFrame)
     
     def test_send_writes_correct_frame(self):
         dest = '/queue/foo'
@@ -168,11 +164,7 @@ class SimpleStompTest(unittest.TestCase):
         stomp.send(dest, msg, headers)
         args, _ = stomp._write.call_args
         sentFrame = self.parseFrame(args[0])
-        self.assertEquals({
-           'cmd': 'SEND',
-           'headers': {StompSpec.DESTINATION_HEADER: dest, 'foo': 'bar', 'fuzz': 'ball'},
-           'body': msg
-        }, sentFrame)
+        self.assertEquals(StompFrame('SEND', {StompSpec.DESTINATION_HEADER: dest, 'foo': 'bar', 'fuzz': 'ball'}, msg), sentFrame)
 
     def test_subscribe_writes_correct_frame(self):
         dest = '/queue/foo'
@@ -183,21 +175,17 @@ class SimpleStompTest(unittest.TestCase):
         stomp.subscribe(dest, headers)
         args, _ = stomp._write.call_args
         sentFrame = self.parseFrame(args[0])
-        self.assertEquals({
-            'cmd': 'SUBSCRIBE',
-            'headers': {StompSpec.DESTINATION_HEADER: dest, StompSpec.ACK_HEADER: 'auto', 'activemq.prefetchSize': '1', 'foo': 'bar', 'fuzz': 'ball'},
-            'body': ''
-        }, sentFrame)
+        self.assertEquals(StompFrame('SUBSCRIBE', {StompSpec.DESTINATION_HEADER: dest, StompSpec.ACK_HEADER: 'auto', 'activemq.prefetchSize': '1', 'foo': 'bar', 'fuzz': 'ball'}, ''), sentFrame)
 
     def test_ack_writes_correct_frame(self):
         id_ = '12345'
         stomp = Stomp(HOST, PORT)
         stomp._checkConnected = Mock()
         stomp._write = Mock()
-        stomp.ack({'cmd': 'MESSAGE', 'headers': {StompSpec.MESSAGE_ID_HEADER: id_}, 'body': 'blah'})
+        stomp.ack(StompFrame('MESSAGE', {StompSpec.MESSAGE_ID_HEADER: id_}, 'blah'))
         args, _ = stomp._write.call_args
         sentFrame = self.parseFrame(args[0])
-        self.assertEquals({'cmd': 'ACK', 'headers': {StompSpec.MESSAGE_ID_HEADER: id_}, 'body': ''}, sentFrame)
+        self.assertEquals(StompFrame('ACK', {StompSpec.MESSAGE_ID_HEADER: id_}), sentFrame)
 
     def test_transaction_writes_correct_frames(self):
         transactionId = '4711'
@@ -208,28 +196,16 @@ class SimpleStompTest(unittest.TestCase):
             method(transactionId)
             args, _ = stomp._write.call_args
             sentFrame = self.parseFrame(args[0])
-            self.assertEquals({
-                'cmd': cmd,
-                'headers': {'transaction': transactionId},
-                'body': ''
-            }, sentFrame)
+            self.assertEquals(StompFrame(cmd, {'transaction': transactionId},), sentFrame)
             
         with stomp.transaction(transactionId):
             args, _ = stomp._write.call_args
             sentFrame = self.parseFrame(args[0])
-            self.assertEquals({
-                'cmd': 'BEGIN',
-                'headers': {'transaction': transactionId},
-                'body': ''
-            }, sentFrame)
+            self.assertEquals(StompFrame('BEGIN', {'transaction': transactionId},), sentFrame)
             
         args, _ = stomp._write.call_args
         sentFrame = self.parseFrame(args[0])
-        self.assertEquals({
-            'cmd': 'COMMIT',
-            'headers': {'transaction': transactionId},
-            'body': ''
-        }, sentFrame)
+        self.assertEquals(StompFrame('COMMIT', {'transaction': transactionId}), sentFrame)
             
         try:
             with stomp.transaction(transactionId):
@@ -237,16 +213,12 @@ class SimpleStompTest(unittest.TestCase):
         except:
             args, _ = stomp._write.call_args
             sentFrame = self.parseFrame(args[0])
-            self.assertEquals({
-                'cmd': 'ABORT',
-                'headers': {'transaction': transactionId},
-                'body': ''
-            }, sentFrame)
+            self.assertEquals(StompFrame('ABORT', {'transaction': transactionId}), sentFrame)
 
     def parseFrame(self, message):
         parser = StompParser()
         parser.add(message)
-        return parser.getMessage()
+        return parser.get()
     
     def getFrame(self, cmd, headers, body):
         return str(StompFrame(cmd, headers, body))

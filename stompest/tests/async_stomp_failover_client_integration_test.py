@@ -49,7 +49,7 @@ class HandlerExceptionWithErrorQueueIntegrationTestCase(unittest.TestCase):
         while stomp.canRead(1):
             frame = stomp.receiveFrame()
             stomp.ack(frame)
-            print "Dequeued old message: %s" % frame
+            print "Dequeued old message: %s" % repr(frame)
         stomp.disconnect()
         
     def setUp(self):
@@ -111,12 +111,12 @@ class HandlerExceptionWithErrorQueueIntegrationTestCase(unittest.TestCase):
         yield client.disconnected
         
         #Verify that first message was in error queue
-        self.assertEquals(self.msg1, self.errQMsg['body'])
-        self.assertEquals(self.msg1Hdrs['food'], self.errQMsg['headers']['food'])
-        self.assertNotEquals(self.unhandledMsg['headers']['message-id'], self.errQMsg['headers']['message-id'])
+        self.assertEquals(self.msg1, self.errQMsg.body)
+        self.assertEquals(self.msg1Hdrs['food'], self.errQMsg.headers['food'])
+        self.assertNotEquals(self.unhandledMsg.headers['message-id'], self.errQMsg.headers['message-id'])
         
         #Verify that second message was consumed
-        self.assertEquals(self.msg2, self.consumedMsg['body'])
+        self.assertEquals(self.msg2, self.consumedMsg.body)
 
     @defer.inlineCallbacks
     def test_onhandlerException_ackMessage_filterReservedHdrs_send2ErrorQ_and_no_disconnect(self):
@@ -145,7 +145,7 @@ class HandlerExceptionWithErrorQueueIntegrationTestCase(unittest.TestCase):
         
         #Verify that one message was in error queue (can't guarantee order)
         self.assertNotEquals(None, self.errQMsg)
-        self.assertTrue(self.errQMsg['body'] in (self.msg1, self.msg2))
+        self.assertTrue(self.errQMsg.body in (self.msg1, self.msg2))
 
     @defer.inlineCallbacks
     def test_onhandlerException_disconnect(self):
@@ -178,9 +178,9 @@ class HandlerExceptionWithErrorQueueIntegrationTestCase(unittest.TestCase):
         yield client.disconnected
         
         #Verify that message was retried
-        self.assertEquals(self.msg1, self.unhandledMsg['body'])
-        self.assertEquals(self.msg1, self.consumedMsg['body'])
-        self.assertEquals(self.unhandledMsg['headers']['message-id'], self.consumedMsg['headers']['message-id'])
+        self.assertEquals(self.msg1, self.unhandledMsg.body)
+        self.assertEquals(self.msg1, self.consumedMsg.body)
+        self.assertEquals(self.unhandledMsg.headers['message-id'], self.consumedMsg.headers['message-id'])
 
     def _saveMsgAndBarf(self, client, msg):
         print 'Save message and barf'
@@ -222,7 +222,7 @@ class GracefulDisconnectTestCase(unittest.TestCase):
         while stomp.canRead(1):
             frame = stomp.receiveFrame()
             stomp.ack(frame)
-            print "Dequeued old message: %s" % frame
+            print "Dequeued old message: %s" % repr(frame)
         stomp.disconnect()
         
     @defer.inlineCallbacks
@@ -287,7 +287,7 @@ class SubscribeTestCase(unittest.TestCase):
         while stomp.canRead(1):
             frame = stomp.receiveFrame()
             stomp.ack(frame)
-            print "Dequeued old message: %s" % frame
+            print "Dequeued old message: %s" % repr(frame)
         stomp.disconnect()
         
     @defer.inlineCallbacks

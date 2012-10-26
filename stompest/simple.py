@@ -17,50 +17,32 @@ import contextlib
 import select
 import socket
 
-from stompest.error import StompConnectionError, StompProtocolError
-from stompest.protocol import commands, StompFrame, StompParser, StompSpec
+from stompest.error import StompConnectionError
+from stompest.protocol import commands, StompParser, StompSpec
 
 class Stomp(object):
     """A simple implementation of a STOMP client"""
     READ_SIZE = 4096
     
-    def __init__(self, host, port, version='1.0'):
+    def __init__(self, host, port, version=None):
         self.host = host
         self.port = port
         self.socket = None
-        self.version = version
+        self.version = commands.version(version)
         self._setParser()
     
-    def connect(self, login='', passcode='', headers=None):
-        headers = self._createConnectHeaders(headers)
+    def connect(self, login='', passcode='', headers=None, versions=None, host=None):
         self._socketConnect()
-        self.sendFrame(commands.connect(login, passcode, headers))
+        self.sendFrame(commands.connect(login, passcode, headers, list(versions or [self.version]), host))
         self._setParser()
-        return self._handleConnectResponse(self.receiveFrame())
+        return commands.connected(self.receiveFrame(), self.version)
     
-    def _createConnectHeaders(self, headers):
-        headers = dict(headers or {})
-        if self.version != '1.0':
-            headers[StompSpec.ACCEPT_VERSION_HEADER] = self.version
-        return headers
-    
-    def _handleConnectResponse(self, frame):
-        if frame['cmd'] == StompSpec.CONNECTED:
-            if self.version != '1.0':
-                try:
-                    version = frame['headers'][StompSpec.VERSION_HEADER]
-                except:
-                    version = '1.0'
-                if version != self.version:
-                    self.disconnect()
-                    raise StompProtocolError('Incompatible server version: %s [client version: %s]' % (version, self.version))
-            return frame
-        raise StompProtocolError('Unexpected frame received: %s' % frame)
-        
     def disconnect(self):
-        self.sendFrame(commands.disconnect())
-        self._socketDisconnect()
-
+        try:
+            self.sendFrame(commands.disconnect())
+        finally:
+            self._socketDisconnect()
+        
     def canRead(self, timeout=None):
         self._checkConnected()
         if self.parser.canRead():
@@ -71,38 +53,35 @@ class Stomp(object):
             readList, _, _ = select.select([self.socket], [], [], timeout)
         return bool(readList)
         
-    def send(self, dest, msg, headers=None):
-        headers = dict(headers or {})
-        if StompSpec.DESTINATION_HEADER in headers:
-            headers.pop(StompSpec.DESTINATION_HEADER)
-        self.sendFrame(commands.send(dest, msg, headers))
+    def send(self, destination, body='', headers=None, receipt=None):
+        self.sendFrame(commands.send(destination, body, headers, receipt))
         
-    def subscribe(self, dest=None, headers=None):
+    def subscribe(self, destination=None, headers=None, receipt=None):
         headers = dict(headers or {})
         headers.setdefault(StompSpec.ACK_HEADER, 'auto')
         headers.setdefault('activemq.prefetchSize', 1)
-        frame = commands.subscribe(dest, headers, self.version)
+        frame, token = commands.subscribe(destination, headers, receipt, self.version)
         self.sendFrame(frame)
-        return frame
+        return token
         
-    def unsubscribe(self, dest=None, headers=None):
-        # made dest parameter optional since an unsubscribe frame with ID_HEADER header precludes a DESTINATION_HEADER
-        headers = dict(headers or [])
-        if dest:
-            headers[StompSpec.DESTINATION_HEADER] = dest
-        self.sendFrame(commands.unsubscribe(headers, self.version))
+    def unsubscribe(self, token, receipt=None):
+        self.sendFrame(commands.unsubscribe(token, receipt, self.version))
+    
+    def transactionId(self, transactionId=None):
+        return commands.transactionId(transactionId)
     
     def begin(self, transactionId):
-        self.sendFrame(commands.begin(commands.transaction(transactionId)))
+        self.sendFrame(commands.begin(transactionId))
         
     def commit(self, transactionId):
-        self.sendFrame(commands.commit(commands.transaction(transactionId)))        
+        self.sendFrame(commands.commit(transactionId))        
 
     def abort(self, transactionId):
-        self.sendFrame(commands.abort(commands.transaction(transactionId)))
+        self.sendFrame(commands.abort(transactionId))
     
     @contextlib.contextmanager
-    def transaction(self, transactionId):
+    def transaction(self, transactionId=None):
+        transactionId = self.transactionId(transactionId)
         self.begin(transactionId)
         try:
             yield
@@ -110,17 +89,17 @@ class Stomp(object):
         except:
             self.abort(transactionId)
         
-    def ack(self, message):
-        self.sendFrame(commands.ack(message['headers']))
+    def ack(self, frame, receipt=None):
+        self.sendFrame(commands.ack(frame, receipt, self.version))
     
-    def nack(self, message):
-        self.sendFrame(commands.nack(message['headers'], self.version))
+    def nack(self, frame, receipt=None):
+        self.sendFrame(commands.nack(frame, receipt, self.version))
     
     def receiveFrame(self):
         while True:
-            message = self.parser.getMessage()
-            if message:
-                return message
+            frame = self.parser.get()
+            if frame:
+                return frame
             try:
                 data = self.socket.recv(self.READ_SIZE)
                 if not data:
@@ -130,8 +109,8 @@ class Stomp(object):
                 raise StompConnectionError('Connection closed [%s]' % e)
             self.parser.add(data)
     
-    def sendFrame(self, message):
-        self._write(str(self._toFrame(message)))
+    def sendFrame(self, frame):
+        self._write(str(frame))
         
     def _checkConnected(self):
         if not self._connected():
@@ -157,11 +136,6 @@ class Stomp(object):
             raise StompConnectionError('Could not close connection cleanly [%s]' % e)
         finally:
             self.socket = None
-    
-    def _toFrame(self, message):
-        if not isinstance(message, StompFrame):
-            message = StompFrame(**message)
-        return message
     
     def _write(self, data):
         self._checkConnected()
