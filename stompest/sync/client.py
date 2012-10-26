@@ -33,7 +33,7 @@ class Stomp(object):
         self.log = logging.getLogger(LOG_CATEGORY)
         self._config = config
         self._session = StompSession(self._config.version)
-        self._protocol = StompFailoverProtocol(config.uri)
+        self._failover = StompFailoverProtocol(config.uri)
         self._transport = None
         
     def connect(self, headers=None, versions=None, host=None):
@@ -45,7 +45,7 @@ class Stomp(object):
             except StompConnectionError as e:
                 self.log.warning('Lost connection to %s:%d [%s]' % (self._transport.host, self._transport.port, e))
         try:
-            for (broker, connectDelay) in self._protocol:
+            for (broker, connectDelay) in self._failover:
                 self._transport = self.factory(broker['host'], broker['port'], self._session.version)
                 if connectDelay:
                     self.log.debug('Delaying connect attempt for %d ms' % int(connectDelay * 1000))
