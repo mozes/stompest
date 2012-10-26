@@ -19,6 +19,7 @@ from stompest.error import StompProtocolError
 import commands
 import copy
 import itertools
+import uuid
 
 class StompSession(object):
     CONNECTED = 'connected'
@@ -86,34 +87,34 @@ class StompSession(object):
     def nack(self, frame, receipt=None):
         self.__check(self.CONNECTED)
         return commands.nack(frame, receipt, self.version)
-        
-    def transactionId(self, transactionId=None):
-        return commands.transactionId(transactionId)
     
-    def begin(self, transactionId, receipt=None):
+    def transaction(self, transaction=None):
+        return str(transaction or uuid.uuid4())
+    
+    def begin(self, transaction=None, receipt=None):
         self.__check(self.CONNECTED)
-        frame = commands.begin(transactionId, receipt)
-        if transactionId in self._transactions:
-            raise StompProtocolError('Transaction already active: %s' % transactionId)
-        self._transactions.add(transactionId)
+        frame = commands.begin(transaction, receipt)
+        if transaction in self._transactions:
+            raise StompProtocolError('Transaction already active: %s' % transaction)
+        self._transactions.add(transaction)
         return frame
         
-    def commit(self, transactionId, receipt=None):
+    def commit(self, transaction, receipt=None):
         self.__check(self.CONNECTED)
-        frame = commands.commit(transactionId, receipt)
+        frame = commands.commit(transaction, receipt)
         try:
-            self._transactions.remove(transactionId)
+            self._transactions.remove(transaction)
         except KeyError:
-            raise StompProtocolError('Transaction unknown: %s' % transactionId)
+            raise StompProtocolError('Transaction unknown: %s' % transaction)
         return frame
     
-    def abort(self, transactionId, receipt=None):
+    def abort(self, transaction, receipt=None):
         self.__check(self.CONNECTED)
-        frame = commands.abort(transactionId, receipt)
+        frame = commands.abort(transaction, receipt)
         try:
-            self._transactions.remove(transactionId)
+            self._transactions.remove(transaction)
         except KeyError:
-            raise StompProtocolError('Transaction unknown: %s' % transactionId)
+            raise StompProtocolError('Transaction unknown: %s' % transaction)
         return frame
     
     def connected(self, headers):
@@ -162,4 +163,3 @@ class StompSession(object):
     def __check(self, state):
         if self._check and (self.state != state):
             raise StompProtocolError('Cannot handle command in state %s != %s' % (self.state, state))
- 

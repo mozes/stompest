@@ -182,7 +182,7 @@ class StompSessionTest(unittest.TestCase):
     def test_session_transaction(self):
         session = StompSession()
         
-        transaction = session.transactionId()
+        transaction = session.transaction()
         headers = {StompSpec.TRANSACTION_HEADER: transaction, StompSpec.RECEIPT_HEADER: 'bla'}
         frame = session.begin(transaction, receipt='bla')
         self.assertEquals(frame, commands.begin(transaction, receipt='bla'))
@@ -194,7 +194,7 @@ class StompSessionTest(unittest.TestCase):
         self.assertRaises(StompProtocolError, session.abort, transaction)
         self.assertRaises(StompProtocolError, session.commit, transaction)
         
-        transaction = session.transactionId(4711)
+        transaction = session.transaction(4711)
         headers = {StompSpec.TRANSACTION_HEADER: '4711'}
         frame = session.begin(transaction)
         self.assertEquals(frame, commands.begin(transaction))

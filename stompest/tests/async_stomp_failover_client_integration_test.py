@@ -19,7 +19,7 @@ import logging
 from twisted.internet import reactor, defer, task
 from twisted.trial import unittest
 
-from stompest.simple import Stomp
+from stompest.sync import Stomp
 from stompest.async import StompFailoverClient
 from stompest.protocol import StompConfig, StompSpec
 
@@ -27,6 +27,8 @@ logging.basicConfig(level=logging.DEBUG)
 
 HOST = 'localhost'
 PORT = 61613
+
+CONFIG = StompConfig('tcp://%s:%s' % (HOST, PORT))
 
 class StompestTestError(Exception):
     pass
@@ -43,7 +45,7 @@ class HandlerExceptionWithErrorQueueIntegrationTestCase(unittest.TestCase):
         self.cleanQueue(self.errorQueue)
     
     def cleanQueue(self, queue):
-        stomp = Stomp(HOST, PORT)
+        stomp = Stomp(CONFIG)
         stomp.connect()
         stomp.subscribe(queue, {StompSpec.ACK_HEADER: 'client'})
         while stomp.canRead(1):
@@ -216,7 +218,7 @@ class GracefulDisconnectTestCase(unittest.TestCase):
         self.cleanQueue(self.queue)
     
     def cleanQueue(self, queue):
-        stomp = Stomp(HOST, PORT)
+        stomp = Stomp(CONFIG)
         stomp.connect()
         stomp.subscribe(queue, {StompSpec.ACK_HEADER: 'client'})
         while stomp.canRead(1):
@@ -281,7 +283,7 @@ class SubscribeTestCase(unittest.TestCase):
         self.cleanQueue(self.queue)
     
     def cleanQueue(self, queue):
-        stomp = Stomp(HOST, PORT)
+        stomp = Stomp(CONFIG)
         stomp.connect()
         stomp.subscribe(queue, {StompSpec.ACK_HEADER: 'client'})
         while stomp.canRead(1):

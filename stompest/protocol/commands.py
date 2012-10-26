@@ -15,7 +15,6 @@ Copyright 2012 Mozes, Inc.
    limitations under the License.
 """
 import socket
-import uuid
 
 from stompest.error import StompProtocolError
 
@@ -102,21 +101,18 @@ def nack(frame, receipt=None, version=None):
     _addReceiptHeader(frame, receipt)
     return frame
 
-def transactionId(transactionId=None):
-    return str(transactionId or uuid.uuid4())
-
-def begin(transactionId, receipt=None):
-    frame = StompFrame(StompSpec.BEGIN, {StompSpec.TRANSACTION_HEADER: transactionId})
+def begin(transaction, receipt=None):
+    frame = StompFrame(StompSpec.BEGIN, {StompSpec.TRANSACTION_HEADER: transaction})
     _addReceiptHeader(frame, receipt)
     return frame
 
-def abort(transactionId, receipt=None):
-    frame = StompFrame(StompSpec.ABORT, {StompSpec.TRANSACTION_HEADER: transactionId})
+def abort(transaction, receipt=None):
+    frame = StompFrame(StompSpec.ABORT, {StompSpec.TRANSACTION_HEADER: transaction})
     _addReceiptHeader(frame, receipt)
     return frame
 
-def commit(transactionId, receipt=None):
-    frame = StompFrame(StompSpec.COMMIT, {StompSpec.TRANSACTION_HEADER: transactionId})
+def commit(transaction, receipt=None):
+    frame = StompFrame(StompSpec.COMMIT, {StompSpec.TRANSACTION_HEADER: transaction})
     _addReceiptHeader(frame, receipt)
     return frame
 
