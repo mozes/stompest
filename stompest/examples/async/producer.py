@@ -14,30 +14,32 @@ Copyright 2011 Mozes, Inc.
    limitations under the License.
 """
 import logging
-import simplejson
-from twisted.internet import reactor, defer
-from stompest.async import StompConfig, StompCreator
+import json
+
+from twisted.internet import defer, reactor, task
+
+from stompest.async import Stomp
+from stompest.protocol import StompConfig
 
 class Producer(object):
-    
     QUEUE = '/queue/testIn'
 
     def __init__(self, config=None):
         if config is None:
-            config = StompConfig('localhost', 61613)
+            config = StompConfig('tcp://localhost:61613')
         self.config = config
         
     @defer.inlineCallbacks
     def run(self):
-        #Establish connection
-        stomp = yield StompCreator(self.config).getConnection()
-        #Enqueue 10 messages
+        # establish connection
+        stomp = yield Stomp(self.config).connect()
+        # enqueue 10 messages
         try:
-            for x in range(10):
-                stomp.send(self.QUEUE, simplejson.dumps({'count': x}))
+            for j in range(10):
+                stomp.send(self.QUEUE, json.dumps({'count': j}))
         finally:
-            #Give the reactor time to complete the writes
-            reactor.callLater(1, reactor.stop)
+            # give the reactor time to complete the writes
+            yield task.deferLater(1, stomp.disconnect)
     
 if __name__ == '__main__':
     logging.basicConfig(level=logging.DEBUG)
