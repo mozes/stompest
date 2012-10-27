@@ -79,3 +79,8 @@ class StompSpec(object):
     SUBSCRIPTION_HEADER = 'subscription'
     TRANSACTION_HEADER = 'transaction'
     VERSION_HEADER = 'version'
+    
+    ACK_AUTO = 'auto'
+    ACK_CLIENT = 'client'
+    ACK_CLIENT_INDIVIDUAL = 'client-individual'
+    CLIENT_ACK_MODES = set([ACK_CLIENT, ACK_CLIENT_INDIVIDUAL])
