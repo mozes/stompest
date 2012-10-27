@@ -42,7 +42,7 @@ class StompFrameTransport(object):
             self._socket.connect((self.host, self.port))
         except IOError as e:
             raise StompConnectionError('Could not establish connection [%s]' % e)
-        self._parser.flush()
+        self._parser.reset()
     
     def canRead(self, timeout=None):
         self._check()
