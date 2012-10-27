@@ -132,8 +132,8 @@ class AsyncFailoverClientReplaySubscription(AsyncFailoverClientBaseTestCase):
             pass
         else:
             self.assertTrue(False)
-            
-        self.assertEquals(client._session._subscriptions, {}) # check that no subscriptions have been accepted
+        
+        self.assertEquals(client.session._subscriptions, {}) # check that no subscriptions have been accepted
         yield client.connect()
         
         self.shutdown = True # the callback handler will kill the broker connection ... 
@@ -149,13 +149,13 @@ class AsyncFailoverClientReplaySubscription(AsyncFailoverClientBaseTestCase):
         self._got_message = defer.Deferred()
         
         yield client.connect()
-        self.assertNotEquals(client._session._subscriptions, []) # the subscriptions have been replayed ...
+        self.assertNotEquals(client.session._subscriptions, []) # the subscriptions have been replayed ...
         
         result = yield self._got_message
         self.assertEquals(result, None) # ... and the message comes back
         
         yield client.disconnect()
-        self.assertEquals(list(client._session.replay()), []) # after a clean disconnect, the subscriptions are forgotten.
+        self.assertEquals(list(client.session.replay()), []) # after a clean disconnect, the subscriptions are forgotten.
 
     def _on_message(self, client, msg):
         self.assertTrue(isinstance(client, Stomp))
