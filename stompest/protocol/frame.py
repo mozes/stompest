@@ -17,6 +17,8 @@ Copyright 2012 Mozes, Inc.
 from .spec import StompSpec
 
 class StompFrame(object):
+    INFO_LENGTH = 20
+    
     def __init__(self, cmd='', headers=None, body=''):
         self.cmd = cmd
         self.headers = {} if (headers is None) else dict(map(str, item) for item in headers.iteritems())
@@ -34,3 +36,10 @@ class StompFrame(object):
     
     def __eq__(self, other):
         return all(getattr(self, key) == getattr(other, key) for key in ('cmd', 'headers', 'body'))
+    
+    def info(self):
+        body = self.body[:self.INFO_LENGTH]
+        if body not in self.body:
+            body = '%s...' % body 
+        body = body and (', body=%s' % repr(body))
+        return '%s frame [headers=%s%s]' % (self.cmd, ','.join(':'.join(map(repr, item)) for item in self.headers.iteritems()), body)

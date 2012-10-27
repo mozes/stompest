@@ -26,7 +26,7 @@ stomp.subscribe(QUEUE, {'ack': 'client'})
 
 while True:
     frame = stomp.receiveFrame()
-    print "Got message frame: %s" % repr(frame)
+    print 'Got %s' % frame.info()
     stomp.ack(frame)
     
 stomp.disconnect()

@@ -32,6 +32,9 @@ class StompFrameTransport(object):
         
         self._socket = None
     
+    def __str__(self):
+        return '%s:%d' % (self.host, self.port)
+    
     def connect(self):
         self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:

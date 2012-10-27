@@ -192,14 +192,13 @@ class StompProtocol(Protocol):
             frame = self._parser.get()
             if not frame:
                 break
-            self.log.debug('Received STOMP frame: %s' % repr(frame))
+            self.log.debug('Received %s' % frame.info())
             try:
                 handler = self._handlers[frame.cmd]
             except KeyError:
                 raise StompFrameError('Unknown STOMP command: %s' % repr(frame))
             handler(frame)
     
-    MESSAGE_INFO_LENGTH = 20
     CLIENT_ACK_MODES = set(['client', 'client-individual'])
     DEFAULT_ACK_MODE = 'client'
     
@@ -272,11 +271,7 @@ class StompProtocol(Protocol):
     
     def sendFrame(self, frame):
         if self.log.isEnabledFor(logging.DEBUG):
-            body = frame.body[:self.MESSAGE_INFO_LENGTH]
-            if len(body) < len(frame.body):
-                body = '%s...' % body 
-            body = body and (' [body=%s]' % repr(body))
-            self.log.debug('Sending %s frame: %s%s' % (frame.cmd, repr(frame.headers), body))
+            self.log.debug('Sending %s' % frame.info())
         self._write(str(frame))
     
     @property
@@ -396,16 +391,16 @@ class StompProtocol(Protocol):
             token = self.stomp.session.message(frame)
             subscription = self._subscriptions[token]
         except:
-            self.log.warning('Ignoring STOMP message (no handler found): %s [headers=%s]' % (messageId, headers))
+            self.log.warning('[%s] No handler found: ignoring %s' % (messageId, frame.info()))
             return
         
         #Do not process any more messages if we're disconnecting
         if self._disconnecting:
-            self.log.debug('Ignoring STOMP message (disconnecting): %s [headers=%s]' % (messageId, headers))
+            self.log.debug('[%s] Disconnect: ignoring %s' % (messageId, frame.info()))
             return
         
         if self.log.isEnabledFor(logging.DEBUG):
-            self.log.debug('Received STOMP message: %s [headers=%s, body=%s...]' % (messageId, headers, repr(frame.body[:self.MESSAGE_INFO_LENGTH])))
+            self.log.debug('[%s] Received %s' % (messageId, frame.info()))
         
         #Call message handler (can return deferred to be async)
         self._handlerStarted(messageId)
@@ -436,22 +431,22 @@ class StompProtocol(Protocol):
     def _handleError(self, frame):
         """Handle STOMP ERROR commands
         """
-        self.log.info('Received stomp error: %s' % repr(frame))
+        self.log.info('Received %s' % frame.info())
         if self._connectedDeferred:
             self.transport.loseConnection()
-            self._connectError = StompProtocolError('STOMP error message received while trying to connect: %s' % repr(frame))
+            self._connectError = StompProtocolError('While trying to connect, received %s' % frame.info())
         else:
             #Workaround for AMQ < 5.2
             if 'Unexpected ACK received for message-id' in frame.headers.get('message', ''):
                 self.log.debug('AMQ brokers < 5.2 do not support client-individual mode.')
             else:
-                self._disconnectError = StompProtocolError('STOMP error message received: %s' % repr(frame))
+                self._disconnectError = StompProtocolError('Received %s' % frame.info())
                 self.disconnect()
         
     def _handleReceipt(self, frame):
         """Handle STOMP RECEIPT commands
         """
-        self.log.info('Received STOMP receipt: %s' % repr(frame))
+        self.log.info('Received %s' % frame.info())
 
 class StompFactory(Factory):
     protocol = StompProtocol

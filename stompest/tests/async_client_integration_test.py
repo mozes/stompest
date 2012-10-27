@@ -50,7 +50,7 @@ class HandlerExceptionWithErrorQueueIntegrationTestCase(unittest.TestCase):
         while stomp.canRead(1):
             frame = stomp.receiveFrame()
             stomp.ack(frame)
-            print "Dequeued old message: %s" % repr(frame)
+            print "Dequeued old %s" % frame.info()
         stomp.disconnect()
         
     def setUp(self):
@@ -223,7 +223,7 @@ class GracefulDisconnectTestCase(unittest.TestCase):
         while stomp.canRead(1):
             frame = stomp.receiveFrame()
             stomp.ack(frame)
-            print "Dequeued old message: %s" % repr(frame)
+            print "Dequeued old %s" % frame.info()
         stomp.disconnect()
         
     @defer.inlineCallbacks
@@ -288,7 +288,7 @@ class SubscribeTestCase(unittest.TestCase):
         while stomp.canRead(1):
             frame = stomp.receiveFrame()
             stomp.ack(frame)
-            print "Dequeued old message: %s" % repr(frame)
+            print "Dequeued old %s" % frame.info()
         stomp.disconnect()
         
     @defer.inlineCallbacks

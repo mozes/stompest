@@ -54,7 +54,7 @@ class BlackHoleStompServer(Protocol):
             if not frame:
                 break
             try:
-                self.log.debug('Received frame: %s' % repr(frame))
+                self.log.debug('Received %s' % frame.info())
             except KeyError:
                 raise StompFrameError('Unknown STOMP command: %s' % repr(frame))
             self.cmdMap[frame.cmd](frame)

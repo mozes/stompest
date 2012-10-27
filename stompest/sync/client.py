@@ -35,26 +35,26 @@ class Stomp(object):
         self._session = StompSession(self._config.version)
         self._failover = StompFailoverProtocol(config.uri)
         self._transport = None
-        
+    
     def connect(self, headers=None, versions=None, host=None):
         if self.__transport:
             try: # preserve existing connection
                 self._transport.canRead(0)
-                self.log.warning('Already connected to %s:%d' % (self._transport.host, self._transport.port))
+                self.log.warning('Already connected to %s' % self._transport)
                 return
             except StompConnectionError as e:
-                self.log.warning('Lost connection to %s:%d [%s]' % (self._transport.host, self._transport.port, e))
+                self.log.warning('Lost connection to %s [%s]' % (self._transport, e))
         try:
             for (broker, connectDelay) in self._failover:
                 self._transport = self.factory(broker['host'], broker['port'], self._session.version)
                 if connectDelay:
                     self.log.debug('Delaying connect attempt for %d ms' % int(connectDelay * 1000))
                     time.sleep(connectDelay)
-                self.log.debug('Connecting to %s:%d ...' % (self._transport.host, self._transport.port))
+                self.log.debug('Connecting to %s ...' % self._transport)
                 try:
                     self._transport.connect()
                 except StompConnectionError as e:
-                    self.log.warning('Could not connect to %s:%d [%s]' % (self._transport.host, self._transport.port, e))
+                    self.log.warning('Could not connect to %s [%s]' % (self._transport, e))
                 else:
                     self.log.debug('Connection established')
                     self._connect(headers, versions, host)
@@ -68,7 +68,7 @@ class Stomp(object):
         self.sendFrame(frame)
         frame = self.receiveFrame()
         self._session.connected(frame)
-        self.log.info('STOMP session established with broker %s:%d' % (self._transport.host, self._transport.port))
+        self.log.info('STOMP session established with broker %s' % self._transport)
         for (dest, headers, _) in self._session.replay():
             self.log.debug('Replaying subscription %s' % headers)
             self.subscribe(dest, headers)
@@ -122,13 +122,13 @@ class Stomp(object):
         return self._transport.canRead(timeout)
         
     def sendFrame(self, frame):
-        self.log.debug('Sending frame: %s' % repr(frame))
+        self.log.debug('Sending %s' % frame.info())
         self._transport.send(frame)
     
     def receiveFrame(self):
         frame = self._transport.receive()
         if frame:
-            self.log.debug('Received frame: %s' % repr(frame))
+            self.log.debug('Received %s' % frame.info())
         return frame
     
     @property
