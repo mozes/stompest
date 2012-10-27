@@ -35,7 +35,7 @@ class StompParserTest(unittest.TestCase):
 
     def test_frameParse_succeeds(self):
         message = {
-            'cmd': 'SEND',
+            'command': 'SEND',
             'headers': {'foo': 'bar', 'hello ': 'there-world with space ', 'empty-value':'', '':'empty-header', StompSpec.DESTINATION_HEADER: '/queue/blah'},
             'body': 'some stuff\nand more'
         }
@@ -44,6 +44,22 @@ class StompParserTest(unittest.TestCase):
         
         parser.add(str(frame))
         self.assertEqual(parser.get(), frame)
+        self.assertEqual(parser.get(), None)
+        parser = StompParser()
+        
+    def test_reset_succeeds(self):
+        message = {
+            'command': 'SEND',
+            'headers': {'foo': 'bar', 'hello ': 'there-world with space ', 'empty-value':'', '':'empty-header', StompSpec.DESTINATION_HEADER: '/queue/blah'},
+            'body': 'some stuff\nand more'
+        }
+        frame = StompFrame(**message)
+        parser = StompParser()
+        
+        parser.add(str(frame))
+        parser.reset()
+        self.assertEqual(parser.get(), None)
+        parser.add(str(frame)[:20])
         self.assertEqual(parser.get(), None)
         
     def test_frame_without_header_or_body_succeeds(self):
@@ -83,7 +99,7 @@ class StompParserTest(unittest.TestCase):
         parser = StompParser()
         parser.add(self._generate_bytes(frameBytes))
         frame = parser.get()
-        self.assertEquals('MESSAGE', frame.cmd)
+        self.assertEquals('MESSAGE', frame.command)
         self.assertEquals(headers, frame.headers)
         self.assertEquals(body, frame.body)
         self.assertEquals(parser.get(), None)
@@ -96,7 +112,7 @@ class StompParserTest(unittest.TestCase):
         parser = StompParser()
         parser.add(frameBytes)
         frame = parser.get()
-        self.assertEquals('MESSAGE', frame.cmd)
+        self.assertEquals('MESSAGE', frame.command)
         self.assertEquals(headers, frame.headers)
         self.assertEquals(body, frame.body)
         
@@ -111,12 +127,12 @@ class StompParserTest(unittest.TestCase):
         parser.add(frameBytes)
         
         frame = parser.get()
-        self.assertEquals('MESSAGE', frame.cmd)
+        self.assertEquals('MESSAGE', frame.command)
         self.assertEquals(headers, frame.headers)
         self.assertEquals(body1, frame.body)
 
         frame = parser.get()
-        self.assertEquals('MESSAGE', frame.cmd)
+        self.assertEquals('MESSAGE', frame.command)
         self.assertEquals(headers, frame.headers)
         self.assertEquals(body2, frame.body)
     

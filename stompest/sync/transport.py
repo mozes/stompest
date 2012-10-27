@@ -20,9 +20,9 @@ import socket
 from stompest.error import StompConnectionError
 from stompest.protocol import StompParser
 
-LOG_CATEGORY = 'stompest.sync'
-
 class StompFrameTransport(object):
+    factory = StompParser
+    
     READ_SIZE = 4096
     
     def __init__(self, host, port, version=None):
@@ -31,6 +31,7 @@ class StompFrameTransport(object):
         self.version = version
         
         self._socket = None
+        self._parser = self.factory(self.version)
     
     def __str__(self):
         return '%s:%d' % (self.host, self.port)
@@ -41,7 +42,7 @@ class StompFrameTransport(object):
             self._socket.connect((self.host, self.port))
         except IOError as e:
             raise StompConnectionError('Could not establish connection [%s]' % e)
-        self._parser = StompParser(self.version)
+        self._parser.flush()
     
     def canRead(self, timeout=None):
         self._check()

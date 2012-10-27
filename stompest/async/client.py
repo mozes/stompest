@@ -194,7 +194,7 @@ class StompProtocol(Protocol):
                 break
             self.log.debug('Received %s' % frame.info())
             try:
-                handler = self._handlers[frame.cmd]
+                handler = self._handlers[frame.command]
             except KeyError:
                 raise StompFrameError('Unknown STOMP command: %s' % repr(frame))
             handler(frame)
@@ -225,7 +225,7 @@ class StompProtocol(Protocol):
         self._disconnectError = None
         self._activeHandlers = set()
         self._parser = StompParser()
-
+    
     #
     # user interface
     #

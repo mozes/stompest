@@ -19,27 +19,27 @@ from .spec import StompSpec
 class StompFrame(object):
     INFO_LENGTH = 20
     
-    def __init__(self, cmd='', headers=None, body=''):
-        self.cmd = cmd
+    def __init__(self, command='', headers=None, body=''):
+        self.command = command
         self.headers = {} if (headers is None) else dict(map(str, item) for item in headers.iteritems())
         self.body = body
     
     def __repr__(self):
-        return '%s(%s)' % (self.__class__.__name__, ', '.join("%s=%s" % (key, repr(self.__dict__[key])) for key in ('cmd', 'headers', 'body')))
+        return '%s(%s)' % (self.__class__.__name__, ', '.join("%s=%s" % (key, repr(self.__dict__[key])) for key in ('command', 'headers', 'body')))
     
     def __str__(self):
         headers = ''.join('%s:%s%s' % (key, value, StompSpec.LINE_DELIMITER) for (key, value) in self.headers.iteritems())
-        return StompSpec.LINE_DELIMITER.join([self.cmd, headers, '%s%s' % (self.body, StompSpec.FRAME_DELIMITER)])
+        return StompSpec.LINE_DELIMITER.join([self.command, headers, '%s%s' % (self.body, StompSpec.FRAME_DELIMITER)])
 
     def __iter__(self):
         return self.__dict__.iteritems()
     
     def __eq__(self, other):
-        return all(getattr(self, key) == getattr(other, key) for key in ('cmd', 'headers', 'body'))
+        return all(getattr(self, key) == getattr(other, key) for key in ('command', 'headers', 'body'))
     
     def info(self):
         body = self.body[:self.INFO_LENGTH]
         if body not in self.body:
             body = '%s...' % body 
         body = body and (', body=%s' % repr(body))
-        return '%s frame [headers=%s%s]' % (self.cmd, ','.join(':'.join(map(repr, item)) for item in self.headers.iteritems()), body)
+        return '%s frame [headers=%s%s]' % (self.command, ','.join(':'.join(map(repr, item)) for item in self.headers.iteritems()), body)

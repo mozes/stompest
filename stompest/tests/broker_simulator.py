@@ -30,7 +30,7 @@ class BlackHoleStompServer(Protocol):
     def __init__(self):
         self.log = logging.getLogger(LOG_CATEGORY)
         self.resetParser()
-        self.cmdMap = {
+        self.commandMap = {
             StompSpec.CONNECT: self.handleConnect,
             StompSpec.DISCONNECT: self.handleDisconnect,
             StompSpec.SEND: self.handleSend,
@@ -57,13 +57,13 @@ class BlackHoleStompServer(Protocol):
                 self.log.debug('Received %s' % frame.info())
             except KeyError:
                 raise StompFrameError('Unknown STOMP command: %s' % repr(frame))
-            self.cmdMap[frame.cmd](frame)
+            self.commandMap[frame.command](frame)
 
     def resetParser(self):
         self._parser = StompParser()
 
-    def getFrame(self, cmd, headers, body):
-        return str(StompFrame(cmd, headers, body))
+    def getFrame(self, command, headers, body):
+        return str(StompFrame(command, headers, body))
         
     def handleConnect(self, frame):
         pass

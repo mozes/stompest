@@ -125,7 +125,7 @@ def handle(frame, version):
         StompSpec.MESSAGE: message,
         StompSpec.RECEIPT: receipt,
         StompSpec.ERROR: error
-    }[frame.cmd](frame, version)
+    }[frame.command](frame, version)
 
 def connected(frame, version=None):
     clientVersion = _version(version)
@@ -208,12 +208,12 @@ def _addReceiptHeader(frame, receipt):
         frame.headers[StompSpec.RECEIPT_HEADER] = receipt
 
 def _checkCommand(frame, commands=None):
-    if frame.cmd not in (commands or StompSpec.COMMANDS):
-        raise StompProtocolError('Cannot handle command: %s [expected=%s, headers=%s]' % (frame.cmd, ', '.join(commands), frame.headers))
+    if frame.command not in (commands or StompSpec.COMMANDS):
+        raise StompProtocolError('Cannot handle command: %s [expected=%s, headers=%s]' % (frame.command, ', '.join(commands), frame.headers))
 
 def _checkHeader(frame, header, version=None):
     try:
         return frame.headers[header]
     except KeyError:
         version = ('in version %s' % version) if version else ''
-        raise StompProtocolError('Invalid %s frame (%s header mandatory%s) [headers=%s]' % (frame.cmd, header, version, frame.headers))
+        raise StompProtocolError('Invalid %s frame (%s header mandatory%s) [headers=%s]' % (frame.command, header, version, frame.headers))

@@ -122,14 +122,14 @@ class SimpleStompTest(unittest.TestCase):
     def test_transaction_writes_correct_frames(self):
         transaction = '4711'
         stomp = self._get_transport_mock()
-        for (method, cmd) in [
+        for (method, command) in [
             (stomp.begin, 'BEGIN'), (stomp.commit, 'COMMIT'),
             (stomp.begin, 'BEGIN'), (stomp.abort, 'ABORT')
         ]:
             method(transaction)
             args, _ = stomp._transport.send.call_args
             sentFrame = args[0]
-            self.assertEquals(StompFrame(cmd, {'transaction': transaction}), sentFrame)
+            self.assertEquals(StompFrame(command, {'transaction': transaction}), sentFrame)
             
         with stomp.transaction(transaction):
             args, _ = stomp._transport.send.call_args

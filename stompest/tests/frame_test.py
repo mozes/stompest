@@ -19,9 +19,9 @@ import unittest
 from stompest.protocol.frame import StompFrame
 from stompest.protocol.spec import StompSpec
 
-class FrameTest(unittest.TestCase):
+class StompFrameTest(unittest.TestCase):
     def test_frame(self):
-        message = {'cmd': 'SEND', 'headers': {StompSpec.DESTINATION_HEADER: '/queue/world'}, 'body': 'two\nlines'}
+        message = {'command': 'SEND', 'headers': {StompSpec.DESTINATION_HEADER: '/queue/world'}, 'body': 'two\nlines'}
         frame = StompFrame(**message)
         self.assertEquals(message['headers'], frame.headers)
         self.assertEquals(dict(frame), message)
@@ -34,7 +34,7 @@ lines\x00""")
         self.assertEquals(eval(repr(frame)), frame)
 
     def test_frame_without_headers_and_body(self):
-        message = {'cmd': 'DISCONNECT', 'headers': {}, 'body': ''}
+        message = {'command': 'DISCONNECT', 'headers': {}, 'body': ''}
         frame = StompFrame(**message)
         self.assertEquals(message['headers'], frame.headers)
         self.assertEquals(dict(frame), message)

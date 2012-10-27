@@ -26,12 +26,11 @@ class StompParser(object):
     def __init__(self, version=None):
         self.version = version or StompSpec.DEFAULT_VERSION
         self._parsers = {
-            'cmd': self._parseCommand,
+            'command': self._parseCommand,
             'headers': self._parseHeader,
             'body': self._parseBody,
         }
-        self._messages = collections.deque()
-        self._next()
+        self.reset()
     
     def canRead(self):
         return bool(self._messages)
@@ -46,6 +45,10 @@ class StompParser(object):
                 return
             self.parse(character)
     
+    def reset(self):
+        self._messages = collections.deque()
+        self._next()
+        
     def _flush(self):
         self._buffer = cStringIO.StringIO()
 
@@ -53,7 +56,7 @@ class StompParser(object):
         self._message = StompFrame()
         self._length = -1
         self._read = 0
-        self._transition('cmd')
+        self._transition('command')
         self._flush()
     
     def _transition(self, state):
@@ -69,7 +72,7 @@ class StompParser(object):
             return
         if command not in StompSpec.COMMANDS[self.version]:
             raise StompFrameError('Invalid command: %s' % repr(command))
-        self._message.cmd = command
+        self._message.command = command
         self._transition('headers')
         
     def _parseHeader(self, character):
