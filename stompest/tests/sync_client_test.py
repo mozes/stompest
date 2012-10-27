@@ -75,12 +75,12 @@ class SimpleStompTest(unittest.TestCase):
         stomp = Stomp(StompConfig('tcp://nosuchhost:2345'))
         self.assertRaises(Exception, stomp.connect)
         
-    def test_error_frame_after_connect_raises_StompProtocolError(self): # TODO: reactivate: mock the transport factory
+    def test_error_frame_after_connect_raises_StompProtocolError(self):
         stomp = self._get_connect_mock(StompFrame('ERROR', body='fake error'))
         self.assertRaises(StompProtocolError, stomp.connect)
         self.assertEquals(stomp._transport.receive.call_count, 1)
     
-    def test_connect_writes_correct_frame(self): # TODO: reactivate: mock the transport factory
+    def test_connect_writes_correct_frame(self):
         login = 'curious'
         passcode = 'george'
         stomp = self._get_connect_mock(StompFrame('CONNECTED', {StompSpec.SESSION_HEADER: '4711'}))

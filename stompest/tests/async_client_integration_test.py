@@ -32,22 +32,22 @@ CONFIG = StompConfig('tcp://%s:%s' % (HOST, PORT))
 class StompestTestError(Exception):
     pass
 
-class HandlerExceptionWithErrorQueueIntegrationTestCase(unittest.TestCase):
-    msg1 = 'choke on this'
-    msg1Hdrs = {'food': 'barf', 'persistent': 'true'}
-    msg2 = 'follow up message'
-    queue = '/queue/asyncFailoverHandlerExceptionWithErrorQueueUnitTest'
-    errorQueue = '/queue/zzz.error.asyncStompestHandlerExceptionWithErrorQueueUnitTest'
-        
+class AsyncClientBaseTestCase(unittest.TestCase):
+    queue = None
+    errorQueue = None
+    
     def cleanQueues(self):
         self.cleanQueue(self.queue)
         self.cleanQueue(self.errorQueue)
     
     def cleanQueue(self, queue):
+        if not queue:
+            return
+        
         stomp = sync.Stomp(CONFIG)
         stomp.connect()
         stomp.subscribe(queue, {StompSpec.ACK_HEADER: 'client'})
-        while stomp.canRead(1):
+        while stomp.canRead(0.2):
             frame = stomp.receiveFrame()
             stomp.ack(frame)
             print "Dequeued old %s" % frame.info()
@@ -56,10 +56,45 @@ class HandlerExceptionWithErrorQueueIntegrationTestCase(unittest.TestCase):
     def setUp(self):
         self.cleanQueues()
         
-        self.unhandledMsg = None
-        self.errQMsg = None
-        self.consumedMsg = None
-        self.msgsHandled = 0
+        self.unhandledFrame = None
+        self.errorQueueFrame = None
+        self.consumedFrame = None
+        self.framesHandled = 0
+        
+    def _saveFrameAndBarf(self, _, frame):
+        print 'Save message and barf'
+        self.unhandledFrame = frame
+        raise StompestTestError('this is a test')
+        
+    def _barfOneEatOneAndDisonnect(self, client, frame):
+        self.framesHandled += 1
+        if self.framesHandled == 1:
+            self._saveFrameAndBarf(client, frame)
+        self._eatOneFrameAndDisconnect(client, frame)
+    
+    def _eatOneFrameAndDisconnect(self, client, frame):
+        print 'Eat message and disconnect'
+        self.consumedFrame = frame
+        client.disconnect()
+    
+    def _saveErrorFrameAndDisconnect(self, client, frame):
+        print 'Save error message and disconnect'
+        self.errorQueueFrame = frame
+        client.disconnect()
+
+    @defer.inlineCallbacks  
+    def _eatOneFrameAndUnsubscribe(self, client, _):
+        'Eat message and unsubscribe'
+        client.unsubscribe(self.subscription)
+        yield task.deferLater(reactor, 0.25, lambda: None) # wait for UNSUBSCRIBE command to be processed by the server
+        self.signal.callback(None)
+
+class HandlerExceptionWithErrorQueueIntegrationTestCase(AsyncClientBaseTestCase):
+    frame1 = 'choke on this'
+    msg1Hdrs = {'food': 'barf', 'persistent': 'true'}
+    frame2 = 'follow up message'
+    queue = '/queue/asyncFailoverHandlerExceptionWithErrorQueueUnitTest'
+    errorQueue = '/queue/zzz.error.asyncStompestHandlerExceptionWithErrorQueueUnitTest'
     
     def test_onhandlerException_ackMessage_filterReservedHdrs_send2ErrorQ_and_disconnect_version_1_0(self):
         return self._test_onhandlerException_ackMessage_filterReservedHdrs_send2ErrorQ_and_disconnect('1.0')
@@ -76,15 +111,15 @@ class HandlerExceptionWithErrorQueueIntegrationTestCase(unittest.TestCase):
         client = yield client.connect()
         
         #Enqueue two messages
-        client.send(self.queue, self.msg1, self.msg1Hdrs)
-        client.send(self.queue, self.msg2)
+        client.send(self.queue, self.frame1, self.msg1Hdrs)
+        client.send(self.queue, self.frame2)
         
         #Barf on first message so it will get put in error queue
         #Use selector to guarantee message order.  AMQ doesn't not guarantee order by default
         headers = {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': 1, 'selector': "food = 'barf'"}
         if version != '1.0':
             headers[StompSpec.ID_HEADER] = '4711'
-        client.subscribe(self.queue, self._saveMsgAndBarf, headers, errorDestination=self.errorQueue)
+        client.subscribe(self.queue, self._saveFrameAndBarf, headers, errorDestination=self.errorQueue)
         
         #Client disconnected and returned error
         try:
@@ -99,25 +134,25 @@ class HandlerExceptionWithErrorQueueIntegrationTestCase(unittest.TestCase):
         #Reconnect and subscribe again - consuming second message then disconnecting
         client = yield client.connect()
         headers.pop('selector')
-        client.subscribe(self.queue, self._eatOneMsgAndDisconnect, headers, errorDestination=self.errorQueue)
+        client.subscribe(self.queue, self._eatOneFrameAndDisconnect, headers, errorDestination=self.errorQueue)
         
         #Client disconnects without error
         yield client.disconnected
         
         #Reconnect and subscribe to error queue
         client = yield client.connect()
-        client.subscribe(self.errorQueue, self._saveErrMsgAndDisconnect, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': 1})
+        client.subscribe(self.errorQueue, self._saveErrorFrameAndDisconnect, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': 1})
         
         #Wait for disconnect
         yield client.disconnected
         
         #Verify that first message was in error queue
-        self.assertEquals(self.msg1, self.errQMsg.body)
-        self.assertEquals(self.msg1Hdrs['food'], self.errQMsg.headers['food'])
-        self.assertNotEquals(self.unhandledMsg.headers['message-id'], self.errQMsg.headers['message-id'])
+        self.assertEquals(self.frame1, self.errorQueueFrame.body)
+        self.assertEquals(self.msg1Hdrs['food'], self.errorQueueFrame.headers['food'])
+        self.assertNotEquals(self.unhandledFrame.headers['message-id'], self.errorQueueFrame.headers['message-id'])
         
         #Verify that second message was consumed
-        self.assertEquals(self.msg2, self.consumedMsg.body)
+        self.assertEquals(self.frame2, self.consumedFrame.body)
 
     @defer.inlineCallbacks
     def test_onhandlerException_ackMessage_filterReservedHdrs_send2ErrorQ_and_no_disconnect(self):
@@ -128,10 +163,10 @@ class HandlerExceptionWithErrorQueueIntegrationTestCase(unittest.TestCase):
         client = yield client.connect()
         
         #Enqueue two messages
-        client.send(self.queue, self.msg1, self.msg1Hdrs)
-        client.send(self.queue, self.msg2)
+        client.send(self.queue, self.frame1, self.msg1Hdrs)
+        client.send(self.queue, self.frame2)
         
-        #Barf on first msg, disconnect on second msg
+        #Barf on first frame, disconnect on second frame
         client.subscribe(self.queue, self._barfOneEatOneAndDisonnect, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': 1}, errorDestination=self.errorQueue)
         
         #Client disconnects without error
@@ -139,14 +174,14 @@ class HandlerExceptionWithErrorQueueIntegrationTestCase(unittest.TestCase):
         
         #Reconnect and subscribe to error queue
         client = yield client.connect()
-        client.subscribe(self.errorQueue, self._saveErrMsgAndDisconnect, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': 1})
+        client.subscribe(self.errorQueue, self._saveErrorFrameAndDisconnect, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': 1})
         
         #Wait for disconnect
         yield client.disconnected
         
         #Verify that one message was in error queue (can't guarantee order)
-        self.assertNotEquals(None, self.errQMsg)
-        self.assertTrue(self.errQMsg.body in (self.msg1, self.msg2))
+        self.assertNotEquals(None, self.errorQueueFrame)
+        self.assertTrue(self.errorQueueFrame.body in (self.frame1, self.frame2))
 
     @defer.inlineCallbacks
     def test_onhandlerException_disconnect(self):
@@ -157,10 +192,10 @@ class HandlerExceptionWithErrorQueueIntegrationTestCase(unittest.TestCase):
         client = yield client.connect()
         
         #Enqueue a message
-        client.send(self.queue, self.msg1, self.msg1Hdrs)
+        client.send(self.queue, self.frame1, self.msg1Hdrs)
         
-        #Barf on first msg (implicit disconnect)
-        client.subscribe(self.queue, self._saveMsgAndBarf, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': 1})
+        #Barf on first frame (implicit disconnect)
+        client.subscribe(self.queue, self._saveFrameAndBarf, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': 1})
         
         #Client disconnected and returned error
         try:
@@ -173,59 +208,22 @@ class HandlerExceptionWithErrorQueueIntegrationTestCase(unittest.TestCase):
         #Reconnect and subscribe again - consuming retried message and disconnecting
         client = async.Stomp(config) # take a fresh client to prevent replay (we were disconnected by an error)
         client = yield client.connect()
-        client.subscribe(self.queue, self._eatOneMsgAndDisconnect, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': 1})
+        client.subscribe(self.queue, self._eatOneFrameAndDisconnect, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': 1})
         
         #Client disconnects without error
         yield client.disconnected
         
         #Verify that message was retried
-        self.assertEquals(self.msg1, self.unhandledMsg.body)
-        self.assertEquals(self.msg1, self.consumedMsg.body)
-        self.assertEquals(self.unhandledMsg.headers['message-id'], self.consumedMsg.headers['message-id'])
+        self.assertEquals(self.frame1, self.unhandledFrame.body)
+        self.assertEquals(self.frame1, self.consumedFrame.body)
+        self.assertEquals(self.unhandledFrame.headers['message-id'], self.consumedFrame.headers['message-id'])
 
-    def _saveMsgAndBarf(self, client, msg):
-        print 'Save message and barf'
-        self.unhandledMsg = msg
-        raise StompestTestError('this is a test')
-        
-    def _barfOneEatOneAndDisonnect(self, client, msg):
-        self.msgsHandled += 1
-        if self.msgsHandled == 1:
-            self._saveMsgAndBarf(client, msg)
-        self._eatOneMsgAndDisconnect(client, msg)
-        
-    def _eatOneMsgAndDisconnect(self, client, msg):
-        print 'Eat message and disconnect'
-        self.consumedMsg = msg
-        client.disconnect()
-                
-    def _saveErrMsgAndDisconnect(self, client, msg):
-        print 'Save error message and disconnect'
-        self.errQMsg = msg
-        client.disconnect()
-
-class GracefulDisconnectTestCase(unittest.TestCase):
+class GracefulDisconnectTestCase(AsyncClientBaseTestCase):
     numMsgs = 5
     msgCount = 0
-    msg = 'test'
+    frame = 'test'
     queue = '/queue/asyncFailoverGracefulDisconnectUnitTest'
     
-    def setUp(self):
-        self.cleanQueues()
-    
-    def cleanQueues(self):
-        self.cleanQueue(self.queue)
-    
-    def cleanQueue(self, queue):
-        stomp = sync.Stomp(CONFIG)
-        stomp.connect()
-        stomp.subscribe(queue, {StompSpec.ACK_HEADER: 'client'})
-        while stomp.canRead(1):
-            frame = stomp.receiveFrame()
-            stomp.ack(frame)
-            print "Dequeued old %s" % frame.info()
-        stomp.disconnect()
-        
     @defer.inlineCallbacks
     def test_onDisconnect_waitForOutstandingMessagesToFinish(self):
         config = StompConfig(uri='tcp://%s:%d' % (HOST, PORT))
@@ -235,8 +233,8 @@ class GracefulDisconnectTestCase(unittest.TestCase):
         client = yield client.connect()
         
         for _ in xrange(self.numMsgs):
-            client.send(self.queue, self.msg)
-        client.subscribe(self.queue, self._msgHandler, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': self.numMsgs})
+            client.send(self.queue, self.frame)
+        client.subscribe(self.queue, self._frameHandler, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': self.numMsgs})
         
         #Wait for disconnect
         yield client.disconnected
@@ -245,7 +243,7 @@ class GracefulDisconnectTestCase(unittest.TestCase):
         client = yield client.connect()
         self.timeExpired = False
         self.timeoutDelayedCall = reactor.callLater(1, self._timesUp, client) #@UndefinedVariable
-        client.subscribe(self.queue, self._eatOneMsgAndDisconnect, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': self.numMsgs})
+        client.subscribe(self.queue, self._eatOneFrameAndDisconnect, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': self.numMsgs})
 
         #Wait for disconnect
         yield client.disconnected
@@ -253,7 +251,7 @@ class GracefulDisconnectTestCase(unittest.TestCase):
         #Time should have expired if there were no messages left in the queue
         self.assertTrue(self.timeExpired)
                 
-    def _msgHandler(self, client, msg):
+    def _frameHandler(self, client, _):
         self.msgCount += 1
         if self.msgCount < self.numMsgs:
             d = defer.Deferred() 
@@ -267,30 +265,10 @@ class GracefulDisconnectTestCase(unittest.TestCase):
         self.timeExpired = True
         client.disconnect()
 
-    def _eatOneMsgAndDisconnect(self, client, msg):
-        self.timeoutDelayedCall.cancel()
-        client.disconnect()
-
-class SubscribeTestCase(unittest.TestCase):
-    msg = 'test'
+class SubscribeTestCase(AsyncClientBaseTestCase):
+    frame = 'test'
     queue = '/queue/asyncFailoverSubscribeTestCase'
     
-    def setUp(self):
-        self.cleanQueues()
-    
-    def cleanQueues(self):
-        self.cleanQueue(self.queue)
-    
-    def cleanQueue(self, queue):
-        stomp = sync.Stomp(CONFIG)
-        stomp.connect()
-        stomp.subscribe(queue, {StompSpec.ACK_HEADER: 'client'})
-        while stomp.canRead(1):
-            frame = stomp.receiveFrame()
-            stomp.ack(frame)
-            print "Dequeued old %s" % frame.info()
-        stomp.disconnect()
-        
     @defer.inlineCallbacks
     def test_unsubscribe(self):
         config = StompConfig(uri='tcp://%s:%d' % (HOST, PORT))
@@ -299,25 +277,16 @@ class SubscribeTestCase(unittest.TestCase):
         client = yield client.connect()
         
         for _ in xrange(2):
-            client.send(self.queue, self.msg)
+            client.send(self.queue, self.frame)
             
-        self.subscription = client.subscribe(self.queue, self._eatOneMsgAndUnsubscribe, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': '1'})
+        self.subscription = client.subscribe(self.queue, self._eatOneFrameAndUnsubscribe, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': '1'})
         
         self.signal = defer.Deferred()
         yield self.signal
         
-        client.subscribe(self.queue, self._eatOneMsgAndDisconnect, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': '1'})
+        client.subscribe(self.queue, self._eatOneFrameAndDisconnect, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': '1'})
 
         yield client.disconnected
-              
-    @defer.inlineCallbacks  
-    def _eatOneMsgAndUnsubscribe(self, client, msg):
-        client.unsubscribe(self.subscription)
-        yield task.deferLater(reactor, 0.25, lambda: None) # wait for UNSUBSCRIBE command to be processed by the server
-        self.signal.callback(None)
-                
-    def _eatOneMsgAndDisconnect(self, client, msg):
-        client.disconnect()
         
 if __name__ == '__main__':
     import sys
