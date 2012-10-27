@@ -23,6 +23,7 @@ from mock import Mock
 
 from stompest.sync.transport import StompFrameTransport
 from stompest.protocol.frame import StompFrame
+from stompest.error import StompConnectionError
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -43,49 +44,49 @@ class StompFrameTransportTest(unittest.TestCase):
         transport = StompFrameTransport(HOST, PORT)
         socket = transport._socket = Mock()
         stream = self._generate_bytes(stream)
-        socket.recv = Mock(wraps=lambda size, *args: self._recv(stream, size))
+        socket.recv = Mock(wraps=lambda size, *_: self._recv(stream, size))
         return transport
     
     def test_receive(self):
         headers = {'x': 'y'}
         body = 'testing 1 2 3'
-        frameBytes = str(StompFrame('MESSAGE', headers, body))
-        self.assertTrue(frameBytes.endswith('\x00'))
-        
-        transport = self._get_receive_mock(frameBytes)
-        frame = transport.receive()
-        self.assertEquals('MESSAGE', frame.command)
-        self.assertEquals(headers, frame.headers)
-        self.assertEquals(body, frame.body)
-        
+        frame = StompFrame('MESSAGE', headers, body)
+                
+        transport = self._get_receive_mock(str(frame))
+        frame_ = transport.receive()
+        self.assertEquals(frame, frame_)        
         self.assertEquals(1, transport._socket.recv.call_count)
+        
+        self.assertRaises(StompConnectionError, transport.receive)
+        self.assertEquals(transport._socket, None)
 
-    def test_receive_no_newline(self):
+    def test_receive_multiple_frames_extra_newlines(self):
         headers = {'x': 'y'}
         body = 'testing 1 2 3'
-        frameBytes = str(StompFrame('MESSAGE', headers, body))
-        self.assertTrue(frameBytes.endswith('\x00'))
+        frame = StompFrame('MESSAGE', headers, body)
         
-        transport = self._get_receive_mock(frameBytes)
-        frame = transport.receive()
-        self.assertEquals('MESSAGE', frame.command)
-        self.assertEquals(headers, frame.headers)
-        self.assertEquals(body, frame.body)
-        
+        transport = self._get_receive_mock('\n\n%s\n%s\n' % (frame, frame))
+        frame_ = transport.receive()
+        self.assertEquals(frame, frame_)
+        frame_ = transport.receive()
+        self.assertEquals(frame, frame_)
         self.assertEquals(1, transport._socket.recv.call_count)
+        
+        self.assertRaises(StompConnectionError, transport.receive)
+        self.assertEquals(transport._socket, None)        
 
-    def _test_receive_binary(self):
+    def test_receive_binary(self):
         body = binascii.a2b_hex('f0000a09')
         headers = {'content-length': str(len(body))}
-        frameBytes = self.getFrame('MESSAGE', headers, body)
-        
-        transport = self._get_receive_mock(frameBytes)
-        frame = transport.receive()
-        self.assertEquals('MESSAGE', frame.command)
-        self.assertEquals(headers, frame.headers)
-        self.assertEquals(body, frame.body)
-        
+        frame = StompFrame('MESSAGE', headers, body)
+                
+        transport = self._get_receive_mock(str(frame))
+        frame_ = transport.receive()
+        self.assertEquals(frame, frame_)
         self.assertEquals(1, transport._socket.recv.call_count)
+        
+        self.assertRaises(StompConnectionError, transport.receive)
+        self.assertEquals(transport._socket, None)
         
     def test_receive_multiple_frames_per_read(self):
         body1 = 'boo'
@@ -95,19 +96,20 @@ class StompFrameTransportTest(unittest.TestCase):
 
         transport = self._get_receive_mock(frameBytes)
         
-        #Read first frame
         frame = transport.receive()
         self.assertEquals('MESSAGE', frame.command)
         self.assertEquals(headers, frame.headers)
         self.assertEquals(body1, frame.body)
         self.assertEquals(1, transport._socket.recv.call_count)
 
-        #Read next frame
         frame = transport.receive()
         self.assertEquals('MESSAGE', frame.command)
         self.assertEquals(headers, frame.headers)
         self.assertEquals(body2, frame.body)
         self.assertEquals(1, transport._socket.recv.call_count)
-
+        
+        self.assertRaises(StompConnectionError, transport.receive)
+        self.assertEquals(transport._socket, None)
+        
 if __name__ == '__main__':
     unittest.main()

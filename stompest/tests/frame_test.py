@@ -14,6 +14,7 @@ Copyright 2011, 2012 Mozes, Inc.
    See the License for the specific language governing permissions and
    limitations under the License.
 """
+import binascii
 import unittest
 
 from stompest.protocol.frame import StompFrame
@@ -43,6 +44,13 @@ DISCONNECT
 
 \x00""")
         self.assertEquals(eval(repr(frame)), frame)
+    
+    def test_binary_body(self):
+        body = binascii.a2b_hex('f0000a09')
+        headers = {'content-length': str(len(body))}
+        frame = StompFrame('MESSAGE', headers, body)
+        self.assertEquals(frame.body, body)
+        self.assertEquals(str(frame), 'MESSAGE\ncontent-length:4\n\n\xf0\x00\n\t\x00')
 
 if __name__ == '__main__':
     unittest.main()
