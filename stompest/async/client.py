@@ -216,10 +216,10 @@ class StompProtocol(Protocol):
             'RECEIPT': self._handleReceipt,
         }
         self._subscriptions = {}
-        self._connectedDeferred = None
-        self._connectTimeoutDelayedCall = None
+        self._connectedSignal = None
+        self._scheduledConnectTimeout = None
         self._connectError = None
-        self._disconnectedDeferred = None
+        self._disconnectedSignal = None
         self._finishedHandlersDeferred = None
         self._disconnecting = False
         self._disconnectError = None
@@ -229,14 +229,17 @@ class StompProtocol(Protocol):
     #
     # user interface
     #
+    @exclusive
+    @defer.inlineCallbacks
     def connect(self, frame, timeout=None):
         """Send connect command and return Deferred for caller that will get trigger when connect is complete
         """
         if timeout is not None:
-            self._connectTimeoutDelayedCall = reactor.callLater(timeout, self._connectTimeout, timeout) #@UndefinedVariable
+            self._scheduledConnectTimeout = reactor.callLater(timeout, self._connectTimeout, timeout) #@UndefinedVariable
         self.sendFrame(frame)
-        self._connectedDeferred = defer.Deferred()
-        return self._connectedDeferred
+        self._connectedSignal = defer.Deferred()
+        result = yield self._connectedSignal
+        defer.returnValue(result)
     
     def disconnect(self, receipt=None, failure=None):
         """After finishing outstanding requests, send disconnect command and return Deferred for caller that will get trigger when disconnect is complete
@@ -248,7 +251,7 @@ class StompProtocol(Protocol):
             #Send disconnect command after outstanding messages are ack'ed
             defer.maybeDeferred(self._finishHandlers).addBoth(lambda _: self._disconnect(receipt))
             
-        return self._disconnectedDeferred
+        return self._disconnectedSignal
     
     def subscribe(self, token, frame, handler, errorDestination):
         """Subscribe to a destination and register a function handler to receive messages for that destination
@@ -276,7 +279,7 @@ class StompProtocol(Protocol):
     
     @property
     def disconnected(self):
-        return self._disconnectedDeferred
+        return self._disconnectedSignal
     
     #
     # Methods for sending raw STOMP commands
@@ -298,11 +301,11 @@ class StompProtocol(Protocol):
     # Private helper methods
     #
     def _cancelConnectTimeout(self, reason):
-        if not self._connectTimeoutDelayedCall:
+        if not self._scheduledConnectTimeout:
             return
         self.log.debug('Cancelling connect timeout [%s]' % reason)
-        self._connectTimeoutDelayedCall.cancel()
-        self._connectTimeoutDelayedCall = None
+        self._scheduledConnectTimeout.cancel()
+        self._scheduledConnectTimeout = None
     
     def _createHandler(self, handler):
         @functools.wraps(handler)
@@ -311,21 +314,21 @@ class StompProtocol(Protocol):
         return _handler
 
     def _handleConnectionLostDisconnect(self):
-        if not self._disconnectedDeferred:
+        if not self._disconnectedSignal:
             return
         if not self._disconnecting:
             self._disconnectError = StompConnectionError('Unexpected connection loss')
         if self._disconnectError:
             #self.log.debug('Calling disconnected deferred errback: %s' % self._disconnectError)
-            self._disconnectedDeferred.errback(self._disconnectError)
+            self._disconnectedSignal.errback(self._disconnectError)
             self._disconnectError = None
         else:
             #self.log.debug('Calling disconnected deferred callback')
-            self._disconnectedDeferred.callback(self)
-        self._disconnectedDeferred = None
+            self._disconnectedSignal.callback(self)
+        self._disconnectedSignal = None
             
     def _handleConnectionLostConnect(self):
-        if not self._connectedDeferred:
+        if not self._connectedSignal:
             return
         if self._connectError:
             error, self._connectError = self._connectError, None
@@ -333,8 +336,8 @@ class StompProtocol(Protocol):
             self.log.error('Connection lost before connection was established')
             error = StompConnectionError('Unexpected connection loss')
         self.log.debug('Calling connected deferred errback: %s' % error)
-        self._connectedDeferred.errback(error)                
-        self._connectedDeferred = None
+        self._connectedSignal.errback(error)                
+        self._connectedSignal = None
     
     def _finishHandlers(self):
         """Return a Deferred to signal when all requests in process are complete
@@ -368,7 +371,7 @@ class StompProtocol(Protocol):
 
     def _connectTimeout(self, timeout):
         self.log.error('Connect command timed out after %s seconds' % timeout)
-        self._connectTimeoutDelayedCall = None
+        self._scheduledConnectTimeout = None
         self._connectError = StompConnectTimeout('Connect command timed out after %s seconds' % timeout)
         self.transport.loseConnection()
     
@@ -377,9 +380,9 @@ class StompProtocol(Protocol):
         """
         self.log.debug('Connected to stomp broker with session: %s' % self.stomp.session.id)
         self._cancelConnectTimeout('Successfully connected')
-        self._disconnectedDeferred = defer.Deferred()
-        self._connectedDeferred.callback(frame)
-        self._connectedDeferred = None
+        self._disconnectedSignal = defer.Deferred()
+        self._connectedSignal.callback(frame)
+        self._connectedSignal = None
     
     @defer.inlineCallbacks
     def _handleMessage(self, frame):
@@ -432,7 +435,7 @@ class StompProtocol(Protocol):
         """Handle STOMP ERROR commands
         """
         self.log.info('Received %s' % frame.info())
-        if self._connectedDeferred:
+        if self._connectedSignal:
             self.transport.loseConnection()
             self._connectError = StompProtocolError('While trying to connect, received %s' % frame.info())
         else:
