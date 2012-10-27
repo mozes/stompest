@@ -14,6 +14,7 @@ Copyright 2011, 2012 Mozes, Inc.
    See the License for the specific language governing permissions and
    limitations under the License.
 """
+import binascii
 import unittest
 
 from stompest.error import StompFrameError
@@ -49,6 +50,15 @@ DISCONNECT
         self.assertEquals(eval(repr(frame)), frame)
 
 class StompParserTest(unittest.TestCase):
+    # TODO: include binary body tests
+    # TODO: include newline tests
+    
+    def _generate_bytes(self, bytes):
+        for byte in bytes:
+            yield byte
+        while True:
+            yield ''
+
     def test_frameParse_succeeds(self):
         message = {
             'cmd': 'SEND',
@@ -91,5 +101,52 @@ class StompParserTest(unittest.TestCase):
         parser.add('SEND\n')
         self.assertRaises(StompFrameError, lambda: parser.add('no separator\n'))
 
+    def test_no_newline(self):
+        headers = {'x': 'y'}
+        body = 'testing 1 2 3'
+        frameBytes = str(StompFrame('MESSAGE', headers, body))
+        self.assertTrue(frameBytes.endswith('\x00'))
+        parser = StompParser()
+        parser.add(self._generate_bytes(frameBytes))
+        frame = parser.get()
+        self.assertEquals('MESSAGE', frame.cmd)
+        self.assertEquals(headers, frame.headers)
+        self.assertEquals(body, frame.body)
+        self.assertEquals(parser.get(), None)
+        
+    def test_binary_body(self):
+        body = binascii.a2b_hex('f0000a09')
+        headers = {'content-length': str(len(body))}
+        frameBytes = str(StompFrame('MESSAGE', headers, body))
+        self.assertTrue(frameBytes.endswith('\x00'))
+        parser = StompParser()
+        parser.add(frameBytes)
+        frame = parser.get()
+        self.assertEquals('MESSAGE', frame.cmd)
+        self.assertEquals(headers, frame.headers)
+        self.assertEquals(body, frame.body)
+        
+        self.assertEquals(parser.get(), None)        
+        
+    def test_receiveFrame_multiple_frames_per_read(self):
+        body1 = 'boo'
+        body2 = 'hoo'
+        headers = {'x': 'y'}
+        frameBytes = str(StompFrame('MESSAGE', headers, body1)) + str(StompFrame('MESSAGE', headers, body2))
+        parser = StompParser()
+        parser.add(frameBytes)
+        
+        frame = parser.get()
+        self.assertEquals('MESSAGE', frame.cmd)
+        self.assertEquals(headers, frame.headers)
+        self.assertEquals(body1, frame.body)
+
+        frame = parser.get()
+        self.assertEquals('MESSAGE', frame.cmd)
+        self.assertEquals(headers, frame.headers)
+        self.assertEquals(body2, frame.body)
+    
+        self.assertEquals(parser.get(), None)
+        
 if __name__ == '__main__':
     unittest.main()

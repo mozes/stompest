@@ -41,7 +41,9 @@ class StompParser(object):
             return self._messages.popleft()
     
     def add(self, data):
-        for character in data: 
+        for character in data:
+            if not character:
+                return
             self.parse(character)
     
     def _flush(self):
