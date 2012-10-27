@@ -52,5 +52,19 @@ DISCONNECT
         self.assertEquals(frame.body, body)
         self.assertEquals(str(frame), 'MESSAGE\ncontent-length:4\n\n\xf0\x00\n\t\x00')
 
+    def test_non_string_arguments(self):
+        message = {'command': 0, 'headers': {123: 456}, 'body': 789}
+        frame = StompFrame(**message)
+        self.assertEquals(frame.command, '0')
+        self.assertEquals(frame.headers, {'123': '456'})
+        self.assertEquals(frame.body, '789')
+        self.assertEquals(dict(frame), {'command': '0', 'headers': {'123': '456'}, 'body': '789'})
+        self.assertEquals(str(frame), """\
+0
+123:456
+
+789\x00""")
+        self.assertEquals(eval(repr(frame)), frame)
+    
 if __name__ == '__main__':
     unittest.main()

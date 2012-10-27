@@ -20,9 +20,9 @@ class StompFrame(object):
     INFO_LENGTH = 20
     
     def __init__(self, command='', headers=None, body=''):
-        self.command = command
+        self.command = str(command)
         self.headers = {} if (headers is None) else dict(map(str, item) for item in headers.iteritems())
-        self.body = body
+        self.body = str(body)
     
     def __repr__(self):
         return '%s(%s)' % (self.__class__.__name__, ', '.join("%s=%s" % (key, repr(self.__dict__[key])) for key in ('command', 'headers', 'body')))
