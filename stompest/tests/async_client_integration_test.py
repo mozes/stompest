@@ -115,7 +115,7 @@ class HandlerExceptionWithErrorQueueIntegrationTestCase(AsyncClientBaseTestCase)
         client.send(self.queue, self.frame2)
         
         #Barf on first message so it will get put in error queue
-        #Use selector to guarantee message order.  AMQ doesn't not guarantee order by default
+        #Use selector to guarantee message order.  AMQ doesn't guarantee order by default
         headers = {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': 1, 'selector': "food = 'barf'"}
         if version != '1.0':
             headers[StompSpec.ID_HEADER] = '4711'
@@ -127,7 +127,7 @@ class HandlerExceptionWithErrorQueueIntegrationTestCase(AsyncClientBaseTestCase)
         except StompestTestError:
             pass
         else:
-            self.assertTrue(False)
+            raise
         
         client = async.Stomp(config) # take a fresh client to prevent replay (we were disconnected by an error)
         
@@ -203,7 +203,7 @@ class HandlerExceptionWithErrorQueueIntegrationTestCase(AsyncClientBaseTestCase)
         except StompestTestError:
             pass
         else:
-            self.assertTrue(False)
+            raise
          
         #Reconnect and subscribe again - consuming retried message and disconnecting
         client = async.Stomp(config) # take a fresh client to prevent replay (we were disconnected by an error)

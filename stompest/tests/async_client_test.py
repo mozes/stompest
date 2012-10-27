@@ -131,7 +131,7 @@ class AsyncFailoverClientReplaySubscription(AsyncFailoverClientBaseTestCase):
         except StompConnectionError:
             pass
         else:
-            self.assertTrue(False)
+            raise
         
         self.assertEquals(client.session._subscriptions, {}) # check that no subscriptions have been accepted
         yield client.connect()
@@ -143,7 +143,7 @@ class AsyncFailoverClientReplaySubscription(AsyncFailoverClientBaseTestCase):
         except StompConnectionError:
             pass
         else:
-            self.assertFalse(True)
+            raise
             
         self.shutdown = False # the callback handler will not kill the broker connection, but callback self._got_message
         self._got_message = defer.Deferred()
