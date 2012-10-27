@@ -22,8 +22,8 @@ import itertools
 import uuid
 
 class StompSession(object):
-    CONNECTED = 'connected'
     CONNECTING = 'connecting'
+    CONNECTED = 'connected'
     DISCONNECTED = 'disconnected'
     
     def __init__(self, version=None, check=False):

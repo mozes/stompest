@@ -52,20 +52,20 @@ class AsyncFailoverClientConnectTimeoutTestCase(AsyncFailoverClientBaseTestCase)
     def test_connection_timeout(self):
         port = self.connections[0].getHost().port
         config = StompConfig(uri='tcp://localhost:%d' % port)
-        client = Stomp(config, connectTimeout=0.01)
+        client = Stomp(config, timeout=0.01)
         return self.assertFailure(client.connect(), StompConnectTimeout)
 
     def test_connection_timeout_after_failover(self):
         port = self.connections[0].getHost().port
         config = StompConfig(uri='failover:(tcp://nosuchhost:65535,tcp://localhost:%d)?startupMaxReconnectAttempts=2,initialReconnectDelay=0,randomize=false' % port)
-        client = Stomp(config, connectTimeout=0.01)
+        client = Stomp(config, timeout=0.01)
         return self.assertFailure(client.connect(), StompConnectTimeout)
     
     @defer.inlineCallbacks
     def test_not_connected(self):
         port = self.connections[0].getHost().port
         config = StompConfig(uri='tcp://localhost:%d' % port)
-        client = Stomp(config, connectTimeout=0.01)
+        client = Stomp(config, timeout=0.01)
         try:
             yield client.send('/queue/fake')
         except StompConnectionError:

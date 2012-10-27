@@ -22,8 +22,10 @@ from twisted.internet.endpoints import clientFromString
 
 from stompest.error import StompStillRunningError
 
-def endpointFactory(broker):
-    return clientFromString(reactor, '%(protocol)s:host=%(host)s:port=%(port)d' % broker)
+def endpointFactory(broker, timeout=None):
+    timeout = (':timeout=%d' % timeout) if timeout else ''
+    locals().update(broker)
+    return clientFromString(reactor, '%(protocol)s:host=%(host)s:port=%(port)d%(timeout)s' % locals())
 
 def exclusive(f):
     @functools.wraps(f)
