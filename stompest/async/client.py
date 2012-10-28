@@ -21,26 +21,22 @@ import logging
 from twisted.internet import defer, reactor, task
 
 from stompest.error import StompConnectionError, StompFrameError, StompProtocolError
-from stompest.protocol import commands, StompFailoverProtocol, StompSession, StompSpec
+from stompest.protocol import commands, StompSession, StompSpec
 from stompest.util import cloneFrame
 
-from .protocol import StompFactory
-from .util import endpointFactory, exclusive
+from .protocol import StompFailoverProtocolCreator
+from .util import exclusive
 
 LOG_CATEGORY = 'stompest.async.client'
 
 class Stomp(object):
     DEFAULT_ACK_MODE = 'auto'
     
-    @classmethod
-    def endpointFactory(cls, broker, timeout=None):
-        return endpointFactory(broker, timeout)
-    
     def __init__(self, config, connectTimeout=None, connectedTimeout=None, onMessageFailed=None):
         self._config = config
         self.session = StompSession(self._config.version)
-        self._failover = StompFailoverProtocol(config.uri)
         self._protocol = None
+        self._protocolCreator = StompFailoverProtocolCreator(self._config.uri)
         
         self._connectTimeout = connectTimeout
         self._connectedTimeout = connectedTimeout
@@ -76,7 +72,7 @@ class Stomp(object):
             raise StompConnectionError('Already connected')
         
         try:
-            protocol = yield self._connectEndpoint()
+            protocol = yield self._protocolCreator.connect(self._connectTimeout, self._onFrame, self._onDisconnect)
         except Exception as e:
             self.log.error('Endpoint connect failed')
             raise
@@ -270,29 +266,10 @@ class Stomp(object):
             return handler(self, result)
         return _handler
     
-    @defer.inlineCallbacks
-    def _connectEndpoint(self):
-        for (broker, delay) in self._failover:
-            yield self._sleep(delay)
-            endpoint = self.endpointFactory(broker, self._connectTimeout)
-            self.log.debug('Connecting to %(host)s:%(port)s ...' % broker)
-            try:
-                protocol = yield endpoint.connect(StompFactory(self._onFrame, self._onDisconnect))
-            except Exception as e:
-                self.log.warning('%s [%s]' % ('Could not connect to %(host)s:%(port)d' % broker, e))
-            else:
-                defer.returnValue(protocol)
-    
     def _replay(self):
         for (destination, headers, context) in self.session.replay():
             self.log.debug('Replaying subscription: %s' % headers)
             self.subscribe(destination, headers=headers, **context)
-    
-    def _sleep(self, delay):
-        if not delay:
-            return
-        self.log.debug('Delaying connect attempt for %d ms' % int(delay * 1000))
-        return task.deferLater(reactor, delay, lambda: None)
     
     @defer.inlineCallbacks
     def _waitConnected(self):
