@@ -45,11 +45,26 @@ class StompSession(object):
             version = None
         self._version = version
     
+    @property
+    def _versions(self):
+        try:
+            self.__versions
+        except:
+            self.__versions = None
+        return list(sorted(self.__versions or commands.versions(self.version)))
+    
+    @_versions.setter
+    def _versions(self, versions):
+        if versions and (set(versions) - set(commands.versions(self.version))):
+            raise StompProtocolError('Invalid versions: %s [version=%s]' % (versions, self.version))
+        self.__versions = versions
+    
     # STOMP commands
     
     def connect(self, login=None, passcode=None, headers=None, versions=None, host=None):
         self.__check(self.DISCONNECTED)
-        frame = commands.connect(login, passcode, headers, list(versions or commands.versions(self.version)), host)
+        self._versions = versions
+        frame = commands.connect(login, passcode, headers, self._versions, host)
         self._state = self.CONNECTING
         return frame
     
@@ -119,7 +134,10 @@ class StompSession(object):
     
     def connected(self, headers):
         self.__check(self.CONNECTING)
-        self.version, self._server, self._id = commands.connected(headers, version=self.version)
+        try:
+            self.version, self._server, self._id = commands.connected(headers, versions=self._versions)
+        finally:
+            self._versions = None
         self._state = self.CONNECTED
         
     def message(self, frame):
@@ -159,6 +177,7 @@ class StompSession(object):
         self._id = None
         self._server = None
         self._state = self.DISCONNECTED
+        self._versions = None
         
     def __check(self, state):
         if self._check and (self.state != state):

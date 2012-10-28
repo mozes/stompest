@@ -22,13 +22,13 @@ from stompest.protocol import commands, StompSpec, StompFrame
 class CommandsTest(unittest.TestCase):
     def test_connect(self):
         self.assertRaises(StompProtocolError, commands.connect)
-        self.assertRaises(StompProtocolError, lambda: commands.connect(login='hi'))
-        self.assertRaises(StompProtocolError, lambda: commands.connect(passcode='there'))
+        self.assertRaises(StompProtocolError, commands.connect, login='hi')
+        self.assertRaises(StompProtocolError, commands.connect, passcode='there')
         self.assertEquals(commands.connect('hi', 'there'), StompFrame(StompSpec.CONNECT, headers={StompSpec.LOGIN_HEADER: 'hi', StompSpec.PASSCODE_HEADER: 'there'}))
         self.assertEquals(commands.connect('hi', 'there', {'4711': '0815'}), StompFrame(StompSpec.CONNECT, headers={StompSpec.LOGIN_HEADER: 'hi', StompSpec.PASSCODE_HEADER: 'there', '4711': '0815'}))
         
         self.assertEquals(commands.connect('hi', 'there', versions=[StompSpec.VERSION_1_0]), StompFrame(StompSpec.CONNECT, headers={StompSpec.LOGIN_HEADER: 'hi', StompSpec.PASSCODE_HEADER: 'there'}))
-        self.assertRaises(StompProtocolError, lambda: commands.connect(versions=[StompSpec.VERSION_1_0]))
+        self.assertRaises(StompProtocolError, commands.connect, versions=[StompSpec.VERSION_1_0])
         
         frame = commands.connect(versions=[StompSpec.VERSION_1_0, StompSpec.VERSION_1_1])
         frame.headers.pop(StompSpec.HOST_HEADER)
@@ -46,22 +46,26 @@ class CommandsTest(unittest.TestCase):
         stompFrame = commands.stomp([StompSpec.VERSION_1_1], 'earth', 'hi', 'there', {'4711': '0815'})
         self.assertEquals(stompFrame.command, StompSpec.STOMP)
         self.assertEquals(stompFrame.headers, commands.connect('hi', 'there', {'4711': '0815'}, [StompSpec.VERSION_1_1], 'earth').headers)
-        self.assertRaises(StompProtocolError, lambda: commands.stomp([StompSpec.VERSION_1_0], 'earth', 'hi', 'there', {'4711': '0815'}))
-        self.assertRaises(StompProtocolError, lambda: commands.stomp(None, 'earth', 'hi', 'there', {'4711': '0815'}))
+        self.assertRaises(StompProtocolError, commands.stomp, [StompSpec.VERSION_1_0], 'earth', 'hi', 'there', {'4711': '0815'})
+        self.assertRaises(StompProtocolError, commands.stomp, None, 'earth', 'hi', 'there', {'4711': '0815'})
 
     def test_disconnect(self):
         self.assertEquals(commands.disconnect(), StompFrame(StompSpec.DISCONNECT))
-        self.assertRaises(StompProtocolError, lambda: commands.disconnect(receipt=4711))
+        self.assertRaises(StompProtocolError, commands.disconnect, receipt=4711)
         self.assertEquals(commands.disconnect(receipt=4711, version=StompSpec.VERSION_1_1), StompFrame(StompSpec.DISCONNECT, {StompSpec.RECEIPT_HEADER: 4711}))
         
     def test_connected(self):
         self.assertEquals(commands.connected(StompFrame(StompSpec.CONNECTED, {StompSpec.SESSION_HEADER: 'hi'})), ('1.0', None, 'hi'))
-        self.assertRaises(StompProtocolError, lambda: commands.connected(StompFrame(StompSpec.CONNECTED, {})))
-        self.assertEquals(commands.connected(StompFrame(StompSpec.CONNECTED, {StompSpec.SESSION_HEADER: 'hi'}), version='1.1'), ('1.0', None, 'hi'))
-        self.assertRaises(StompProtocolError, lambda: commands.connected(StompFrame(StompSpec.MESSAGE, {}), version='1.0'))
-        self.assertRaises(StompProtocolError, lambda: commands.connected(StompFrame(StompSpec.MESSAGE, {}), version='1.1'))
-        self.assertEquals(commands.connected(StompFrame(StompSpec.CONNECTED, {StompSpec.SESSION_HEADER: 'hi', StompSpec.VERSION_HEADER: '1.1'}), version='1.1'), ('1.1', None, 'hi'))
-        self.assertEquals(commands.connected(StompFrame(StompSpec.CONNECTED, {StompSpec.SERVER_HEADER: 'moon', StompSpec.VERSION_HEADER: '1.1'}), version='1.1'), ('1.1', 'moon', None))
+        self.assertRaises(StompProtocolError, commands.connected, StompFrame(StompSpec.CONNECTED, {}))
+        self.assertEquals(commands.connected(StompFrame(StompSpec.CONNECTED, {StompSpec.SESSION_HEADER: 'hi'}), versions=['1.0']), ('1.0', None, 'hi'))
+        self.assertEquals(commands.connected(StompFrame(StompSpec.CONNECTED, {StompSpec.SESSION_HEADER: 'hi'}), versions=['1.0', '1.1']), ('1.0', None, 'hi'))
+        self.assertRaises(StompProtocolError, commands.connected, StompFrame(StompSpec.CONNECTED, {StompSpec.SESSION_HEADER: 'hi'}), versions=['1.1'])
+        self.assertRaises(StompProtocolError, commands.connected, StompFrame(StompSpec.MESSAGE, {}), versions=['1.0'])
+        self.assertRaises(StompProtocolError, commands.connected, StompFrame(StompSpec.MESSAGE, {}), versions=['1.1'])
+        self.assertEquals(commands.connected(StompFrame(StompSpec.CONNECTED, {StompSpec.SESSION_HEADER: 'hi', StompSpec.VERSION_HEADER: '1.1'}), versions=['1.1']), ('1.1', None, 'hi'))
+        self.assertEquals(commands.connected(StompFrame(StompSpec.CONNECTED, {StompSpec.SERVER_HEADER: 'moon', StompSpec.VERSION_HEADER: '1.1'}), versions=['1.1']), ('1.1', 'moon', None))
+        self.assertEquals(commands.connected(StompFrame(StompSpec.CONNECTED, {StompSpec.SESSION_HEADER: 'hi', StompSpec.VERSION_HEADER: '1.1'}), versions=['1.0', '1.1']), ('1.1', None, 'hi'))
+        self.assertEquals(commands.connected(StompFrame(StompSpec.CONNECTED, {StompSpec.SERVER_HEADER: 'moon', StompSpec.VERSION_HEADER: '1.1'}), versions=['1.0', '1.1']), ('1.1', 'moon', None))
         
     def test_ack(self):
         self.assertEquals(commands.ack(StompFrame(StompSpec.MESSAGE, {StompSpec.MESSAGE_ID_HEADER: 'hi'})), StompFrame(command='ACK', headers={'message-id': 'hi'}))
@@ -70,21 +74,21 @@ class CommandsTest(unittest.TestCase):
         self.assertEquals(commands.ack(StompFrame(StompSpec.MESSAGE, {StompSpec.MESSAGE_ID_HEADER: 'hi', StompSpec.SUBSCRIPTION_HEADER: 'there', '4711': '0815', StompSpec.TRANSACTION_HEADER: 'man'})), StompFrame(command='ACK', headers={'message-id': 'hi', 'subscription': 'there', 'transaction': 'man'}))
         self.assertEquals(commands.ack(StompFrame(StompSpec.MESSAGE, {StompSpec.MESSAGE_ID_HEADER: 'hi', StompSpec.SUBSCRIPTION_HEADER: 'there', StompSpec.TRANSACTION_HEADER: 'man'}), version='1.1'), StompFrame(command='ACK', headers={'message-id': 'hi', 'subscription': 'there', 'transaction': 'man'}))
         self.assertEquals(commands.ack(StompFrame(StompSpec.MESSAGE, {StompSpec.MESSAGE_ID_HEADER: 'hi', StompSpec.SUBSCRIPTION_HEADER: 'there', '4711': '0815', StompSpec.TRANSACTION_HEADER: 'man'}), version='1.1'), StompFrame(command='ACK', headers={'message-id': 'hi', 'subscription': 'there', 'transaction': 'man'}))
-        self.assertRaises(StompProtocolError, lambda: commands.ack(StompFrame(StompSpec.CONNECTED, {StompSpec.MESSAGE_ID_HEADER: 'hi'}), version='1.0'))
-        self.assertRaises(StompProtocolError, lambda: commands.ack(StompFrame(StompSpec.CONNECTED, {StompSpec.MESSAGE_ID_HEADER: 'hi'}), version='1.1'))
-        self.assertRaises(StompProtocolError, lambda: commands.ack(StompFrame(StompSpec.MESSAGE, {StompSpec.SUBSCRIPTION_HEADER: 'hi'})))
-        self.assertRaises(StompProtocolError, lambda: commands.ack(StompFrame(StompSpec.MESSAGE, {StompSpec.SUBSCRIPTION_HEADER: 'hi'}), version='1.1'))
-        self.assertRaises(StompProtocolError, lambda: commands.ack(StompFrame(StompSpec.MESSAGE, {StompSpec.MESSAGE_ID_HEADER: 'hi'}), version='1.1'))
+        self.assertRaises(StompProtocolError, commands.ack, StompFrame(StompSpec.CONNECTED, {StompSpec.MESSAGE_ID_HEADER: 'hi'}), version='1.0')
+        self.assertRaises(StompProtocolError, commands.ack, StompFrame(StompSpec.CONNECTED, {StompSpec.MESSAGE_ID_HEADER: 'hi'}), version='1.1')
+        self.assertRaises(StompProtocolError, commands.ack, StompFrame(StompSpec.MESSAGE, {StompSpec.SUBSCRIPTION_HEADER: 'hi'}))
+        self.assertRaises(StompProtocolError, commands.ack, StompFrame(StompSpec.MESSAGE, {StompSpec.SUBSCRIPTION_HEADER: 'hi'}), version='1.1')
+        self.assertRaises(StompProtocolError, commands.ack, StompFrame(StompSpec.MESSAGE, {StompSpec.MESSAGE_ID_HEADER: 'hi'}), version='1.1')
 
     def _test_nack(self):
         self.assertEquals(commands.nack(StompFrame(StompSpec.MESSAGE, {StompSpec.MESSAGE_ID_HEADER: 'hi', StompSpec.SUBSCRIPTION_HEADER: 'there'})), StompFrame(command='NACK', headers={'message-id': 'hi', 'subscription': 'there'}))
         self.assertEquals(commands.nack(StompFrame(StompSpec.MESSAGE, {StompSpec.MESSAGE_ID_HEADER: 'hi', StompSpec.SUBSCRIPTION_HEADER: 'there', StompSpec.TRANSACTION_HEADER: 'man'})), StompFrame(command='NACK', headers={'message-id': 'hi', 'subscription': 'there', 'transaction': 'man'}))
         self.assertEquals(commands.nack(StompFrame(StompSpec.MESSAGE, {StompSpec.MESSAGE_ID_HEADER: 'hi', StompSpec.SUBSCRIPTION_HEADER: 'there', '4711': '0815', StompSpec.TRANSACTION_HEADER: 'man'})), StompFrame(command='NACK', headers={'message-id': 'hi', 'subscription': 'there', 'transaction': 'man'}))
-        self.assertRaises(StompProtocolError, lambda: commands.nack(StompFrame(StompSpec.CONNECTED, {}), version='1.1'))
-        self.assertRaises(StompProtocolError, lambda: commands.nack(StompFrame(StompSpec.CONNECTED, {}), version='1.0'))
-        self.assertRaises(StompProtocolError, lambda: commands.nack(StompFrame(StompSpec.MESSAGE, {StompSpec.MESSAGE_ID_HEADER: 'hi', StompSpec.SUBSCRIPTION_HEADER: 'there', StompSpec.TRANSACTION_HEADER: 'man'}), version='1.0'))
-        self.assertRaises(StompProtocolError, lambda: commands.nack(StompFrame(StompSpec.MESSAGE, {StompSpec.SUBSCRIPTION_HEADER: 'hi'}), version='1.1'))
-        self.assertRaises(StompProtocolError, lambda: commands.nack(StompFrame(StompSpec.MESSAGE, {StompSpec.MESSAGE_ID_HEADER: 'hi'}), version='1.1'))
+        self.assertRaises(StompProtocolError, commands.nack, StompFrame(StompSpec.CONNECTED, {}), version='1.1')
+        self.assertRaises(StompProtocolError, commands.nack, StompFrame(StompSpec.CONNECTED, {}), version='1.0')
+        self.assertRaises(StompProtocolError, commands.nack, StompFrame(StompSpec.MESSAGE, {StompSpec.MESSAGE_ID_HEADER: 'hi', StompSpec.SUBSCRIPTION_HEADER: 'there', StompSpec.TRANSACTION_HEADER: 'man'}), version='1.0')
+        self.assertRaises(StompProtocolError, commands.nack, StompFrame(StompSpec.MESSAGE, {StompSpec.SUBSCRIPTION_HEADER: 'hi'}), version='1.1')
+        self.assertRaises(StompProtocolError, commands.nack, StompFrame(StompSpec.MESSAGE, {StompSpec.MESSAGE_ID_HEADER: 'hi'}), version='1.1')
 
 if __name__ == '__main__':
     unittest.main()

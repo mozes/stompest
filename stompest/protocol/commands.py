@@ -31,8 +31,7 @@ def stomp(versions, host, login=None, passcode=None, headers=None):
 
 def connect(login=None, passcode=None, headers=None, versions=None, host=None):
     headers = dict(headers or [])
-    if versions is None:
-        versions = [StompSpec.VERSION_1_0]
+    versions = [StompSpec.VERSION_1_0] if (versions is None) else list(sorted(_version(v) for v in versions))
     if list(versions) == [StompSpec.VERSION_1_0]:
         if (login is None) or (passcode is None):
             raise StompProtocolError('Incomplete credentials [login=%s, passcode=%s]' % (login, passcode))
@@ -127,29 +126,29 @@ def handle(frame, version):
         StompSpec.ERROR: error
     }[frame.command](frame, version)
 
-def connected(frame, version=None):
-    clientVersion = _version(version)
-    serverVersion = clientVersion
+def connected(frame, versions=None):
+    versions = [StompSpec.VERSION_1_0] if (versions is None) else list(sorted(_version(v) for v in versions))
+    version = versions[-1]
     _checkCommand(frame, [StompSpec.CONNECTED])
     headers = frame.headers
     try:
-        if clientVersion != StompSpec.VERSION_1_0:
-            serverVersion = _version(headers.get(StompSpec.VERSION_HEADER, StompSpec.VERSION_1_0))
-            if serverVersion not in versions(clientVersion):
+        if version != StompSpec.VERSION_1_0:
+            version = _version(headers.get(StompSpec.VERSION_HEADER, StompSpec.VERSION_1_0))
+            if version not in versions:
                 raise StompProtocolError('')
     except StompProtocolError:
-        raise StompProtocolError('Server version incompatible with client version %s [headers=%s]' % (clientVersion, headers))
+        raise StompProtocolError('Server version incompatible with accepted versions %s [headers=%s]' % (versions, headers))
     
-    server = None if (serverVersion == StompSpec.VERSION_1_0) else headers.get(StompSpec.SERVER_HEADER)
+    server = None if (version == StompSpec.VERSION_1_0) else headers.get(StompSpec.SERVER_HEADER)
     
     try:
         id_ = headers[StompSpec.SESSION_HEADER]
     except KeyError:
-        if serverVersion == StompSpec.VERSION_1_0:
+        if version == StompSpec.VERSION_1_0:
             raise StompProtocolError('Invalid %s frame (%s header is missing) [headers=%s]' % (StompSpec.CONNECTED, StompSpec.SESSION_HEADER, headers))
         id_ = None
         
-    return serverVersion, server, id_
+    return version, server, id_
 
 def message(frame, version):
     version = _version(version)
@@ -177,14 +176,6 @@ def error(frame, version):
 
 # STOMP protocol version
 
-def versions(version):
-    version = _version(version)
-    for v in StompSpec.VERSIONS:
-        yield v
-        if v == version:
-            break
-_versions = versions
-
 def version(version=None):
     if version is None:
         version = StompSpec.DEFAULT_VERSION
@@ -192,6 +183,14 @@ def version(version=None):
         raise StompProtocolError('Version is not supported [%s]' % version)
     return version
 _version = version
+
+def versions(version):
+    version = _version(version)
+    for v in StompSpec.VERSIONS:
+        yield v
+        if v == version:
+            break
+_versions = versions
 
 # private helper methods
 
