@@ -149,12 +149,11 @@ class Stomp(object):
             self.log.warning('Cannot unsubscribe (subscription id unknown): %s=%s' % token)
             raise
         protocol.send(frame)
-    
+            
     #
     # callbacks for received STOMP frames
     #
     def _onFrame(self, protocol, frame):
-        self.log.info('Received %s' % frame.info())
         try:
             handler = self._handlers[frame.command]
         except KeyError:
@@ -196,8 +195,9 @@ class Stomp(object):
         
         # call message handler (can return deferred to be async)
         try:
-            yield defer.maybeDeferred(subscription['handler'], self, frame)
+            yield subscription['handler'](self, frame)
         except Exception as e:
+            self.log.exception('')
             self.log.error('Error in message handler: %s' % e)
             try:
                 self._onMessageFailed(e, frame, subscription['errorDestination'])
@@ -304,7 +304,7 @@ class Stomp(object):
             timeout and timeout.cancel()
         finally:
             self._connectedSignal = None
-    
+
 class StompProtocol(Protocol):
     #
     # twisted.internet.Protocol interface overrides
@@ -345,7 +345,7 @@ class StompProtocol(Protocol):
     # user interface
     #
     def send(self, frame):
-        #self.log.debug('sending data:\n%s' % repr(data))
+        self.log.debug('Sending %s' % frame.info())
         self.transport.write(str(frame))
     
     def onConnected(self):

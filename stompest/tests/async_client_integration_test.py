@@ -22,6 +22,7 @@ from twisted.trial import unittest
 from stompest import async, sync
 from stompest.async.util import sendToErrorDestinationAndDisconnect
 from stompest.protocol import StompConfig, StompSpec
+from stompest.error import StompConnectionError
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -83,13 +84,11 @@ class AsyncClientBaseTestCase(unittest.TestCase):
         self.errorQueueFrame = frame
         client.disconnect()
 
-    @defer.inlineCallbacks  
-    def _eatOneFrameAndUnsubscribe(self, client, _):
-        'Eat message and unsubscribe'
-        client.unsubscribe(self.subscription)
-        yield task.deferLater(reactor, 0.25, lambda: None) # wait for UNSUBSCRIBE command to be processed by the server
-        self.signal.callback(None)
-        
+    def _eatOneFrame(self, client, frame):
+        self.consumedFrame = frame
+        self.framesHandled += 1
+        print 'Eat message'
+    
     def _onMessageFailedSendToErrorDestinationAndDisconnect(self, client, failure, frame, errorDestination):
         sendToErrorDestinationAndDisconnect(client, failure, frame, errorDestination)
         
@@ -280,18 +279,47 @@ class SubscribeTestCase(AsyncClientBaseTestCase):
         
         client = yield client.connect()
         
-        for _ in xrange(2):
-            client.send(self.queue, self.frame)
-            
-        self.subscription = client.subscribe(self.queue, self._eatOneFrameAndUnsubscribe, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': '1'})
+        token = client.subscribe(self.queue, self._eatOneFrame, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': '1'})
+        client.send(self.queue, self.frame)
+        yield task.deferLater(reactor, 0.2, lambda: None)
+        self.assertEquals(self.framesHandled, 1)
         
-        self.signal = defer.Deferred()
-        yield self.signal
+        client.unsubscribe(token)
+        client.send(self.queue, self.frame)
+        yield task.deferLater(reactor, 0.2, lambda: None)
+        self.assertEquals(self.framesHandled, 1)
         
-        client.subscribe(self.queue, self._eatOneFrameAndDisconnect, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': '1'})
+        client.subscribe(self.queue, self._eatOneFrame, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': '1'})
+        yield task.deferLater(reactor, 0.2, lambda: None)
+        self.assertEquals(self.framesHandled, 2)
+        yield client.disconnect()
+        
+    @defer.inlineCallbacks
+    def test_replay(self):
+        config = StompConfig(uri='tcp://%s:%d' % (HOST, PORT))
+        client = async.Stomp(config)
+        
+        client = yield client.connect()
+        
+        token = client.subscribe(self.queue, self._eatOneFrame, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': '1'})
+        client.send(self.queue, self.frame)
+        yield task.deferLater(reactor, 0.2, lambda: None)
+        self.assertEquals(self.framesHandled, 1)
+        
+        client._protocol.loseConnection()
+        
+        try:
+            yield client.disconnected
+        except StompConnectionError:
+            pass
+        
+        client = yield client.connect()
+        client.send(self.queue, self.frame)
+        yield task.deferLater(reactor, 0.2, lambda: None)
+        self.assertEquals(self.framesHandled, 2)
+        
+        yield client.disconnect()
 
-        yield client.disconnected
-        
 if __name__ == '__main__':
     import sys
     from twisted.scripts import trial
