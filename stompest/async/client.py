@@ -279,11 +279,6 @@ class StompProtocol(Protocol):
     # Overridden methods from parent protocol class
     #
     def connectionLost(self, reason):
-        message = 'Disconnected'
-        if reason.type is not ConnectionLost:
-            message = '%s: %s' % (message, reason.getErrorMessage())
-        self.log.debug(message)
-        
         self._connectionLost(reason)
         
         Protocol.connectionLost(self, reason)
@@ -308,9 +303,9 @@ class StompProtocol(Protocol):
         
         self._parser = StompParser()
         
-        self._disconnected = None
         self._disconnecting = False
-        self._disconnectError = None
+        self._disconnected = None
+        self._disconnectReason = None
         
         # keep track of active handlers for graceful disconnect
         self._activeHandlers = set()
@@ -327,15 +322,15 @@ class StompProtocol(Protocol):
         self._disconnected = defer.Deferred()
     
     def disconnect(self, failure=None):
-        """After finishing outstanding requests, send disconnect command and return Deferred for caller that will be triggered when disconnect is complete
+        """After finishing outstanding requests, notify that we may be disconnected
+        and return Deferred for caller that will be triggered when disconnect is complete
         """
         if failure:
-            self._disconnectError = failure
+            self._disconnectReason = failure
         if not self._disconnecting:
             self._disconnecting = True
-            #Send disconnect command after outstanding messages are ack'ed
-            defer.maybeDeferred(self._finishHandlers).addBoth(lambda _: self._onDisconnect(self, self._disconnectError))
-            
+            # notify that we are ready to disconnect after outstanding messages are ack'ed
+            defer.maybeDeferred(self._finishHandlers).addBoth(lambda _: self._onDisconnect(self, self._disconnectReason))
         return self._disconnected
     
     @property
@@ -364,19 +359,21 @@ class StompProtocol(Protocol):
 
     #
     # Private helper methods
-    #    
-    def _connectionLost(self):
+    #
+    def _connectionLost(self, reason):
+        self.log.debug('Disconnected: %s' % reason.getErrorMessage())
+        
         if not self._disconnected:
             return
         if not self._disconnecting:
-            self._disconnectError = StompConnectionError('Unexpected connection loss')
-        if self._disconnectError:
-            #self.log.debug('Calling disconnected deferred errback: %s' % self._disconnectError)
-            self._disconnected.errback(self._disconnectError)
-            self._disconnectError = None
+            self._disconnectReason = StompConnectionError('Unexpected connection loss')
+        if self._disconnectReason:
+            #self.log.debug('Calling disconnected deferred errback: %s' % self._disconnectReason)
+            self._disconnected.errback(self._disconnectReason)
+            self._disconnectReason = None
         else:
             #self.log.debug('Calling disconnected deferred callback')
-            self._disconnected.callback(self)
+            self._disconnected.callback(None)
         self._disconnected = None
             
     def _finish(self):

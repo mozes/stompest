@@ -42,4 +42,4 @@ class StompFrame(object):
         if body not in self.body:
             body = '%s...' % body 
         body = body and (', body=%s' % repr(body))
-        return '%s frame [headers=%s%s]' % (self.command, ','.join(':'.join(map(repr, item)) for item in self.headers.iteritems()), body)
+        return '%s frame [headers=%s%s]' % (self.command, self.headers, body)
