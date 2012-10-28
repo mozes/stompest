@@ -19,7 +19,6 @@ import functools
 import logging
 
 from twisted.internet import defer, reactor, task
-from twisted.internet.error import ConnectionLost
 from twisted.internet.protocol import Factory, Protocol
 
 from stompest.error import StompConnectionError, StompFrameError, StompProtocolError
@@ -58,6 +57,9 @@ class Stomp(object):
         }
         self._subscriptions = {}
         
+        # signals
+        self._connectedSignal = None
+        
     @exclusive
     @defer.inlineCallbacks
     def connect(self, headers=None, versions=None, host=None):
@@ -69,9 +71,9 @@ class Stomp(object):
             protocol = yield self._connect()
             frame = self.session.connect(self._config.login, self._config.passcode, headers, versions, host)
             protocol.send(frame)
-            self._connected = defer.Deferred()
-            timeout = self._timeout and task.deferLater(reactor, self._timeout, self._connected.cancel)
-            protocol = yield self._connected
+            self._connectedSignal = defer.Deferred()
+            timeout = self._timeout and task.deferLater(reactor, self._timeout, self._connectedSignal.cancel)
+            protocol = yield self._connectedSignal
             timeout and timeout.cancel()
         except Exception as e:
             self.log.error('Connect failed [%s]' % e)
@@ -79,7 +81,7 @@ class Stomp(object):
                 protocol.loseConnection()
             raise
         finally:
-            self._connected = None
+            self._connectedSignal = None
         self._protocol = protocol
         self.disconnected.addBoth(self._handleDisconnected)
         self._replay()
@@ -94,7 +96,7 @@ class Stomp(object):
     
     @property
     def disconnected(self):
-        return self._protocol and self._protocol.disconnectedSignal
+        return self._protocol and self._protocol.disconnected
     
     # STOMP commands
     
@@ -209,11 +211,11 @@ class Stomp(object):
         self.session.connected(frame)
         self.log.debug('Connected to stomp broker with session: %s' % self.session.id)
         protocol.onConnected()
-        self._connected.callback(protocol)
+        self._connectedSignal.callback(protocol)
 
     def _onError(self, protocol, frame):
-        if self._connected:
-            self._connected.errback(StompProtocolError('While trying to connect, received %s' % frame.info()))
+        if self._connectedSignal:
+            self._connectedSignal.errback(StompProtocolError('While trying to connect, received %s' % frame.info()))
             return
 
         #Workaround for AMQ < 5.2
@@ -304,7 +306,7 @@ class StompProtocol(Protocol):
         self._parser = StompParser()
         
         self._disconnecting = False
-        self._disconnected = None
+        self._disconnectedSignal = None
         self._disconnectReason = None
         
         # keep track of active handlers for graceful disconnect
@@ -319,7 +321,7 @@ class StompProtocol(Protocol):
         self.transport.write(str(frame))
     
     def onConnected(self):
-        self._disconnected = defer.Deferred()
+        self._disconnectedSignal = defer.Deferred()
     
     def disconnect(self, failure=None):
         """After finishing outstanding requests, notify that we may be disconnected
@@ -331,11 +333,11 @@ class StompProtocol(Protocol):
             self._disconnecting = True
             # notify that we are ready to disconnect after outstanding messages are ack'ed
             defer.maybeDeferred(self._finishHandlers).addBoth(lambda _: self._onDisconnect(self, self._disconnectReason))
-        return self._disconnected
+        return self._disconnectedSignal
     
     @property
-    def disconnectedSignal(self):
-        return self._disconnected
+    def disconnected(self):
+        return self._disconnectedSignal
     
     def loseConnection(self):
         self.transport.loseConnection()
@@ -363,18 +365,18 @@ class StompProtocol(Protocol):
     def _connectionLost(self, reason):
         self.log.debug('Disconnected: %s' % reason.getErrorMessage())
         
-        if not self._disconnected:
+        if not self._disconnectedSignal:
             return
         if not self._disconnecting:
             self._disconnectReason = StompConnectionError('Unexpected connection loss')
         if self._disconnectReason:
             #self.log.debug('Calling disconnected deferred errback: %s' % self._disconnectReason)
-            self._disconnected.errback(self._disconnectReason)
+            self._disconnectedSignal.errback(self._disconnectReason)
             self._disconnectReason = None
         else:
             #self.log.debug('Calling disconnected deferred callback')
-            self._disconnected.callback(None)
-        self._disconnected = None
+            self._disconnectedSignal.callback(None)
+        self._disconnectedSignal = None
             
     def _finish(self):
         # if someone's waiting to know that all handlers are done, call them back
