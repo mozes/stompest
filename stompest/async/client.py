@@ -37,11 +37,12 @@ class Stomp(object):
     def endpointFactory(cls, broker, timeout=None):
         return endpointFactory(broker, timeout)
     
-    def __init__(self, config, timeout=None, version=None, **kwargs):
+    def __init__(self, config, connectTimeout=None, connectedTimeout=None, version=None, **kwargs):
         self._alwaysDisconnectOnUnhandledMsg = kwargs.get('alwaysDisconnectOnUnhandledMsg', False)
         
         self._config = config
-        self._timeout = timeout
+        self._connectTimeout = connectTimeout
+        self._connectedTimeout = connectedTimeout
         
         self.session = StompSession(version)
         self._failover = StompFailoverProtocol(config.uri)
@@ -72,7 +73,7 @@ class Stomp(object):
             frame = self.session.connect(self._config.login, self._config.passcode, headers, versions, host)
             protocol.send(frame)
             self._connectedSignal = defer.Deferred()
-            timeout = self._timeout and task.deferLater(reactor, self._timeout, self._connectedSignal.cancel)
+            timeout = self._connectedTimeout and task.deferLater(reactor, self._connectedTimeout, self._connectedSignal.cancel)
             protocol = yield self._connectedSignal
             timeout and timeout.cancel()
         except Exception as e:
@@ -156,7 +157,7 @@ class Stomp(object):
     def _connect(self):
         for (broker, delay) in self._failover:
             yield self._sleep(delay)
-            endpoint = self.endpointFactory(broker, self._timeout)
+            endpoint = self.endpointFactory(broker, self._connectTimeout)
             self.log.debug('Connecting to %(host)s:%(port)s ...' % broker)
             try:
                 protocol = yield endpoint.connect(StompFactory(self._onFrame, self._onDisconnect))

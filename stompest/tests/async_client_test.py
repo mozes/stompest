@@ -48,24 +48,25 @@ class AsyncFailoverClientBaseTestCase(unittest.TestCase):
 
 class AsyncFailoverClientConnectTimeoutTestCase(AsyncFailoverClientBaseTestCase):
     protocols = [BlackHoleStompServer]
+    TIMEOUT = 0.01
 
     def test_connection_timeout(self):
         port = self.connections[0].getHost().port
         config = StompConfig(uri='tcp://localhost:%d' % port)
-        client = Stomp(config, timeout=0.01)
+        client = Stomp(config, connectTimeout=self.TIMEOUT, connectedTimeout=self.TIMEOUT)
         return self.assertFailure(client.connect(), StompConnectTimeout)
 
     def test_connection_timeout_after_failover(self):
         port = self.connections[0].getHost().port
         config = StompConfig(uri='failover:(tcp://nosuchhost:65535,tcp://localhost:%d)?startupMaxReconnectAttempts=2,initialReconnectDelay=0,randomize=false' % port)
-        client = Stomp(config, timeout=0.01)
+        client = Stomp(config, connectTimeout=self.TIMEOUT, connectedTimeout=self.TIMEOUT)
         return self.assertFailure(client.connect(), StompConnectTimeout)
     
     @defer.inlineCallbacks
     def test_not_connected(self):
         port = self.connections[0].getHost().port
         config = StompConfig(uri='tcp://localhost:%d' % port)
-        client = Stomp(config, timeout=0.01)
+        client = Stomp(config, connectTimeout=self.TIMEOUT, connectedTimeout=self.TIMEOUT)
         try:
             yield client.send('/queue/fake')
         except StompConnectionError:
