@@ -37,9 +37,9 @@ class Stomp(object):
     def endpointFactory(cls, broker, timeout=None):
         return endpointFactory(broker, timeout)
     
-    def __init__(self, config, connectTimeout=None, connectedTimeout=None, version=None, **kwargs):
-        self._alwaysDisconnectOnUnhandledMsg = kwargs.get('alwaysDisconnectOnUnhandledMsg', False)
-        
+    def __init__(self, config, connectTimeout=None, connectedTimeout=None, version=None, onMessageFailed=None, **kwargs):
+        self.__onMessageFailed = onMessageFailed
+                
         self._config = config
         self._connectTimeout = connectTimeout
         self._connectedTimeout = connectedTimeout
@@ -198,19 +198,36 @@ class Stomp(object):
         try:
             yield defer.maybeDeferred(subscription['handler'], self, frame)
         except Exception as e:
-            self._onMessageFailed(e, frame, subscription['errorDestination'])
-            if not self._alwaysDisconnectOnUnhandledMsg: # TODO: introduce a callback for this
-                return
-            self.disconnect(failure=e)
+            self.log.error('Error in message handler: %s' % e)
+            try:
+                self._onMessageFailed(e, frame, subscription['errorDestination'])
+            except Exception as e:
+                self.disconnect(failure=e)
         else:
             if subscription['ack'] in StompSpec.CLIENT_ACK_MODES:
                 self.ack(frame)
         finally:
             protocol.handlerFinished(messageId)
-        
+    
     def _onReceipt(self, protocol, frame):
         pass
     
+    #
+    # hook for MESSAGE frame error handling
+    #
+    def _onMessageFailed(self, failure, frame, errorDestination):
+        if self.__onMessageFailed:
+            self.__onMessageFailed(self, failure, frame, errorDestination)
+        else:
+            self.sendToErrorDestination(frame, errorDestination)
+    
+    def sendToErrorDestination(self, frame, errorDestination):
+        if not errorDestination: # forward message to error queue if configured
+            return
+        errorMessage = cloneFrame(frame, persistent=True)
+        self.send(errorDestination, errorMessage.body, errorMessage.headers)
+        self.ack(frame)
+        
     #
     # protocol
     #
@@ -267,14 +284,6 @@ class Stomp(object):
             else:
                 defer.returnValue(protocol)
     
-    def _onMessageFailed(self, failure, frame, errorDestination):
-        self.log.error('Error in message handler: %s' % failure)
-        if not errorDestination: # forward message to error queue if configured
-            return
-        errorMessage = cloneFrame(frame, persistent=True)
-        self.send(errorDestination, errorMessage.body, errorMessage.headers)
-        self.ack(frame)
- 
     def _replay(self):
         for (destination, headers, context) in self.session.replay():
             self.log.debug('Replaying subscription: %s' % headers)

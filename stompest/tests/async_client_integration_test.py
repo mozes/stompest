@@ -20,6 +20,7 @@ from twisted.internet import reactor, defer, task
 from twisted.trial import unittest
 
 from stompest import async, sync
+from stompest.async.util import sendToErrorDestinationAndDisconnect
 from stompest.protocol import StompConfig, StompSpec
 
 logging.basicConfig(level=logging.DEBUG)
@@ -88,7 +89,10 @@ class AsyncClientBaseTestCase(unittest.TestCase):
         client.unsubscribe(self.subscription)
         yield task.deferLater(reactor, 0.25, lambda: None) # wait for UNSUBSCRIBE command to be processed by the server
         self.signal.callback(None)
-
+        
+    def _onMessageFailedSendToErrorDestinationAndDisconnect(self, client, failure, frame, errorDestination):
+        sendToErrorDestinationAndDisconnect(client, failure, frame, errorDestination)
+        
 class HandlerExceptionWithErrorQueueIntegrationTestCase(AsyncClientBaseTestCase):
     frame1 = 'choke on this'
     msg1Hdrs = {'food': 'barf', 'persistent': 'true'}
@@ -105,7 +109,7 @@ class HandlerExceptionWithErrorQueueIntegrationTestCase(AsyncClientBaseTestCase)
     @defer.inlineCallbacks
     def _test_onhandlerException_ackMessage_filterReservedHdrs_send2ErrorQ_and_disconnect(self, version):
         config = StompConfig(uri='tcp://%s:%d' % (HOST, PORT))
-        client = async.Stomp(config, alwaysDisconnectOnUnhandledMsg=True, version=version)
+        client = async.Stomp(config, onMessageFailed=self._onMessageFailedSendToErrorDestinationAndDisconnect, version=version)
         
         #Connect
         client = yield client.connect()
@@ -186,7 +190,7 @@ class HandlerExceptionWithErrorQueueIntegrationTestCase(AsyncClientBaseTestCase)
     @defer.inlineCallbacks
     def test_onhandlerException_disconnect(self):
         config = StompConfig(uri='tcp://%s:%d' % (HOST, PORT))
-        client = async.Stomp(config, alwaysDisconnectOnUnhandledMsg=True)
+        client = async.Stomp(config, onMessageFailed=self._onMessageFailedSendToErrorDestinationAndDisconnect)
         
         #Connect
         client = yield client.connect()
