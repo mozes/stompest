@@ -20,7 +20,7 @@ from twisted.internet import reactor, defer, task
 from twisted.trial import unittest
 
 from stompest import async, sync
-from stompest.async.util import sendToErrorDestinationAndDisconnect
+from stompest.async.util import sendToErrorDestinationAndRaise
 from stompest.protocol import StompConfig, StompSpec
 from stompest.error import StompConnectionError
 
@@ -84,13 +84,19 @@ class AsyncClientBaseTestCase(unittest.TestCase):
         self.errorQueueFrame = frame
         client.disconnect()
 
-    def _eatOneFrame(self, client, frame):
+    def _eatFrame(self, client, frame):
+        print 'Eat message'
         self.consumedFrame = frame
         self.framesHandled += 1
-        print 'Eat message'
     
-    def _onMessageFailedSendToErrorDestinationAndDisconnect(self, client, failure, frame, errorDestination):
-        sendToErrorDestinationAndDisconnect(client, failure, frame, errorDestination)
+    def _nackFrame(self, client, frame):
+        print 'NACK message'
+        self.consumedFrame = frame
+        self.framesHandled += 1
+        client.nack(frame)
+        
+    def _onMessageFailedSendToErrorDestinationAndRaise(self, client, failure, frame, errorDestination):
+        sendToErrorDestinationAndRaise(client, failure, frame, errorDestination)
         
 class HandlerExceptionWithErrorQueueIntegrationTestCase(AsyncClientBaseTestCase):
     frame1 = 'choke on this'
@@ -107,8 +113,8 @@ class HandlerExceptionWithErrorQueueIntegrationTestCase(AsyncClientBaseTestCase)
         
     @defer.inlineCallbacks
     def _test_onhandlerException_ackMessage_filterReservedHdrs_send2ErrorQ_and_disconnect(self, version):
-        config = StompConfig(uri='tcp://%s:%d' % (HOST, PORT))
-        client = async.Stomp(config, onMessageFailed=self._onMessageFailedSendToErrorDestinationAndDisconnect, version=version)
+        config = StompConfig(uri='tcp://%s:%d' % (HOST, PORT), version=version)
+        client = async.Stomp(config, onMessageFailed=self._onMessageFailedSendToErrorDestinationAndRaise)
         
         #Connect
         client = yield client.connect()
@@ -117,11 +123,14 @@ class HandlerExceptionWithErrorQueueIntegrationTestCase(AsyncClientBaseTestCase)
         client.send(self.queue, self.frame1, self.msg1Hdrs)
         client.send(self.queue, self.frame2)
         
+        defaultHeaders = {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': 1}
+        if version != '1.0':
+            defaultHeaders[StompSpec.ID_HEADER] = '4711'
+        
         #Barf on first message so it will get put in error queue
         #Use selector to guarantee message order.  AMQ doesn't guarantee order by default
-        headers = {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': 1, 'selector': "food = 'barf'"}
-        if version != '1.0':
-            headers[StompSpec.ID_HEADER] = '4711'
+        headers = {'selector': "food = 'barf'"}
+        headers.update(defaultHeaders)
         client.subscribe(self.queue, self._saveFrameAndBarf, headers, errorDestination=self.errorQueue)
         
         #Client disconnected and returned error
@@ -144,7 +153,7 @@ class HandlerExceptionWithErrorQueueIntegrationTestCase(AsyncClientBaseTestCase)
         
         #Reconnect and subscribe to error queue
         client = yield client.connect()
-        client.subscribe(self.errorQueue, self._saveErrorFrameAndDisconnect, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': 1})
+        client.subscribe(self.errorQueue, self._saveErrorFrameAndDisconnect, defaultHeaders)
         
         #Wait for disconnect
         yield client.disconnected
@@ -189,7 +198,7 @@ class HandlerExceptionWithErrorQueueIntegrationTestCase(AsyncClientBaseTestCase)
     @defer.inlineCallbacks
     def test_onhandlerException_disconnect(self):
         config = StompConfig(uri='tcp://%s:%d' % (HOST, PORT))
-        client = async.Stomp(config, onMessageFailed=self._onMessageFailedSendToErrorDestinationAndDisconnect)
+        client = async.Stomp(config, onMessageFailed=self._onMessageFailedSendToErrorDestinationAndRaise)
         
         #Connect
         client = yield client.connect()
@@ -279,19 +288,19 @@ class SubscribeTestCase(AsyncClientBaseTestCase):
         
         client = yield client.connect()
         
-        token = client.subscribe(self.queue, self._eatOneFrame, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': '1'})
+        token = client.subscribe(self.queue, self._eatFrame, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': '1'})
         client.send(self.queue, self.frame)
-        yield task.deferLater(reactor, 0.2, lambda: None)
-        self.assertEquals(self.framesHandled, 1)
+        while self.framesHandled != 1:
+            yield task.deferLater(reactor, 0.01, lambda: None)
         
         client.unsubscribe(token)
         client.send(self.queue, self.frame)
         yield task.deferLater(reactor, 0.2, lambda: None)
         self.assertEquals(self.framesHandled, 1)
         
-        client.subscribe(self.queue, self._eatOneFrame, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': '1'})
-        yield task.deferLater(reactor, 0.2, lambda: None)
-        self.assertEquals(self.framesHandled, 2)
+        client.subscribe(self.queue, self._eatFrame, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': '1'})
+        while self.framesHandled != 2:
+            yield task.deferLater(reactor, 0.01, lambda: None)
         yield client.disconnect()
         
     @defer.inlineCallbacks
@@ -301,10 +310,10 @@ class SubscribeTestCase(AsyncClientBaseTestCase):
         
         client = yield client.connect()
         
-        token = client.subscribe(self.queue, self._eatOneFrame, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': '1'})
+        client.subscribe(self.queue, self._eatFrame, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': '1'})
         client.send(self.queue, self.frame)
-        yield task.deferLater(reactor, 0.2, lambda: None)
-        self.assertEquals(self.framesHandled, 1)
+        while self.framesHandled != 1:
+            yield task.deferLater(reactor, 0.01, lambda: None)
         
         client._protocol.loseConnection()
         
@@ -315,8 +324,44 @@ class SubscribeTestCase(AsyncClientBaseTestCase):
         
         client = yield client.connect()
         client.send(self.queue, self.frame)
-        yield task.deferLater(reactor, 0.2, lambda: None)
-        self.assertEquals(self.framesHandled, 2)
+        while self.framesHandled != 2:
+            yield task.deferLater(reactor, 0.01, lambda: None)
+        
+        try:
+            yield client.disconnect(RuntimeError('Hi'))
+        except RuntimeError as e:
+            self.assertEquals(str(e), 'Hi')
+        
+        client = yield client.connect()
+        client.send(self.queue, self.frame)
+        while self.framesHandled != 2:
+            yield task.deferLater(reactor, 0.01, lambda: None)
+        
+        yield client.disconnect()
+
+class NackTestCase(AsyncClientBaseTestCase):
+    frame = 'test'
+    queue = '/queue/asyncFailoverSubscribeTestCase'
+
+    @defer.inlineCallbacks
+    def test_nack(self):
+        config = StompConfig(uri='tcp://%s:%d' % (HOST, PORT), version='1.1')
+        client = async.Stomp(config)
+        
+        client = yield client.connect()
+        
+        client.subscribe(self.queue, self._nackFrame, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': '1', 'id': '4711'}, ack=False)
+        client.send(self.queue, self.frame)
+        while self.framesHandled != 1:
+            yield task.deferLater(reactor, 0.01, lambda: None)
+        
+        yield client.disconnect()
+        
+        client = yield client.connect()
+        client.subscribe(self.queue, self._eatFrame, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': '1', 'id': '4711'}, ack=True)
+        client.send(self.queue, self.frame)
+        while self.framesHandled != 2:
+            yield task.deferLater(reactor, 0.01, lambda: None)
         
         yield client.disconnect()
 

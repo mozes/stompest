@@ -39,6 +39,6 @@ def exclusive(f):
     _exclusive.running.callback(None)
     return _exclusive
 
-def sendToErrorDestinationAndDisconnect(client, failure, frame, errorDestination):
+def sendToErrorDestinationAndRaise(client, failure, frame, errorDestination):
     client.sendToErrorDestination(frame, errorDestination)
     raise failure

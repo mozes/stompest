@@ -30,23 +30,22 @@ from .util import endpointFactory, exclusive
 LOG_CATEGORY = 'stompest.async.client'
 
 class Stomp(object):
-    CLIENT_ACK_MODES = set(['client', 'client-individual'])
-    DEFAULT_ACK_MODE = 'client'
+    DEFAULT_ACK_MODE = 'auto'
     
     @classmethod
     def endpointFactory(cls, broker, timeout=None):
         return endpointFactory(broker, timeout)
     
-    def __init__(self, config, connectTimeout=None, connectedTimeout=None, version=None, onMessageFailed=None, **kwargs):
-        self.__onMessageFailed = onMessageFailed
-                
+    def __init__(self, config, connectTimeout=None, connectedTimeout=None, onMessageFailed=None):
         self._config = config
+        self.session = StompSession(self._config.version)
+        self._failover = StompFailoverProtocol(config.uri)
+        self._protocol = None
+        
         self._connectTimeout = connectTimeout
         self._connectedTimeout = connectedTimeout
         
-        self.session = StompSession(version)
-        self._failover = StompFailoverProtocol(config.uri)
-        self._protocol = None
+        self.__onMessageFailed = onMessageFailed
         
         self.log = logging.getLogger(LOG_CATEGORY)
         
@@ -130,12 +129,12 @@ class Stomp(object):
         protocol.send(frame)
         return token
     
-    def subscribe(self, destination, handler, headers=None, receipt=None, errorDestination=None):
+    def subscribe(self, destination, handler, headers=None, receipt=None, ack=True, errorDestination=None):
         protocol = self._protocol
         if not callable(handler):
             raise ValueError('Cannot subscribe (handler is missing): %s' % handler)
         frame, token = self.session.subscribe(destination, headers, context={'handler': handler, 'receipt': receipt, 'errorDestination': errorDestination})
-        ack = frame.headers.setdefault(StompSpec.ACK_HEADER, self.DEFAULT_ACK_MODE)
+        ack = ack and (frame.headers.setdefault(StompSpec.ACK_HEADER, self.DEFAULT_ACK_MODE) in StompSpec.CLIENT_ACK_MODES)
         self._subscriptions[token] = {'destination': destination, 'handler': self._createHandler(handler), 'ack': ack, 'errorDestination': errorDestination}
         protocol.send(frame)
         return token
@@ -196,16 +195,16 @@ class Stomp(object):
         # call message handler (can return deferred to be async)
         try:
             yield subscription['handler'](self, frame)
+            if subscription['ack']:
+                self.ack(frame)
         except Exception as e:
-            self.log.exception('')
             self.log.error('Error in message handler: %s' % e)
             try:
                 self._onMessageFailed(e, frame, subscription['errorDestination'])
+                if subscription['ack']:
+                    self.ack(frame)
             except Exception as e:
                 self.disconnect(failure=e)
-        else:
-            if subscription['ack'] in StompSpec.CLIENT_ACK_MODES:
-                self.ack(frame)
         finally:
             protocol.handlerFinished(messageId)
     
