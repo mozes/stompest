@@ -19,12 +19,12 @@ import functools
 import logging
 
 from twisted.internet import defer, reactor, task
-from twisted.internet.protocol import Factory, Protocol
 
 from stompest.error import StompConnectionError, StompFrameError, StompProtocolError
-from stompest.protocol import commands, StompFailoverProtocol, StompParser, StompSession, StompSpec
+from stompest.protocol import commands, StompFailoverProtocol, StompSession, StompSpec
 from stompest.util import cloneFrame
 
+from .protocol import StompFactory
 from .util import endpointFactory, exclusive
 
 LOG_CATEGORY = 'stompest.async.client'
@@ -303,136 +303,3 @@ class Stomp(object):
             timeout and timeout.cancel()
         finally:
             self._connectedSignal = None
-
-class StompProtocol(Protocol):
-    #
-    # twisted.internet.Protocol interface overrides
-    #
-    def connectionLost(self, reason):
-        self._connectionLost(reason)
-        Protocol.connectionLost(self, reason)
-    
-    def dataReceived(self, data):
-        self._parser.add(data)
-                
-        while True:
-            frame = self._parser.get()
-            if not frame:
-                break
-            self.log.debug('Received %s' % frame.info())
-            
-            self._onFrame(self, frame)
-    
-    def __init__(self, onFrame, onDisconnect):
-        self._onFrame = onFrame
-        self._onDisconnect = onDisconnect
-        
-        # leave the used logger public in case the user wants to override it
-        self.log = logging.getLogger(LOG_CATEGORY)
-        
-        self._parser = StompParser()
-        
-        self._disconnecting = False
-        self._disconnectedSignal = None
-        self._disconnectReason = None
-        
-        # keep track of active handlers for graceful disconnect
-        self._activeHandlers = set()
-        self._allHandlersFinishedSignal = None
-        
-    #
-    # user interface
-    #
-    def send(self, frame):
-        self.log.debug('Sending %s' % frame.info())
-        self.transport.write(str(frame))
-    
-    def onConnected(self):
-        self._disconnectedSignal = defer.Deferred()
-    
-    def disconnect(self, failure=None):
-        """After finishing outstanding requests, notify that we may be disconnected
-        and return Deferred for caller that will be triggered when disconnect is complete
-        """
-        if failure:
-            self._disconnectReason = failure
-        if not self._disconnecting:
-            self._disconnecting = True
-            # notify that we are ready to disconnect after outstanding messages are ack'ed
-            defer.maybeDeferred(self._finishHandlers).addBoth(lambda _: self._onDisconnect(self, self._disconnectReason))
-        return self._disconnectedSignal
-    
-    @property
-    def disconnected(self):
-        return self._disconnectedSignal
-    
-    def loseConnection(self):
-        self.transport.loseConnection()
-        
-    def handlerStarted(self, messageId):
-        # do not process any more messages if we're disconnecting
-        if self._disconnecting:
-            message = 'Ignoring message %s (disconnecting)' % messageId
-            self.log.debug(message)
-            raise StompConnectionError(message)
-        
-        if messageId in self._activeHandlers:
-            raise StompProtocolError('Duplicate message id %s received. Message is already in progress.' % messageId)
-        self._activeHandlers.add(messageId)
-        self.log.debug('Handler started for message: %s' % messageId)
-    
-    def handlerFinished(self, messageId):
-        self._activeHandlers.remove(messageId)
-        self.log.debug('Handler complete for message: %s' % messageId)
-        self._finish()
-
-    #
-    # Private helper methods
-    #
-    def _connectionLost(self, reason):
-        self.log.debug('Disconnected: %s' % reason.getErrorMessage())
-        
-        if not self._disconnectedSignal:
-            return
-        if not self._disconnecting:
-            self._disconnectReason = StompConnectionError('Unexpected connection loss')
-        if self._disconnectReason:
-            #self.log.debug('Calling disconnected deferred errback: %s' % self._disconnectReason)
-            self._disconnectedSignal.errback(self._disconnectReason)
-            self._disconnectReason = None
-        else:
-            #self.log.debug('Calling disconnected deferred callback')
-            self._disconnectedSignal.callback(None)
-        self._disconnectedSignal = None
-            
-    def _finish(self):
-        # if someone's waiting to know that all handlers are done, call them back
-        if self._activeHandlers or (not self._allHandlersFinishedSignal):
-            return
-        self._allHandlersFinishedSignal.callback(self)
-        self._allHandlersFinishedSignal = None
-    
-    def _finishHandlers(self):
-        """Return a Deferred to signal when all requests in process are complete
-        """
-        if self._activeHandlers:
-            self._allHandlersFinishedSignal = defer.Deferred()
-            return self._allHandlersFinishedSignal
-    
-    def _createHandler(self, handler):
-        @functools.wraps(handler)
-        def _handler(_, result):
-            return handler(self, result)
-        return _handler
-
-class StompFactory(Factory):
-    protocol = StompProtocol
-    
-    def __init__(self, onFrame, onDisconnect):
-        self.onFrame = onFrame
-        self.onDisconnect = onDisconnect
-        
-    def buildProtocol(self, _):
-        protocol = self.protocol(self.onFrame, self.onDisconnect)
-        protocol.factory = self
-        return protocol
