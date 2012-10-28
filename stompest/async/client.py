@@ -61,30 +61,35 @@ class Stomp(object):
         # signals
         self._connectedSignal = None
         
+    # STOMP commands
+    
     @exclusive
     @defer.inlineCallbacks
     def connect(self, headers=None, versions=None, host=None):
-        if self.__protocol:
-            defer.returnValue(self)
+        frame = self.session.connect(self._config.login, self._config.passcode, headers, versions, host)
         
-        protocol = None
         try:
-            protocol = yield self._connect()
-            frame = self.session.connect(self._config.login, self._config.passcode, headers, versions, host)
-            protocol.send(frame)
-            self._connectedSignal = defer.Deferred()
-            timeout = self._connectedTimeout and task.deferLater(reactor, self._connectedTimeout, self._connectedSignal.cancel)
-            protocol = yield self._connectedSignal
-            timeout and timeout.cancel()
+            self._protocol
+        except:
+            pass
+        else:
+            raise StompConnectionError('Already connected')
+        
+        try:
+            protocol = yield self._connectEndpoint()
         except Exception as e:
-            self.log.error('Connect failed [%s]' % e)
-            if protocol:
-                protocol.loseConnection()
+            self.log.error('Endpoint connect failed')
             raise
-        finally:
-            self._connectedSignal = None
+
+        try:
+            protocol.send(frame)
+            yield self._waitConnected()
+        except Exception as e:
+            self.log.error('STOMP session connect failed [%s]' % e)
+            protocol.loseConnection()
+            raise
+        
         self._protocol = protocol
-        self.disconnected.addBoth(self._handleDisconnected)
         self._replay()
         defer.returnValue(self)
     
@@ -94,15 +99,6 @@ class Stomp(object):
         yield self._protocol.disconnect(failure)
         self._protocol = None
         defer.returnValue(None)
-    
-    @property
-    def disconnected(self):
-        return self._protocol and self._protocol.disconnected
-    
-    # STOMP commands
-    
-    def sendFrame(self, frame):
-        self._protocol.send(frame)
     
     def send(self, destination, body='', headers=None, receipt=None):
         self._protocol.send(commands.send(destination, body, headers, receipt))
@@ -151,10 +147,32 @@ class Stomp(object):
             raise
         protocol.send(frame)
     
+    # protocol
+    
+    @property
+    def _protocol(self):
+        protocol = self.__protocol
+        if not protocol:
+            raise StompConnectionError('Not connected')
+        return protocol
+        
+    @_protocol.setter
+    def _protocol(self, protocol):
+        self.__protocol = protocol
+        if protocol:
+            protocol.disconnected.addBoth(self._handleDisconnected)
+    
+    @property
+    def disconnected(self):
+        return self._protocol and self._protocol.disconnected
+    
+    def sendFrame(self, frame):
+        self._protocol.send(frame)
+    
     # private methods
     
     @defer.inlineCallbacks
-    def _connect(self):
+    def _connectEndpoint(self):
         for (broker, delay) in self._failover:
             yield self._sleep(delay)
             endpoint = self.endpointFactory(broker, self._connectTimeout)
@@ -187,16 +205,15 @@ class Stomp(object):
         self.log.debug('Delaying connect attempt for %d ms' % int(delay * 1000))
         return task.deferLater(reactor, delay, lambda: None)
     
-    @property
-    def _protocol(self):
-        protocol = self.__protocol
-        if not protocol:
-            raise StompConnectionError('Not connected')
-        return protocol
-        
-    @_protocol.setter
-    def _protocol(self, protocol):
-        self.__protocol = protocol
+    @defer.inlineCallbacks
+    def _waitConnected(self):
+        try:
+            self._connectedSignal = defer.Deferred()
+            timeout = self._connectedTimeout and task.deferLater(reactor, self._connectedTimeout, self._connectedSignal.cancel)
+            yield self._connectedSignal
+            timeout and timeout.cancel()
+        finally:
+            self._connectedSignal = None
     
     # callbacks for received STOMP frames
     
@@ -212,7 +229,7 @@ class Stomp(object):
         self.session.connected(frame)
         self.log.debug('Connected to stomp broker with session: %s' % self.session.id)
         protocol.onConnected()
-        self._connectedSignal.callback(protocol)
+        self._connectedSignal.callback(None)
 
     def _onError(self, protocol, frame):
         if self._connectedSignal:
