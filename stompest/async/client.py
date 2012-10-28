@@ -24,7 +24,7 @@ from stompest.error import StompConnectionError, StompFrameError, StompProtocolE
 from stompest.protocol import commands, StompSession, StompSpec
 from stompest.util import cloneFrame
 
-from .protocol import StompFailoverProtocolCreator
+from .protocol import StompProtocolCreator
 from .util import exclusive
 
 LOG_CATEGORY = 'stompest.async.client'
@@ -36,7 +36,7 @@ class Stomp(object):
         self._config = config
         self.session = StompSession(self._config.version)
         self._protocol = None
-        self._protocolCreator = StompFailoverProtocolCreator(self._config.uri)
+        self._protocolCreator = StompProtocolCreator(self._config.uri)
         
         self._connectTimeout = connectTimeout
         self._connectedTimeout = connectedTimeout
@@ -72,20 +72,18 @@ class Stomp(object):
             raise StompConnectionError('Already connected')
         
         try:
-            protocol = yield self._protocolCreator.connect(self._connectTimeout, self._onFrame, self._onDisconnect)
+            self._protocol = yield self._protocolCreator.connect(self._connectTimeout, self._onFrame, self._onDisconnect)
         except Exception as e:
             self.log.error('Endpoint connect failed')
             raise
 
         try:
-            protocol.send(frame)
+            self.sendFrame(frame)
             yield self._waitConnected()
         except Exception as e:
             self.log.error('STOMP session connect failed [%s]' % e)
-            protocol.loseConnection()
-            raise
+            yield self.disconnect(e)
         
-        self._protocol = protocol
         self._replay()
         defer.returnValue(self)
     
@@ -158,7 +156,6 @@ class Stomp(object):
     def _onConnected(self, protocol, frame):
         self.session.connected(frame)
         self.log.debug('Connected to stomp broker with session: %s' % self.session.id)
-        protocol.onConnected()
         self._connectedSignal.callback(None)
 
     def _onError(self, protocol, frame):

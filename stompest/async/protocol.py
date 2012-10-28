@@ -56,7 +56,7 @@ class StompProtocol(Protocol):
         self._parser = StompParser()
         
         self._disconnecting = False
-        self._disconnectedSignal = None
+        self._disconnectedSignal = defer.Deferred()
         self._disconnectReason = None
         
         # keep track of active handlers for graceful disconnect
@@ -69,9 +69,6 @@ class StompProtocol(Protocol):
     def send(self, frame):
         self.log.debug('Sending %s' % frame.info())
         self.transport.write(str(frame))
-    
-    def onConnected(self):
-        self._disconnectedSignal = defer.Deferred()
     
     def disconnect(self, failure=None):
         """After finishing outstanding requests, notify that we may be disconnected
@@ -154,23 +151,25 @@ class StompFactory(Factory):
         protocol.factory = self
         return protocol
 
-class StompFailoverProtocolCreator(object):
+class StompProtocolCreator(object):
+    protocolFactory = StompFactory
+    
+    @classmethod
+    def endpointFactory(cls, broker, timeout=None):
+        return endpointFactory(broker, timeout)
+    
     def __init__(self, uri):
         self._failover = StompFailoverProtocol(uri)
         self.log = logging.getLogger(LOG_CATEGORY)
 
-    @classmethod
-    def factory(cls, broker, timeout=None):
-        return endpointFactory(broker, timeout)
-    
     @defer.inlineCallbacks
     def connect(self, timeout, *args, **kwargs):
         for (broker, delay) in self._failover:
             yield self._sleep(delay)
-            endpoint = self.factory(broker, timeout)
+            endpoint = self.endpointFactory(broker, timeout)
             self.log.debug('Connecting to %(host)s:%(port)s ...' % broker)
             try:
-                protocol = yield endpoint.connect(StompFactory(*args, **kwargs))
+                protocol = yield endpoint.connect(self.protocolFactory(*args, **kwargs))
             except Exception as e:
                 self.log.warning('%s [%s]' % ('Could not connect to %(host)s:%(port)d' % broker, e))
             else:
