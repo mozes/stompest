@@ -23,7 +23,7 @@ from twisted.internet.protocol import Factory, Protocol
 from stompest.protocol import StompFailoverProtocol, StompParser
 from stompest.error import StompConnectionError, StompProtocolError
 
-from .util import endpointFactory
+from .util import endpointFactory, exclusive
 
 LOG_CATEGORY = 'stompest.async.protocol'
 
@@ -70,6 +70,8 @@ class StompProtocol(Protocol):
         self.log.debug('Sending %s' % frame.info())
         self.transport.write(str(frame))
     
+    @exclusive
+    @defer.inlineCallbacks
     def disconnect(self, failure=None):
         """After finishing outstanding requests, notify that we may be disconnected
         and return Deferred for caller that will be triggered when disconnect is complete
@@ -79,8 +81,13 @@ class StompProtocol(Protocol):
         if not self._disconnecting:
             self._disconnecting = True
             # notify that we are ready to disconnect after outstanding messages are ack'ed
-            defer.maybeDeferred(self._finishHandlers).addBoth(lambda _: self._onDisconnect(self, self._disconnectReason))
-        return self._disconnectedSignal
+            try:
+                yield self._finishHandlers()
+            except Exception as e:
+                self.log.error('Could not finish active handlers [%s]' % e)
+            self._onDisconnect(self, self._disconnectReason)
+        result = yield self._disconnectedSignal
+        defer.returnValue(result)
     
     @property
     def disconnected(self):
@@ -112,10 +119,8 @@ class StompProtocol(Protocol):
     def _connectionLost(self, reason):
         self.log.debug('Disconnected: %s' % reason.getErrorMessage())
         
-        if not self._disconnectedSignal:
-            return
         if not self._disconnecting:
-            self._disconnectReason = StompConnectionError('Unexpected connection loss')
+            self._disconnectReason = StompConnectionError('Unexpected connection loss [%s]' % reason)
         if self._disconnectReason:
             #self.log.debug('Calling disconnected deferred errback: %s' % self._disconnectReason)
             self._disconnectedSignal.errback(self._disconnectReason)
