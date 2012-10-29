@@ -18,7 +18,7 @@ Copyright 2011, 2012 Mozes, Inc.
 import functools
 import logging
 
-from twisted.internet import defer, reactor, task
+from twisted.internet import defer
 
 from stompest.error import StompConnectionError, StompFrameError, StompProtocolError
 from stompest.protocol import commands, StompSession, StompSpec
@@ -32,7 +32,7 @@ LOG_CATEGORY = 'stompest.async.client'
 class Stomp(object):
     DEFAULT_ACK_MODE = 'auto'
     
-    def __init__(self, config, connectTimeout=None, connectedTimeout=None, onMessageFailed=None):
+    def __init__(self, config, connectTimeout=None, connectedTimeout=None, disconnectTimeout=None, onMessageFailed=None):
         self._config = config
         self.session = StompSession(self._config.version)
         self._protocol = None
@@ -40,6 +40,7 @@ class Stomp(object):
         
         self._connectTimeout = connectTimeout
         self._connectedTimeout = connectedTimeout
+        self._disconnectTimeout = disconnectTimeout
         
         self.__onMessageFailed = onMessageFailed
         
@@ -69,7 +70,7 @@ class Stomp(object):
             raise StompConnectionError('Already connected')
         
         try:
-            self._protocol = yield self._protocolCreator.connect(self._connectTimeout, self._onFrame, self._onDisconnect)
+            self._protocol = yield self._protocolCreator.connect(self._connectTimeout, self._disconnectTimeout, self._onFrame, self._onDisconnect)
         except Exception as e:
             self.log.error('Endpoint connect failed')
             raise
@@ -174,12 +175,17 @@ class Stomp(object):
             token = self.session.message(frame)
             subscription = self._subscriptions[token]
         except:
-            self.log.warning('[%s] No handler found: ignoring %s' % (messageId, frame.info()))
+            self.log.warning('[%s] Ignoring message (no handler found): %s' % (messageId, frame.info()))
             return
         
         try:
             protocol.handlerStarted(messageId)
-        except StompConnectionError: # disconnecting
+        except StompConnectionError as disconnecting:
+            self.log.info(disconnecting)
+            try:
+                self.nack(frame)
+            except:
+                pass
             return
         
         # call message handler (can return deferred to be async)
@@ -188,7 +194,7 @@ class Stomp(object):
             if subscription['ack']:
                 self.ack(frame)
         except Exception as e:
-            self.log.error('Error in message handler: %s' % e)
+            self.log.error('[%s] Error in message handler: %s' % (messageId, e))
             try:
                 self._onMessageFailed(e, frame, subscription['errorDestination'])
                 if subscription['ack']:

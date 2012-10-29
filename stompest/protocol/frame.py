@@ -38,8 +38,10 @@ class StompFrame(object):
         return all(getattr(self, key) == getattr(other, key) for key in ('command', 'headers', 'body'))
     
     def info(self):
+        headers = self.headers and 'headers=%s' % self.headers
         body = self.body[:self.INFO_LENGTH]
         if body not in self.body:
-            body = '%s...' % body 
-        body = body and (', body=%s' % repr(body))
-        return '%s frame [headers=%s%s]' % (self.command, self.headers, body)
+            body = '%s...' % body
+        body = body and ('body=%s' % repr(body))
+        info = ', '.join(i for i in (headers, body) if i)
+        return '%s frame%s' % (self.command, info and (' [%s]' % info))

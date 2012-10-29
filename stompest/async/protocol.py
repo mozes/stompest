@@ -46,9 +46,10 @@ class StompProtocol(Protocol):
             
             self._onFrame(self, frame)
     
-    def __init__(self, onFrame, onDisconnect):
+    def __init__(self, disconnectTimeout, onFrame, onDisconnect):
         self._onFrame = onFrame
         self._onDisconnect = onDisconnect
+        self._disconnectTimeout = disconnectTimeout
         
         # leave the used logger public in case the user wants to override it
         self.log = logging.getLogger(LOG_CATEGORY)
@@ -79,7 +80,9 @@ class StompProtocol(Protocol):
             
         # notify that we are ready to disconnect after outstanding messages are ack'ed
         if self._activeHandlers:
-            yield self.disconnect.wait()
+            timeout = self._disconnectTimeout
+            self.log.info('Waiting for outstanding message handlers to finish ... [timeout=%s]' % timeout)
+            yield self.disconnect.wait(timeout)
         
         self._onDisconnect(self, self._disconnectReason)
         result = yield self._disconnectedSignal
@@ -95,9 +98,7 @@ class StompProtocol(Protocol):
     def handlerStarted(self, messageId):
         # do not process any more messages if we're disconnecting
         if self.disconnect.running:
-            message = 'Ignoring message %s (disconnecting)' % messageId
-            self.log.debug(message)
-            raise StompConnectionError(message)
+            raise StompConnectionError('[%s] Ignoring message (disconnecting)' % messageId)
         
         if messageId in self._activeHandlers:
             raise StompProtocolError('Duplicate message id %s received. Message is already in progress.' % messageId)
@@ -113,7 +114,7 @@ class StompProtocol(Protocol):
     # Private helper methods
     #
     def _connectionLost(self, reason):
-        self.log.debug('Disconnected: %s' % reason.getErrorMessage())
+        self.log.info('Disconnected: %s' % reason.getErrorMessage())
         if not self.disconnect.running:
             self._disconnectReason = StompConnectionError('Unexpected connection loss [%s]' % reason)
         if self._disconnectReason:
@@ -133,12 +134,12 @@ class StompProtocol(Protocol):
 class StompFactory(Factory):
     protocol = StompProtocol
     
-    def __init__(self, onFrame, onDisconnect):
-        self.onFrame = onFrame
-        self.onDisconnect = onDisconnect
+    def __init__(self, *args, **kwargs):
+        self.args = args
+        self.kwargs = kwargs
         
     def buildProtocol(self, _):
-        protocol = self.protocol(self.onFrame, self.onDisconnect)
+        protocol = self.protocol(*self.args, **self.kwargs)
         protocol.factory = self
         return protocol
 
@@ -158,7 +159,7 @@ class StompProtocolCreator(object):
         for (broker, delay) in self._failover:
             yield self._sleep(delay)
             endpoint = self.endpointFactory(broker, timeout)
-            self.log.debug('Connecting to %(host)s:%(port)s ...' % broker)
+            self.log.info('Connecting to %(host)s:%(port)s ...' % broker)
             try:
                 protocol = yield endpoint.connect(self.protocolFactory(*args, **kwargs))
             except Exception as e:
@@ -169,5 +170,5 @@ class StompProtocolCreator(object):
     def _sleep(self, delay):
         if not delay:
             return
-        self.log.debug('Delaying connect attempt for %d ms' % int(delay * 1000))
+        self.log.info('Delaying connect attempt for %d ms' % int(delay * 1000))
         return task.deferLater(reactor, delay, lambda: None)
