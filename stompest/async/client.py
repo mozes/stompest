@@ -86,6 +86,9 @@ class Stomp(object):
     def disconnect(self, failure=None, timeout=None):
         try:
             yield self._protocol.disconnect(failure, timeout)
+        except Exception as e:
+            self.log.error(e)
+            raise
         finally:
             self._protocol = None
         defer.returnValue(None)

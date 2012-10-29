@@ -56,6 +56,11 @@ def exclusive(f):
         defer.returnValue(result)
     _exclusive.wait = wait
     
+    def cancel():
+        _exclusive.waiting.cancel()
+        _exclusive.waiting = None
+    _exclusive.cancel = cancel
+    
     return _exclusive
 
 def sendToErrorDestinationAndRaise(client, failure, frame, errorDestination):

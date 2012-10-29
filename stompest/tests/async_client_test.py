@@ -190,6 +190,29 @@ class AsyncClientDisconnectTimeoutTestCase(AsyncClientBaseTestCase):
         self.wait.callback(None)
         
     @defer.inlineCallbacks
+    def test_disconnect_connection_lost_unexpectedly(self):
+        port = self.connections[0].getHost().port
+        config = StompConfig(uri='tcp://localhost:%d' % port, version='1.1')
+        client = Stomp(config)
+        
+        yield client.connect()
+        
+        self._got_message = defer.Deferred()
+        client.subscribe('/queue/bla', self._on_message, headers={'id': 4711}, ack=False) # we're acking the frames ourselves
+        yield self._got_message
+        
+        disconnected = client.disconnect()
+        client.send('/queue/fake', 'shutdown') # tell the broker to drop the connection
+        try:
+            yield disconnected
+        except StompConnectionError:
+            pass
+        else:
+            raise
+         
+        self.wait.callback(None)
+        
+    @defer.inlineCallbacks
     def _on_message(self, client, msg):
         client.nack(msg)
         self.wait = defer.Deferred()
