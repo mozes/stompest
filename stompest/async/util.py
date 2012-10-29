@@ -17,7 +17,7 @@ Copyright 2011 Mozes, Inc.
 """
 import functools
 
-from twisted.internet import defer, reactor, task
+from twisted.internet import reactor, task
 from twisted.internet.endpoints import clientFromString
 
 from stompest.error import StompStillRunningError
@@ -28,15 +28,18 @@ def endpointFactory(broker, timeout=None):
     return clientFromString(reactor, '%(protocol)s:host=%(host)s:port=%(port)d%(timeout)s' % locals())
 
 def exclusive(f):
+    def _cleanup(result, f):
+        f.running = False
+        return result
+    
     @functools.wraps(f)
     def _exclusive(*args, **kwargs):
-        if not _exclusive.running.called:
+        if _exclusive.running:
             raise StompStillRunningError('%s still running' % f.__name__)
-        _exclusive.running = task.deferLater(reactor, 0, f, *args, **kwargs)
-        return _exclusive.running
+        _exclusive.running = True
+        return task.deferLater(reactor, 0, f, *args, **kwargs).addCallbacks(_cleanup, _cleanup, callbackArgs=(_exclusive, ), errbackArgs=(_exclusive, ))
     
-    _exclusive.running = defer.Deferred()
-    _exclusive.running.callback(None)
+    _exclusive.running = False
     return _exclusive
 
 def sendToErrorDestinationAndRaise(client, failure, frame, errorDestination):

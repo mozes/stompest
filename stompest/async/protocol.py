@@ -118,7 +118,6 @@ class StompProtocol(Protocol):
     #
     def _connectionLost(self, reason):
         self.log.debug('Disconnected: %s' % reason.getErrorMessage())
-        
         if not self._disconnecting:
             self._disconnectReason = StompConnectionError('Unexpected connection loss [%s]' % reason)
         if self._disconnectReason:
