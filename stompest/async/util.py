@@ -41,9 +41,10 @@ def exclusive(f):
         _exclusive.result = defer.Deferred()
         _exclusive.waiting = None
         return result
+    _reload()
     
     @defer.inlineCallbacks
-    def wait(timeout):
+    def wait(timeout=None):
         try:
             _exclusive.waiting = defer.Deferred()
             timeout = timeout and task.deferLater(reactor, timeout, _exclusive.waiting.cancel)
@@ -52,9 +53,8 @@ def exclusive(f):
         finally:
             _exclusive.waiting = None
         defer.returnValue(result)
-        
-    _reload()
     _exclusive.wait = wait
+    
     return _exclusive
 
 def sendToErrorDestinationAndRaise(client, failure, frame, errorDestination):

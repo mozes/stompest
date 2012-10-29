@@ -60,7 +60,6 @@ class StompProtocol(Protocol):
         
         # keep track of active handlers for graceful disconnect
         self._activeHandlers = set()
-        self._allHandlersFinishedSignal = None
         
     #
     # user interface
@@ -77,11 +76,11 @@ class StompProtocol(Protocol):
         """
         if failure:
             self._disconnectReason = failure
+            
         # notify that we are ready to disconnect after outstanding messages are ack'ed
-        try:
-            yield self._finishHandlers()
-        except Exception as e:
-            self.log.error('Could not finish active handlers [%s]' % e)
+        if self._activeHandlers:
+            yield self.disconnect.wait()
+        
         self._onDisconnect(self, self._disconnectReason)
         result = yield self._disconnectedSignal
         defer.returnValue(result)
@@ -128,17 +127,8 @@ class StompProtocol(Protocol):
             
     def _finish(self):
         # if someone's waiting to know that all handlers are done, call them back
-        if self._activeHandlers or (not self._allHandlersFinishedSignal):
-            return
-        self._allHandlersFinishedSignal.callback(self)
-        self._allHandlersFinishedSignal = None
-    
-    def _finishHandlers(self):
-        """Return a Deferred to signal when all requests in process are complete
-        """
-        if self._activeHandlers:
-            self._allHandlersFinishedSignal = defer.Deferred()
-            return self._allHandlersFinishedSignal
+        if self.disconnect.waiting and not self._activeHandlers:
+            self.disconnect.waiting.callback(self)
     
 class StompFactory(Factory):
     protocol = StompProtocol
