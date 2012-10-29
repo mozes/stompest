@@ -17,7 +17,7 @@ Copyright 2011 Mozes, Inc.
 """
 import functools
 
-from twisted.internet import reactor, task
+from twisted.internet import defer, reactor, task
 from twisted.internet.endpoints import clientFromString
 
 from stompest.error import StompStillRunningError
@@ -28,18 +28,33 @@ def endpointFactory(broker, timeout=None):
     return clientFromString(reactor, '%(protocol)s:host=%(host)s:port=%(port)d%(timeout)s' % locals())
 
 def exclusive(f):
-    def _cleanup(result, f):
-        f.running = False
-        return result
-    
     @functools.wraps(f)
     def _exclusive(*args, **kwargs):
         if _exclusive.running:
             raise StompStillRunningError('%s still running' % f.__name__)
         _exclusive.running = True
-        return task.deferLater(reactor, 0, f, *args, **kwargs).addCallbacks(_cleanup, _cleanup, callbackArgs=(_exclusive, ), errbackArgs=(_exclusive, ))
+        task.deferLater(reactor, 0, f, *args, **kwargs).addBoth(_reload).chainDeferred(_exclusive.result)
+        return _exclusive.result
     
-    _exclusive.running = False
+    def _reload(result=None):
+        _exclusive.running = False
+        _exclusive.result = defer.Deferred()
+        _exclusive.waiting = None
+        return result
+    
+    @defer.inlineCallbacks
+    def wait(timeout):
+        try:
+            _exclusive.waiting = defer.Deferred()
+            timeout = timeout and task.deferLater(reactor, timeout, _exclusive.waiting.cancel)
+            result = yield _exclusive.waiting
+            timeout and timeout.cancel()
+        finally:
+            _exclusive.waiting = None
+        defer.returnValue(result)
+        
+    _reload()
+    _exclusive.wait = wait
     return _exclusive
 
 def sendToErrorDestinationAndRaise(client, failure, frame, errorDestination):

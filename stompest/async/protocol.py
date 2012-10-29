@@ -55,7 +55,6 @@ class StompProtocol(Protocol):
         
         self._parser = StompParser()
         
-        self._disconnecting = False
         self._disconnectedSignal = defer.Deferred()
         self._disconnectReason = None
         
@@ -78,14 +77,12 @@ class StompProtocol(Protocol):
         """
         if failure:
             self._disconnectReason = failure
-        if not self._disconnecting:
-            self._disconnecting = True
-            # notify that we are ready to disconnect after outstanding messages are ack'ed
-            try:
-                yield self._finishHandlers()
-            except Exception as e:
-                self.log.error('Could not finish active handlers [%s]' % e)
-            self._onDisconnect(self, self._disconnectReason)
+        # notify that we are ready to disconnect after outstanding messages are ack'ed
+        try:
+            yield self._finishHandlers()
+        except Exception as e:
+            self.log.error('Could not finish active handlers [%s]' % e)
+        self._onDisconnect(self, self._disconnectReason)
         result = yield self._disconnectedSignal
         defer.returnValue(result)
     
@@ -98,7 +95,7 @@ class StompProtocol(Protocol):
         
     def handlerStarted(self, messageId):
         # do not process any more messages if we're disconnecting
-        if self._disconnecting:
+        if self.disconnect.running:
             message = 'Ignoring message %s (disconnecting)' % messageId
             self.log.debug(message)
             raise StompConnectionError(message)
@@ -118,7 +115,7 @@ class StompProtocol(Protocol):
     #
     def _connectionLost(self, reason):
         self.log.debug('Disconnected: %s' % reason.getErrorMessage())
-        if not self._disconnecting:
+        if not self.disconnect.running:
             self._disconnectReason = StompConnectionError('Unexpected connection loss [%s]' % reason)
         if self._disconnectReason:
             #self.log.debug('Calling disconnected deferred errback: %s' % self._disconnectReason)

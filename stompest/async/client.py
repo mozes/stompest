@@ -53,9 +53,6 @@ class Stomp(object):
         }
         self._subscriptions = {}
         
-        # signals
-        self._connectedSignal = None
-     
     #   
     # STOMP commands
     #
@@ -79,7 +76,7 @@ class Stomp(object):
 
         try:
             self.sendFrame(frame)
-            yield self._waitConnected()
+            yield self.connect.wait(self._connectedTimeout)
         except Exception as e:
             self.log.error('STOMP session connect failed [%s]' % e)
             yield self.disconnect(e)
@@ -156,11 +153,11 @@ class Stomp(object):
     def _onConnected(self, protocol, frame):
         self.session.connected(frame)
         self.log.debug('Connected to stomp broker with session: %s' % self.session.id)
-        self._connectedSignal.callback(None)
+        self.connect.waiting.callback(None)
 
     def _onError(self, protocol, frame):
-        if self._connectedSignal:
-            self._connectedSignal.errback(StompProtocolError('While trying to connect, received %s' % frame.info()))
+        if self.connect.waiting:
+            self.connect.waiting.errback(StompProtocolError('While trying to connect, received %s' % frame.info()))
             return
 
         #Workaround for AMQ < 5.2
@@ -268,12 +265,3 @@ class Stomp(object):
             self.log.debug('Replaying subscription: %s' % headers)
             self.subscribe(destination, headers=headers, **context)
     
-    @defer.inlineCallbacks
-    def _waitConnected(self):
-        try:
-            self._connectedSignal = defer.Deferred()
-            timeout = self._connectedTimeout and task.deferLater(reactor, self._connectedTimeout, self._connectedSignal.cancel)
-            yield self._connectedSignal
-            timeout and timeout.cancel()
-        finally:
-            self._connectedSignal = None
