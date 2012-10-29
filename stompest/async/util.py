@@ -47,7 +47,8 @@ def exclusive(f):
     def wait(timeout=None):
         try:
             _exclusive.waiting = defer.Deferred()
-            timeout = timeout and task.deferLater(reactor, timeout, _exclusive.waiting.cancel)
+            if timeout is not None:
+                timeout = task.deferLater(reactor, timeout, _exclusive.waiting.cancel)
             result = yield _exclusive.waiting
             timeout and timeout.cancel()
         finally:

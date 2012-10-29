@@ -18,6 +18,7 @@ Copyright 2011, 2012 Mozes, Inc.
 import logging
 
 from twisted.internet import defer, reactor, task
+from twisted.internet.defer import CancelledError
 from twisted.internet.protocol import Factory, Protocol
 
 from stompest.protocol import StompFailoverProtocol, StompParser
@@ -46,10 +47,9 @@ class StompProtocol(Protocol):
             
             self._onFrame(self, frame)
     
-    def __init__(self, disconnectTimeout, onFrame, onDisconnect):
+    def __init__(self, onFrame, onDisconnect):
         self._onFrame = onFrame
         self._onDisconnect = onDisconnect
-        self._disconnectTimeout = disconnectTimeout
         
         # leave the used logger public in case the user wants to override it
         self.log = logging.getLogger(LOG_CATEGORY)
@@ -71,7 +71,7 @@ class StompProtocol(Protocol):
     
     @exclusive
     @defer.inlineCallbacks
-    def disconnect(self, failure=None):
+    def disconnect(self, failure=None, timeout=None):
         """After finishing outstanding requests, notify that we may be disconnected
         and return Deferred for caller that will be triggered when disconnect is complete
         """
@@ -80,9 +80,11 @@ class StompProtocol(Protocol):
             
         # notify that we are ready to disconnect after outstanding messages are ack'ed
         if self._activeHandlers:
-            timeout = self._disconnectTimeout
             self.log.info('Waiting for outstanding message handlers to finish ... [timeout=%s]' % timeout)
-            yield self.disconnect.wait(timeout)
+            try:
+                yield self.disconnect.wait(timeout)
+            except CancelledError:
+                self.log.warning('Handlers did not finish in time. Force disconnect ...')
         
         self._onDisconnect(self, self._disconnectReason)
         result = yield self._disconnectedSignal

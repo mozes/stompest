@@ -27,9 +27,9 @@ LOG_CATEGORY = 'stompest.tests.broker_simulator'
 class BlackHoleStompServer(Protocol):
     delimiter = StompSpec.FRAME_DELIMITER
     
-    def __init__(self):
+    def __init__(self, version=None):
         self.log = logging.getLogger(LOG_CATEGORY)
-        self.resetParser()
+        self.resetParser(version)
         self.commandMap = {
             StompSpec.CONNECT: self.handleConnect,
             StompSpec.DISCONNECT: self.handleDisconnect,
@@ -37,6 +37,8 @@ class BlackHoleStompServer(Protocol):
             StompSpec.SUBSCRIBE: self.handleSubscribe,
             StompSpec.ACK: self.handleAck,
         }
+        if version == '1.1':
+            self.commandMap[StompSpec.NACK] = self.handleNack
 
     def connectionMade(self):
         self.log.debug('Connection made')
@@ -59,8 +61,8 @@ class BlackHoleStompServer(Protocol):
                 raise StompFrameError('Unknown STOMP command: %s' % repr(frame))
             self.commandMap[frame.command](frame)
 
-    def resetParser(self):
-        self._parser = StompParser()
+    def resetParser(self, version=None):
+        self._parser = StompParser(version)
 
     def getFrame(self, command, headers, body):
         return str(StompFrame(command, headers, body))
@@ -78,6 +80,9 @@ class BlackHoleStompServer(Protocol):
         pass
     
     def handleAck(self, frame):
+        pass
+
+    def handleNack(self, frame):
         pass
 
 class ErrorOnConnectStompServer(BlackHoleStompServer):
@@ -100,12 +105,15 @@ class ErrorOnSendStompServer(BlackHoleStompServer):
         self.transport.write(self.getFrame(StompSpec.ERROR, {}, 'Fake error message'))
 
 class RemoteControlViaFrameStompServer(BlackHoleStompServer):
+    def __init__(self):
+        BlackHoleStompServer.__init__(self, version='1.1')
+        
     def handleConnect(self, frame):
         headers = {}
         if StompSpec.ACCEPT_VERSION_HEADER not in frame.headers:
             headers[StompSpec.SESSION_HEADER] = 'YMCA'
         else:
-            headers = {'%s:1.1' % StompSpec.VERSION_HEADER}
+            headers = {StompSpec.VERSION_HEADER: '1.1'}
         self.transport.write(self.getFrame(StompSpec.CONNECTED, headers, ''))
 
     def handleDisconnect(self, frame):

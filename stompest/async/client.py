@@ -32,15 +32,11 @@ LOG_CATEGORY = 'stompest.async.client'
 class Stomp(object):
     DEFAULT_ACK_MODE = 'auto'
     
-    def __init__(self, config, connectTimeout=None, connectedTimeout=None, disconnectTimeout=None, onMessageFailed=None):
+    def __init__(self, config, onMessageFailed=None):
         self._config = config
         self.session = StompSession(self._config.version)
         self._protocol = None
         self._protocolCreator = StompProtocolCreator(self._config.uri)
-        
-        self._connectTimeout = connectTimeout
-        self._connectedTimeout = connectedTimeout
-        self._disconnectTimeout = disconnectTimeout
         
         self.__onMessageFailed = onMessageFailed
         
@@ -59,7 +55,7 @@ class Stomp(object):
     #
     @exclusive
     @defer.inlineCallbacks
-    def connect(self, headers=None, versions=None, host=None):
+    def connect(self, headers=None, versions=None, host=None, connectTimeout=None, connectedTimeout=None):
         frame = self.session.connect(self._config.login, self._config.passcode, headers, versions, host)
         
         try:
@@ -70,14 +66,14 @@ class Stomp(object):
             raise StompConnectionError('Already connected')
         
         try:
-            self._protocol = yield self._protocolCreator.connect(self._connectTimeout, self._disconnectTimeout, self._onFrame, self._onDisconnect)
+            self._protocol = yield self._protocolCreator.connect(connectTimeout, self._onFrame, self._onDisconnect)
         except Exception as e:
             self.log.error('Endpoint connect failed')
             raise
 
         try:
             self.sendFrame(frame)
-            yield self.connect.wait(self._connectedTimeout)
+            yield self.connect.wait(connectedTimeout)
         except Exception as e:
             self.log.error('STOMP session connect failed [%s]' % e)
             yield self.disconnect(e)
@@ -87,9 +83,9 @@ class Stomp(object):
     
     @exclusive
     @defer.inlineCallbacks
-    def disconnect(self, failure=None):
+    def disconnect(self, failure=None, timeout=None):
         try:
-            yield self._protocol.disconnect(failure)
+            yield self._protocol.disconnect(failure, timeout)
         finally:
             self._protocol = None
         defer.returnValue(None)

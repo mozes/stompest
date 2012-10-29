@@ -214,5 +214,5 @@ def _checkHeader(frame, header, version=None):
     try:
         return frame.headers[header]
     except KeyError:
-        version = ('in version %s' % version) if version else ''
+        version = (' in version %s' % version) if version else ''
         raise StompProtocolError('Invalid %s frame (%s header mandatory%s) [headers=%s]' % (frame.command, header, version, frame.headers))
