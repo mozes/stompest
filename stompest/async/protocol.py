@@ -108,7 +108,9 @@ class StompProtocol(Protocol):
     def handlerFinished(self, messageId):
         self._activeHandlers.remove(messageId)
         self.log.debug('Handler complete for message: %s' % messageId)
-        self._finish()
+        if self.disconnect.waiting and not self._activeHandlers:
+            self.log.debug('All handlers complete. Resuming disconnect ...')
+            self.disconnect.waiting.callback(self)
 
     #
     # Private helper methods
@@ -126,11 +128,6 @@ class StompProtocol(Protocol):
             self._disconnectedSignal.callback(None)
         self._disconnectedSignal = None
             
-    def _finish(self):
-        # if someone's waiting to know that all handlers are done, call them back
-        if self.disconnect.waiting and not self._activeHandlers:
-            self.disconnect.waiting.callback(self)
-    
 class StompFactory(Factory):
     protocol = StompProtocol
     
