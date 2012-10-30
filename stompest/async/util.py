@@ -21,15 +21,15 @@ import functools
 from twisted.internet import defer, reactor, task
 from twisted.internet.endpoints import clientFromString
 
-from stompest.error import StompStillRunningError, StompProtocolError
+from stompest.error import StompStillRunningError
 
 LOG_CATEGORY = 'stompest.async.util'
 
 class InFlightOperations(object):
-    def __init__(self, info):
+    def __init__(self, info, keyError=KeyError):
         self._info = info
+        self._keyError = keyError
         self._keys = set()
-    
         self.waiting = None
         
     @contextlib.contextmanager
@@ -66,7 +66,7 @@ class InFlightOperations(object):
     
     def _start(self, key):
         if key in self._keys:
-            raise StompProtocolError('[%s] %s already in progress.' % (key, self._info))
+            raise self._keyError('[%s] %s already in progress.' % (key, self._info))
         self._keys.add(key)
         
     def _finish(self, key):

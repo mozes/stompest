@@ -52,7 +52,7 @@ class Stomp(object):
         self._subscriptions = {}
 
         # keep track of active handlers for graceful disconnect
-        self._activeHandlers = InFlightOperations('Message handler')
+        self._activeHandlers = InFlightOperations('Message handler', keyError=StompProtocolError)
                         
     #   
     # STOMP commands
