@@ -26,7 +26,7 @@ from stompest.protocol import commands, StompSession, StompSpec
 from stompest.util import cloneFrame
 
 from .protocol import StompProtocolCreator
-from .util import ActiveHandlers, exclusive
+from .util import InFlightOperations, exclusive
 
 LOG_CATEGORY = 'stompest.async.client'
 
@@ -52,7 +52,7 @@ class Stomp(object):
         self._subscriptions = {}
 
         # keep track of active handlers for graceful disconnect
-        self._activeHandlers = ActiveHandlers()
+        self._activeHandlers = InFlightOperations('Message handler')
                         
     #   
     # STOMP commands

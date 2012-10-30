@@ -25,26 +25,28 @@ from stompest.error import StompStillRunningError, StompProtocolError
 
 LOG_CATEGORY = 'stompest.async.util'
 
-class ActiveHandlers(object):
-    def __init__(self):
-        self._handlers = set()
-        self.waiting = None
+class InFlightOperations(object):
+    def __init__(self, info):
+        self._info = info
+        self._keys = set()
     
+        self.waiting = None
+        
     @contextlib.contextmanager
-    def __call__(self, handler, log=None):
-        self._start(handler)
-        log and log.debug('[%s] Handler started.' % handler)
+    def __call__(self, key, log=None):
+        self._start(key)
+        log and log.debug('[%s] %s started.' % (key, self._info))
         try:
             yield
         except Exception as e:
-            log and log.error('[%s] Handler failed: %s' % (handler, e))
+            log and log.error('[%s] %s failed: %s' % (key, self._info, e))
             raise
         finally:
-            self._finish(handler)
-        log and log.debug('[%s] Handler complete.' % handler)
+            self._finish(key)
+        log and log.debug('[%s] %s complete.' % (key, self._info))
         
     def __nonzero__(self):
-        return bool(self._handlers)
+        return bool(self._keys)
         
     def cancel(self):
         self.waiting.cancel()
@@ -62,13 +64,13 @@ class ActiveHandlers(object):
             self.waiting = None
         defer.returnValue(result)
     
-    def _start(self, handler):
-        if handler in self._handlers:
-            raise StompProtocolError('[%s] Handler already in progress.' % handler)
-        self._handlers.add(handler)
+    def _start(self, key):
+        if key in self._keys:
+            raise StompProtocolError('[%s] %s already in progress.' % (key, self._info))
+        self._keys.add(key)
         
-    def _finish(self, handler):
-        self._handlers.remove(handler)
+    def _finish(self, key):
+        self._keys.remove(key)
         if self.waiting and (not self):
             self.waiting.callback(None)
     
