@@ -15,6 +15,7 @@ Copyright 2011, 2012 Mozes, Inc.
    See the License for the specific language governing permissions and
    limitations under the License.
 """
+import contextlib
 import functools
 import logging
 
@@ -103,6 +104,8 @@ class Stomp(object):
                     yield self.disconnect.wait(timeout)
                 except CancelledError:
                     self.log.warning('Handlers did not finish in time. Force disconnect ...')
+                else:
+                    self.log.info('All handlers complete. Resuming disconnect ...')
             
             frame = self.session.disconnect()
             
@@ -112,8 +115,8 @@ class Stomp(object):
             try:
                 self.sendFrame(frame)
                 self._protocol.loseConnection()
-            except:
-                self.log.warning('Connection lost unexpectedly. Could not send %s.' % frame.info())
+            except Exception as e:
+                self.log.warning('Could not send %s. [%s]' % (frame.info(), e))
                 
             result = yield self._disconnectedSignal
             
@@ -219,32 +222,24 @@ class Stomp(object):
             return
         
         try:
-            self._activeHandlers.add(messageId)
-        except:
-            raise StompProtocolError('Duplicate message id %s received. Message is already in progress.' % messageId)
-        
-        self.log.debug('Handler started for message: %s' % messageId)
-                
-        # call message handler (can return deferred to be async)
-        try:
-            yield subscription['handler'](self, frame)
-            if subscription['ack']:
-                self.ack(frame)
+            with self._activeHandlers(messageId):
+                yield subscription['handler'](self, frame)
+                if subscription['ack']:
+                    self.ack(frame)
         except Exception as e:
-            self.log.error('[%s] Error in message handler: %s' % (messageId, e))
             try:
                 self._onMessageFailed(e, frame, subscription['errorDestination'])
                 if subscription['ack']:
                     self.ack(frame)
             except Exception as e:
                 self.disconnect(failure=e)
-        finally:
-            self._activeHandlers.remove(messageId)
-            self.log.debug('Handler complete for message: %s' % messageId)
-            if self.disconnect.waiting and not self._activeHandlers:
-                self.log.debug('All handlers complete. Resuming disconnect ...')
-                self.disconnect.waiting.callback(self)
-            
+        
+        self._finish()
+        
+    def _finish(self):
+        if self.disconnect.waiting and not self._activeHandlers:
+            self.disconnect.waiting.callback(self)
+    
     def _onReceipt(self, frame):
         pass
     
@@ -318,15 +313,28 @@ class Stomp(object):
 class ActiveHandlers(object):
     def __init__(self):
         self._handlers = set()
+        self.log = logging.getLogger(LOG_CATEGORY)
         
-    def add(self, handler):
+    def _start(self, handler):
         if handler in self._handlers:
-            raise KeyError('Duplicate handler: %s' % handler)
+            raise StompProtocolError('[%s] Handler already in progress.' % handler)
         self._handlers.add(handler)
         
-    def remove(self, handler):
+    def _finish(self, handler):
         self._handlers.remove(handler)
     
     def __nonzero__(self):
         return bool(self._handlers)
-        
+    
+    @contextlib.contextmanager
+    def __call__(self, handler):
+        self._start(handler)
+        self.log.debug('[%s] Handler started.' % handler)
+        try:
+            yield
+        except Exception as e:
+            self.log.error('[%s] Handler failed: %s' % (handler, e))
+            raise
+        finally:
+            self._finish(handler)
+        self.log.debug('[%s] Handler complete.' % handler)
