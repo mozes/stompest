@@ -45,7 +45,10 @@ class StompProtocol(Protocol):
                 break
             self.log.debug('Received %s' % frame.info())
             
-            self._onFrame(frame)
+            try:
+                self._onFrame(frame)
+            except Exception as e:
+                self.log.error('Unhandled error in frame handler: %s' % e)
     
     def __init__(self, onFrame, onConnectionLost):
         self._onFrame = onFrame

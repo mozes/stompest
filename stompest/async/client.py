@@ -52,7 +52,7 @@ class Stomp(object):
         self._subscriptions = {}
 
         # keep track of active handlers for graceful disconnect
-        self._activeHandlers = set()
+        self._activeHandlers = ActiveHandlers()
                         
     #   
     # STOMP commands
@@ -180,7 +180,7 @@ class Stomp(object):
             handler = self._handlers[frame.command]
         except KeyError:
             raise StompFrameError('Unknown STOMP command: %s' % repr(frame))
-        return handler(frame)
+        handler(frame)
     
     def _onConnected(self, frame):
         self.session.connected(frame)
@@ -202,6 +202,15 @@ class Stomp(object):
     def _onMessage(self, frame):
         headers = frame.headers
         messageId = headers[StompSpec.MESSAGE_ID_HEADER]
+        
+        if self.disconnect.running:
+            self.log.info('[%s] Ignoring message (disconnecting)' % messageId)
+            try:
+                self.nack(frame)
+            except:
+                pass
+            return
+        
         try:
             token = self.session.message(frame)
             subscription = self._subscriptions[token]
@@ -210,15 +219,12 @@ class Stomp(object):
             return
         
         try:
-            self._handlerStarted(messageId)
-        except StompConnectionError as disconnecting:
-            self.log.info(disconnecting)
-            try:
-                self.nack(frame)
-            except:
-                pass
-            return
+            self._activeHandlers.add(messageId)
+        except:
+            raise StompProtocolError('Duplicate message id %s received. Message is already in progress.' % messageId)
         
+        self.log.debug('Handler started for message: %s' % messageId)
+                
         # call message handler (can return deferred to be async)
         try:
             yield subscription['handler'](self, frame)
@@ -233,8 +239,12 @@ class Stomp(object):
             except Exception as e:
                 self.disconnect(failure=e)
         finally:
-            self._handlerFinished(messageId)
-    
+            self._activeHandlers.remove(messageId)
+            self.log.debug('Handler complete for message: %s' % messageId)
+            if self.disconnect.waiting and not self._activeHandlers:
+                self.log.debug('All handlers complete. Resuming disconnect ...')
+                self.disconnect.waiting.callback(self)
+            
     def _onReceipt(self, frame):
         pass
     
@@ -289,23 +299,6 @@ class Stomp(object):
             self.log.debug('Replaying subscription: %s' % headers)
             self.subscribe(destination, headers=headers, **context)
     
-    def _handlerStarted(self, messageId):
-        # do not process any more messages if we're disconnecting
-        if self.disconnect.running:
-            raise StompConnectionError('[%s] Ignoring message (disconnecting)' % messageId)
-        
-        if messageId in self._activeHandlers:
-            raise StompProtocolError('Duplicate message id %s received. Message is already in progress.' % messageId)
-        self._activeHandlers.add(messageId)
-        self.log.debug('Handler started for message: %s' % messageId)
-    
-    def _handlerFinished(self, messageId):
-        self._activeHandlers.remove(messageId)
-        self.log.debug('Handler complete for message: %s' % messageId)
-        if self.disconnect.waiting and not self._activeHandlers:
-            self.log.debug('All handlers complete. Resuming disconnect ...')
-            self.disconnect.waiting.callback(self)
-            
     def _onConnectionLost(self, reason):
         self._protocol = None
         self.log.info('Disconnected: %s' % reason.getErrorMessage())
@@ -321,3 +314,19 @@ class Stomp(object):
             #self.log.debug('Calling disconnected deferred callback')
             self._disconnectedSignal.callback(None)
         self._disconnectedSignal = None
+
+class ActiveHandlers(object):
+    def __init__(self):
+        self._handlers = set()
+        
+    def add(self, handler):
+        if handler in self._handlers:
+            raise KeyError('Duplicate handler: %s' % handler)
+        self._handlers.add(handler)
+        
+    def remove(self, handler):
+        self._handlers.remove(handler)
+    
+    def __nonzero__(self):
+        return bool(self._handlers)
+        
