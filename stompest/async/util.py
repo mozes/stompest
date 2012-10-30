@@ -15,18 +15,63 @@ Copyright 2011 Mozes, Inc.
    See the License for the specific language governing permissions and
    limitations under the License.
 """
+import contextlib
 import functools
 
 from twisted.internet import defer, reactor, task
 from twisted.internet.endpoints import clientFromString
 
-from stompest.error import StompStillRunningError
+from stompest.error import StompStillRunningError, StompProtocolError
 
-def endpointFactory(broker, timeout=None):
-    timeout = (':timeout=%d' % timeout) if timeout else ''
-    locals().update(broker)
-    return clientFromString(reactor, '%(protocol)s:host=%(host)s:port=%(port)d%(timeout)s' % locals())
+LOG_CATEGORY = 'stompest.async.util'
 
+class ActiveHandlers(object):
+    def __init__(self):
+        self._handlers = set()
+        self.waiting = None
+    
+    @contextlib.contextmanager
+    def __call__(self, handler, log=None):
+        self._start(handler)
+        log and log.debug('[%s] Handler started.' % handler)
+        try:
+            yield
+        except Exception as e:
+            log and log.error('[%s] Handler failed: %s' % (handler, e))
+            raise
+        finally:
+            self._finish(handler)
+        log and log.debug('[%s] Handler complete.' % handler)
+        
+    def __nonzero__(self):
+        return bool(self._handlers)
+        
+    def cancel(self):
+        self.waiting.cancel()
+        self.waiting = None
+
+    @defer.inlineCallbacks
+    def wait(self, timeout=None):
+        self.waiting = defer.Deferred()
+        if timeout is not None:
+            timeout = task.deferLater(reactor, timeout, self.cancel)
+        try:
+            result = yield self.waiting
+        finally:
+            timeout and timeout.cancel()
+            self.waiting = None
+        defer.returnValue(result)
+    
+    def _start(self, handler):
+        if handler in self._handlers:
+            raise StompProtocolError('[%s] Handler already in progress.' % handler)
+        self._handlers.add(handler)
+        
+    def _finish(self, handler):
+        self._handlers.remove(handler)
+        if self.waiting and (not self):
+            self.waiting.callback(None)
+    
 def exclusive(f):
     @functools.wraps(f)
     def _exclusive(*args, **kwargs):
@@ -45,13 +90,13 @@ def exclusive(f):
     
     @defer.inlineCallbacks
     def wait(timeout=None):
+        _exclusive.waiting = defer.Deferred()
+        if timeout is not None:
+            timeout = task.deferLater(reactor, timeout, _exclusive.waiting.cancel)
         try:
-            _exclusive.waiting = defer.Deferred()
-            if timeout is not None:
-                timeout = task.deferLater(reactor, timeout, _exclusive.waiting.cancel)
             result = yield _exclusive.waiting
-            timeout and timeout.cancel()
         finally:
+            timeout and timeout.cancel()
             _exclusive.waiting = None
         defer.returnValue(result)
     _exclusive.wait = wait
@@ -62,6 +107,11 @@ def exclusive(f):
     _exclusive.cancel = cancel
     
     return _exclusive
+
+def endpointFactory(broker, timeout=None):
+    timeout = (':timeout=%d' % timeout) if timeout else ''
+    locals().update(broker)
+    return clientFromString(reactor, '%(protocol)s:host=%(host)s:port=%(port)d%(timeout)s' % locals())
 
 def sendToErrorDestinationAndRaise(client, failure, frame, errorDestination):
     client.sendToErrorDestination(frame, errorDestination)

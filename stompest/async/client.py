@@ -15,19 +15,18 @@ Copyright 2011, 2012 Mozes, Inc.
    See the License for the specific language governing permissions and
    limitations under the License.
 """
-import contextlib
 import functools
 import logging
 
 from twisted.internet import defer
+from twisted.internet.defer import CancelledError
 
 from stompest.error import StompConnectionError, StompFrameError, StompProtocolError
 from stompest.protocol import commands, StompSession, StompSpec
 from stompest.util import cloneFrame
 
 from .protocol import StompProtocolCreator
-from .util import exclusive
-from twisted.internet.defer import CancelledError
+from .util import ActiveHandlers, exclusive
 
 LOG_CATEGORY = 'stompest.async.client'
 
@@ -95,13 +94,13 @@ class Stomp(object):
     def disconnect(self, failure=None, timeout=None):
         if failure:
             self._disconnectReason = failure
-            
+        self.log.debug('Disconnecting ...%s' % ('' if (not failure) else  ('[reason=%s]' % failure)))
         try:
             # notify that we are ready to disconnect after outstanding messages are ack'ed
             if self._activeHandlers:
                 self.log.info('Waiting for outstanding message handlers to finish ... [timeout=%s]' % timeout)
                 try:
-                    yield self.disconnect.wait(timeout)
+                    yield self._activeHandlers.wait(timeout)
                 except CancelledError:
                     self.log.warning('Handlers did not finish in time. Force disconnect ...')
                 else:
@@ -222,7 +221,7 @@ class Stomp(object):
             return
         
         try:
-            with self._activeHandlers(messageId):
+            with self._activeHandlers(messageId, self.log):
                 yield subscription['handler'](self, frame)
                 if subscription['ack']:
                     self.ack(frame)
@@ -234,12 +233,6 @@ class Stomp(object):
             except Exception as e:
                 self.disconnect(failure=e)
         
-        self._finish()
-        
-    def _finish(self):
-        if self.disconnect.waiting and not self._activeHandlers:
-            self.disconnect.waiting.callback(self)
-    
     def _onReceipt(self, frame):
         pass
     
@@ -297,10 +290,10 @@ class Stomp(object):
     def _onConnectionLost(self, reason):
         self._protocol = None
         self.log.info('Disconnected: %s' % reason.getErrorMessage())
-        if (not self.disconnect.running) or self.disconnect.waiting:
+        if (not self.disconnect.running) or self._activeHandlers.waiting:
             self._disconnectReason = StompConnectionError('Unexpected connection loss [%s]' % reason.getErrorMessage())
-        if self.disconnect.waiting:
-            self.disconnect.cancel()
+        if self._activeHandlers.waiting:
+            self._activeHandlers.cancel()
         if self._disconnectReason:
             #self.log.debug('Calling disconnected deferred errback: %s' % self._disconnectReason)
             self._disconnectedSignal.errback(self._disconnectReason)
@@ -309,32 +302,3 @@ class Stomp(object):
             #self.log.debug('Calling disconnected deferred callback')
             self._disconnectedSignal.callback(None)
         self._disconnectedSignal = None
-
-class ActiveHandlers(object):
-    def __init__(self):
-        self._handlers = set()
-        self.log = logging.getLogger(LOG_CATEGORY)
-        
-    def _start(self, handler):
-        if handler in self._handlers:
-            raise StompProtocolError('[%s] Handler already in progress.' % handler)
-        self._handlers.add(handler)
-        
-    def _finish(self, handler):
-        self._handlers.remove(handler)
-    
-    def __nonzero__(self):
-        return bool(self._handlers)
-    
-    @contextlib.contextmanager
-    def __call__(self, handler):
-        self._start(handler)
-        self.log.debug('[%s] Handler started.' % handler)
-        try:
-            yield
-        except Exception as e:
-            self.log.error('[%s] Handler failed: %s' % (handler, e))
-            raise
-        finally:
-            self._finish(handler)
-        self.log.debug('[%s] Handler complete.' % handler)
