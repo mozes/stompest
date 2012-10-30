@@ -1,7 +1,7 @@
 """
 Twisted STOMP client
 
-Copyright 2011 Mozes, Inc.
+Copyright 2011, 2012 Mozes, Inc.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
