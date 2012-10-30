@@ -209,16 +209,16 @@ class AsyncClientDisconnectTimeoutTestCase(AsyncClientBaseTestCase):
             pass
         else:
             raise
-         
-        self.wait.callback(None)
         
+        self.wait.callback(None)
+
     @defer.inlineCallbacks
     def _on_message(self, client, msg):
         client.nack(msg)
         self.wait = defer.Deferred()
         self._got_message.callback(None)
         yield self.wait
-        
+
 if __name__ == '__main__':
     import sys
     from twisted.scripts import trial
