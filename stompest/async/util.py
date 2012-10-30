@@ -33,8 +33,8 @@ class InFlightOperations(object):
         self.waiting = None
         
     @contextlib.contextmanager
-    def __call__(self, key, log=None):
-        self._start(key)
+    def __call__(self, key=None, log=None):
+        self.enter(key)
         log and log.debug('[%s] %s started.' % (key, self._info))
         try:
             yield
@@ -42,7 +42,7 @@ class InFlightOperations(object):
             log and log.error('[%s] %s failed: %s' % (key, self._info, e))
             raise
         finally:
-            self._finish(key)
+            self.exit(key)
         log and log.debug('[%s] %s complete.' % (key, self._info))
         
     def __nonzero__(self):
@@ -52,6 +52,16 @@ class InFlightOperations(object):
         self.waiting.cancel()
         self.waiting = None
 
+    def enter(self, key=None):
+        if key in self._keys:
+            raise self._keyError('[%s] %s already in progress.' % (key, self._info))
+        self._keys.add(key)
+        
+    def exit(self, key=None):
+        self._keys.remove(key)
+        if self.waiting and (not self):
+            self.waiting.callback(None)
+    
     @defer.inlineCallbacks
     def wait(self, timeout=None):
         self.waiting = defer.Deferred()
@@ -63,16 +73,6 @@ class InFlightOperations(object):
             timeout and timeout.cancel()
             self.waiting = None
         defer.returnValue(result)
-    
-    def _start(self, key):
-        if key in self._keys:
-            raise self._keyError('[%s] %s already in progress.' % (key, self._info))
-        self._keys.add(key)
-        
-    def _finish(self, key):
-        self._keys.remove(key)
-        if self.waiting and (not self):
-            self.waiting.callback(None)
     
 def exclusive(f):
     @functools.wraps(f)
@@ -86,27 +86,8 @@ def exclusive(f):
     def _reload(result=None):
         _exclusive.running = False
         _exclusive.result = defer.Deferred()
-        _exclusive.waiting = None
         return result
     _reload()
-    
-    @defer.inlineCallbacks
-    def wait(timeout=None):
-        _exclusive.waiting = defer.Deferred()
-        if timeout is not None:
-            timeout = task.deferLater(reactor, timeout, _exclusive.waiting.cancel)
-        try:
-            result = yield _exclusive.waiting
-        finally:
-            timeout and timeout.cancel()
-            _exclusive.waiting = None
-        defer.returnValue(result)
-    _exclusive.wait = wait
-    
-    def cancel():
-        _exclusive.waiting.cancel()
-        _exclusive.waiting = None
-    _exclusive.cancel = cancel
     
     return _exclusive
 

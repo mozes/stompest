@@ -50,7 +50,10 @@ class Stomp(object):
             'RECEIPT': self._onReceipt,
         }
         self._subscriptions = {}
-
+        
+        # wait for CONNECTED frame
+        self._connected = InFlightOperations('STOMP session negotiation')
+        
         # keep track of active handlers for graceful disconnect
         self._activeHandlers = InFlightOperations('Message handler', keyError=StompProtocolError)
                         
@@ -80,7 +83,7 @@ class Stomp(object):
         
         try:
             self.sendFrame(frame)
-            yield self.connect.wait(connectedTimeout)
+            yield self._connected.wait(connectedTimeout)
         except Exception as e:
             self.log.error('STOMP session connect failed [%s]' % e)
             yield self.disconnect(e)
@@ -187,11 +190,11 @@ class Stomp(object):
     def _onConnected(self, frame):
         self.session.connected(frame)
         self.log.debug('Connected to stomp broker with session: %s' % self.session.id)
-        self.connect.waiting.callback(None)
+        self._connected.waiting.callback(None)
 
     def _onError(self, frame):
-        if self.connect.waiting:
-            self.connect.waiting.errback(StompProtocolError('While trying to connect, received %s' % frame.info()))
+        if self._connected.waiting:
+            self._connected.waiting.errback(StompProtocolError('While trying to connect, received %s' % frame.info()))
             return
 
         #Workaround for AMQ < 5.2
