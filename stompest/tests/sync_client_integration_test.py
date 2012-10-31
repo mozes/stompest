@@ -60,17 +60,11 @@ class SimpleStompIntegrationTest(unittest.TestCase):
         stomp = Stomp(config)
         stomp.connect()
         
-        print 1
         with stomp.transaction(4711) as transaction:
-            print 2
             self.assertEquals(transaction, '4711')
-            print 3
             stomp.send(self.DESTINATION, 'test message 1')
-            print 4
             self.assertFalse(stomp.canRead(self.TIMEOUT))
-        print 5
         self.assertTrue(stomp.canRead(2 * self.TIMEOUT))
-        print 6
         stomp.ack(stomp.receiveFrame())
         
         try:

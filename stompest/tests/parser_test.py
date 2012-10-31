@@ -24,9 +24,6 @@ from stompest.protocol.parser import StompParser
 from stompest.protocol.spec import StompSpec
 
 class StompParserTest(unittest.TestCase):
-    # TODO: include binary body tests
-    # TODO: include newline tests
-    
     def _generate_bytes(self, stream):
         for byte in stream:
             yield byte

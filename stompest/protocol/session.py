@@ -83,6 +83,7 @@ class StompSession(object):
         frame, token = commands.subscribe(destination, headers, receipt, self.version)
         if token in self._subscriptions:
             raise StompProtocolError('Already subscribed [%s=%s]' % token)
+        # TODO: promote receipt to the same level as destination and headers
         self._subscriptions[token] = (self._nextSubscription(), destination, copy.deepcopy(headers), context)
         return frame, token
     

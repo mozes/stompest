@@ -19,29 +19,35 @@ import functools
 import logging
 
 from twisted.internet import defer
+from twisted.internet.defer import CancelledError
 
 from stompest.error import StompConnectionError, StompFrameError, StompProtocolError
 from stompest.protocol import commands, StompSession, StompSpec
 from stompest.util import cloneFrame
 
 from .protocol import StompProtocolCreator
-from .util import exclusive
+from .util import InFlightOperations, exclusive
 
 LOG_CATEGORY = 'stompest.async.client'
 
 class Stomp(object):
     DEFAULT_ACK_MODE = 'auto'
+    MESSAGE_FAILED_HEADER = 'message-failed'
     
-    def __init__(self, config, onMessageFailed=None):
+    def __init__(self, config):
         self._config = config
         self.session = StompSession(self._config.version)
         self._protocol = None
         self._protocolCreator = StompProtocolCreator(self._config.uri)
         
-        self.__onMessageFailed = onMessageFailed
-        
         self.log = logging.getLogger(LOG_CATEGORY)
         
+        # wait for CONNECTED frame
+        self._connected = InFlightOperations('STOMP session negotiation')
+        
+        # keep track of active handlers for graceful disconnect
+        self._activeHandlers = InFlightOperations('Handler for message', keyError=StompProtocolError)
+                        
         self._handlers = {
             'MESSAGE': self._onMessage,
             'CONNECTED': self._onConnected,
@@ -66,67 +72,97 @@ class Stomp(object):
             raise StompConnectionError('Already connected')
         
         try:
-            self._protocol = yield self._protocolCreator.connect(connectTimeout, self._onFrame, self._onDisconnect)
+            self._protocol = yield self._protocolCreator.connect(connectTimeout, self._onFrame, self._onConnectionLost)
         except Exception as e:
             self.log.error('Endpoint connect failed')
             raise
-
+        
+        self._disconnectedSignal = defer.Deferred()
+        self._disconnectReason = None
+        
         try:
             self.sendFrame(frame)
-            yield self.connect.wait(connectedTimeout)
+            yield self._connected.wait(connectedTimeout)
         except Exception as e:
             self.log.error('STOMP session connect failed [%s]' % e)
             yield self.disconnect(e)
         
         self._replay()
+        
         defer.returnValue(self)
     
     @exclusive
     @defer.inlineCallbacks
     def disconnect(self, failure=None, timeout=None):
+        if failure:
+            self._disconnectReason = failure
+        self.log.debug('Disconnecting ...%s' % ('' if (not failure) else  ('[reason=%s]' % failure)))
         try:
-            yield self._protocol.disconnect(failure, timeout)
+            # notify that we are ready to disconnect after outstanding messages are ack'ed
+            if self._activeHandlers:
+                self.log.info('Waiting for outstanding message handlers to finish ... [timeout=%s]' % timeout)
+                try:
+                    yield self._activeHandlers.wait(timeout)
+                except CancelledError:
+                    self.log.warning('Handlers did not finish in time. Force disconnect ...')
+                else:
+                    self.log.info('All handlers complete. Resuming disconnect ...')
+            
+            frame = self.session.disconnect()
+            
+            if not self._disconnectReason:
+                self.session.flush()
+            
+            try:
+                self.sendFrame(frame)
+                self._protocol.loseConnection()
+            except Exception as e:
+                self.log.warning('Could not send %s. [%s]' % (frame.info(), e))
+                
+            result = yield self._disconnectedSignal
+            
         except Exception as e:
             self.log.error(e)
             raise
         finally:
             self._protocol = None
-        defer.returnValue(None)
+        
+        defer.returnValue(result)
     
     def send(self, destination, body='', headers=None, receipt=None):
         self._protocol.send(commands.send(destination, body, headers, receipt))
         
-    def ack(self, frame):
-        self._protocol.send(self.session.ack(frame))
+    def ack(self, frame, receipt=None):
+        self._protocol.send(self.session.ack(frame, receipt))
     
-    def nack(self, frame):
-        self._protocol.send(self.session.nack(frame))
+    def nack(self, frame, receipt=None):
+        self._protocol.send(self.session.nack(frame, receipt))
     
-    def begin(self):
+    def begin(self, transaction=None, receipt=None):
         protocol = self._protocol
-        frame, token = self.session.begin()
+        frame, token = self.session.begin(transaction, receipt)
         protocol.send(frame)
         return token
         
-    def abort(self, transaction):
+    def abort(self, transaction=None, receipt=None):
         protocol = self._protocol
-        frame, token = self.session.abort(transaction)
+        frame, token = self.session.abort(transaction, receipt)
         protocol.send(frame)
         return token
         
-    def commit(self, transaction):
+    def commit(self, transaction=None, receipt=None):
         protocol = self._protocol
-        frame, token = self.session.commit(transaction)
+        frame, token = self.session.commit(transaction, receipt)
         protocol.send(frame)
         return token
     
-    def subscribe(self, destination, handler, headers=None, receipt=None, ack=True, errorDestination=None):
+    def subscribe(self, destination, handler, headers=None, receipt=None, ack=True, errorDestination=None, onMessageFailed=None):
         protocol = self._protocol
         if not callable(handler):
             raise ValueError('Cannot subscribe (handler is missing): %s' % handler)
-        frame, token = self.session.subscribe(destination, headers, context={'handler': handler, 'receipt': receipt, 'errorDestination': errorDestination})
+        frame, token = self.session.subscribe(destination, headers, receipt, {'handler': handler, 'receipt': receipt, 'errorDestination': errorDestination, 'onMessageFailed': onMessageFailed})
         ack = ack and (frame.headers.setdefault(StompSpec.ACK_HEADER, self.DEFAULT_ACK_MODE) in StompSpec.CLIENT_ACK_MODES)
-        self._subscriptions[token] = {'destination': destination, 'handler': self._createHandler(handler), 'ack': ack, 'errorDestination': errorDestination}
+        self._subscriptions[token] = {'destination': destination, 'handler': self._createHandler(handler), 'ack': ack, 'errorDestination': errorDestination, 'onMessageFailed': onMessageFailed}
         protocol.send(frame)
         return token
     
@@ -143,21 +179,21 @@ class Stomp(object):
     #
     # callbacks for received STOMP frames
     #
-    def _onFrame(self, protocol, frame):
+    def _onFrame(self, frame):
         try:
             handler = self._handlers[frame.command]
         except KeyError:
             raise StompFrameError('Unknown STOMP command: %s' % repr(frame))
-        return handler(protocol, frame)
+        handler(frame)
     
-    def _onConnected(self, protocol, frame):
+    def _onConnected(self, frame):
         self.session.connected(frame)
         self.log.debug('Connected to stomp broker with session: %s' % self.session.id)
-        self.connect.waiting.callback(None)
+        self._connected.waiting.callback(None)
 
-    def _onError(self, protocol, frame):
-        if self.connect.waiting:
-            self.connect.waiting.errback(StompProtocolError('While trying to connect, received %s' % frame.info()))
+    def _onError(self, frame):
+        if self._connected.waiting:
+            self._connected.waiting.errback(StompProtocolError('While trying to connect, received %s' % frame.info()))
             return
 
         #Workaround for AMQ < 5.2
@@ -167,9 +203,18 @@ class Stomp(object):
             self.disconnect(failure=StompProtocolError('Received %s' % frame.info()))
         
     @defer.inlineCallbacks
-    def _onMessage(self, protocol, frame):
+    def _onMessage(self, frame):
         headers = frame.headers
         messageId = headers[StompSpec.MESSAGE_ID_HEADER]
+        
+        if self.disconnect.running:
+            self.log.info('[%s] Ignoring message (disconnecting)' % messageId)
+            try:
+                self.nack(frame)
+            except:
+                pass
+            return
+        
         try:
             token = self.session.message(frame)
             subscription = self._subscriptions[token]
@@ -178,48 +223,35 @@ class Stomp(object):
             return
         
         try:
-            protocol.handlerStarted(messageId)
-        except StompConnectionError as disconnecting:
-            self.log.info(disconnecting)
-            try:
-                self.nack(frame)
-            except:
-                pass
-            return
-        
-        # call message handler (can return deferred to be async)
-        try:
-            yield subscription['handler'](self, frame)
-            if subscription['ack']:
-                self.ack(frame)
+            with self._activeHandlers(messageId, self.log):
+                yield subscription['handler'](self, frame)
+                if subscription['ack']:
+                    self.ack(frame)
         except Exception as e:
-            self.log.error('[%s] Error in message handler: %s' % (messageId, e))
             try:
-                self._onMessageFailed(e, frame, subscription['errorDestination'])
+                self._onMessageFailed(e, frame, subscription)
                 if subscription['ack']:
                     self.ack(frame)
             except Exception as e:
                 self.disconnect(failure=e)
-        finally:
-            protocol.handlerFinished(messageId)
-    
-    def _onReceipt(self, protocol, frame):
+        
+    def _onReceipt(self, frame):
         pass
     
     #
     # hook for MESSAGE frame error handling
     #
-    def _onMessageFailed(self, failure, frame, errorDestination):
-        if self.__onMessageFailed:
-            self.__onMessageFailed(self, failure, frame, errorDestination)
-        else:
-            self.sendToErrorDestination(frame, errorDestination)
+    def _onMessageFailed(self, failure, frame, subscription):
+        onMessageFailed = subscription['onMessageFailed'] or Stomp.sendToErrorDestination
+        onMessageFailed(self, failure, frame, subscription['errorDestination'])
     
-    def sendToErrorDestination(self, frame, errorDestination):
+    # this one is public on purpose as a building block for custom hooks
+    def sendToErrorDestination(self, failure, frame, errorDestination):
         if not errorDestination: # forward message to error queue if configured
             return
-        errorMessage = cloneFrame(frame, persistent=True)
-        self.send(errorDestination, errorMessage.body, errorMessage.headers)
+        errorFrame = cloneFrame(frame, persistent=True)
+        errorFrame.headers.setdefault(self.MESSAGE_FAILED_HEADER, str(failure))
+        self.send(errorDestination, errorFrame.body, errorFrame.headers)
         self.ack(frame)
         
     #
@@ -235,26 +267,13 @@ class Stomp(object):
     @_protocol.setter
     def _protocol(self, protocol):
         self.__protocol = protocol
-        if protocol:
-            protocol.disconnected.addBoth(self._handleDisconnected)
-    
+            
     @property
     def disconnected(self):
-        return self._protocol and self._protocol.disconnected
+        return self._disconnectedSignal
     
     def sendFrame(self, frame):
         self._protocol.send(frame)
-    
-    def _handleDisconnected(self, result):
-        self._protocol = None
-        return result
-    
-    def _onDisconnect(self, protocol, error):
-        frame = self.session.disconnect()
-        if not error:
-            self.session.flush()
-        protocol.send(frame)
-        protocol.loseConnection()
     
     #
     # private helpers
@@ -270,3 +289,18 @@ class Stomp(object):
             self.log.debug('Replaying subscription: %s' % headers)
             self.subscribe(destination, headers=headers, **context)
     
+    def _onConnectionLost(self, reason):
+        self._protocol = None
+        self.log.info('Disconnected: %s' % reason.getErrorMessage())
+        if (not self.disconnect.running) or self._activeHandlers.waiting:
+            self._disconnectReason = StompConnectionError('Unexpected connection loss [%s]' % reason.getErrorMessage())
+        if self._activeHandlers.waiting:
+            self._activeHandlers.cancel()
+        if self._disconnectReason:
+            #self.log.debug('Calling disconnected deferred errback: %s' % self._disconnectReason)
+            self._disconnectedSignal.errback(self._disconnectReason)
+            self._disconnectReason = None
+        else:
+            #self.log.debug('Calling disconnected deferred callback')
+            self._disconnectedSignal.callback(None)
+        self._disconnectedSignal = None

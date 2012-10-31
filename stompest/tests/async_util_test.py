@@ -19,7 +19,6 @@ from twisted.trial import unittest
 
 from stompest.async.util import exclusive
 from stompest.error import StompStillRunningError
-from twisted.internet.defer import CancelledError
 
 class ExclusiveWrapperTest(unittest.TestCase):
     @defer.inlineCallbacks
@@ -64,46 +63,6 @@ class ExclusiveWrapperTest(unittest.TestCase):
         result = yield running
         self.assertEquals(result, ((1, 2), {'a': 3, 'b': 4}))
     
-    @defer.inlineCallbacks
-    def test_wait_in_wrapped_function(self):
-        @exclusive
-        @defer.inlineCallbacks
-        def f(timeout=None):
-            result = yield f.wait(timeout)
-            defer.returnValue(result)
-        
-        running = f()
-        yield task.deferLater(reactor, 0, lambda: None) # activates f.wait()
-        self.assertRaises(StompStillRunningError, lambda: f())
-        self.assertFalse(running.called)
-        self.assertNotEquals(f.waiting, None)
-        f.waiting.callback(4711)
-        result = yield running
-        self.assertEquals(result, 4711)
-        self.assertTrue(running.called)
-        self.assertEquals(f.waiting, None)
-        
-        running = f()
-        yield task.deferLater(reactor, 0, lambda: None)
-        f.waiting.errback(RuntimeError('hi'))
-        try:
-            result = yield running
-        except RuntimeError:
-            pass
-        else:
-            raise
-        self.assertTrue(running.called)
-        self.assertEquals(f.waiting, None)
-        
-        running = f(0.01)
-        yield task.deferLater(reactor, 0, lambda: None)
-        try:
-            result = yield running
-        except CancelledError:
-            pass
-        self.assertTrue(running.called)
-        self.assertEquals(f.waiting, None)        
-      
 if __name__ == '__main__':
     import sys
     from twisted.scripts import trial
