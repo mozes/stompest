@@ -132,27 +132,27 @@ class Stomp(object):
     def send(self, destination, body='', headers=None, receipt=None):
         self._protocol.send(commands.send(destination, body, headers, receipt))
         
-    def ack(self, frame):
-        self._protocol.send(self.session.ack(frame))
+    def ack(self, frame, receipt=None):
+        self._protocol.send(self.session.ack(frame, receipt))
     
-    def nack(self, frame):
-        self._protocol.send(self.session.nack(frame))
+    def nack(self, frame, receipt=None):
+        self._protocol.send(self.session.nack(frame, receipt))
     
-    def begin(self):
+    def begin(self, transaction=None, receipt=None):
         protocol = self._protocol
-        frame, token = self.session.begin()
+        frame, token = self.session.begin(transaction, receipt)
         protocol.send(frame)
         return token
         
-    def abort(self, transaction):
+    def abort(self, transaction=None, receipt=None):
         protocol = self._protocol
-        frame, token = self.session.abort(transaction)
+        frame, token = self.session.abort(transaction, receipt)
         protocol.send(frame)
         return token
         
-    def commit(self, transaction):
+    def commit(self, transaction=None, receipt=None):
         protocol = self._protocol
-        frame, token = self.session.commit(transaction)
+        frame, token = self.session.commit(transaction, receipt)
         protocol.send(frame)
         return token
     
@@ -160,7 +160,7 @@ class Stomp(object):
         protocol = self._protocol
         if not callable(handler):
             raise ValueError('Cannot subscribe (handler is missing): %s' % handler)
-        frame, token = self.session.subscribe(destination, headers, context={'handler': handler, 'receipt': receipt, 'errorDestination': errorDestination, 'onMessageFailed': onMessageFailed})
+        frame, token = self.session.subscribe(destination, headers, receipt, {'handler': handler, 'receipt': receipt, 'errorDestination': errorDestination, 'onMessageFailed': onMessageFailed})
         ack = ack and (frame.headers.setdefault(StompSpec.ACK_HEADER, self.DEFAULT_ACK_MODE) in StompSpec.CLIENT_ACK_MODES)
         self._subscriptions[token] = {'destination': destination, 'handler': self._createHandler(handler), 'ack': ack, 'errorDestination': errorDestination, 'onMessageFailed': onMessageFailed}
         protocol.send(frame)
