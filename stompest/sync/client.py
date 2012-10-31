@@ -26,6 +26,8 @@ from stompest.protocol import commands
 
 LOG_CATEGORY = 'stompest.sync'
 
+# TODO: introduce connect/connected/disconnect timeouts as in async.Stomp
+
 class Stomp(object):
     factory = StompFrameTransport
     
@@ -73,9 +75,10 @@ class Stomp(object):
             self.log.debug('Replaying subscription %s' % headers)
             self.subscribe(dest, headers)
         
-    def disconnect(self):
-        self.sendFrame(self._session.disconnect())
+    def disconnect(self, receipt=None):
+        self.sendFrame(self._session.disconnect(receipt))
         self._session.flush()
+        # TODO: wait for RECEIPT frame with timeout
         self._transport.disconnect()
 
     # STOMP frames
@@ -83,38 +86,38 @@ class Stomp(object):
     def send(self, destination, body='', headers=None, receipt=None):
         self.sendFrame(commands.send(destination, body, headers, receipt))
         
-    def subscribe(self, destination, headers):
-        frame, token = self._session.subscribe(destination, headers)
+    def subscribe(self, destination, headers, receipt=None, context=None):
+        frame, token = self._session.subscribe(destination, headers, receipt, context)
         self.sendFrame(frame)
         return token
     
-    def unsubscribe(self, token):
-        self.sendFrame(self._session.unsubscribe(token))
+    def unsubscribe(self, token, receipt=None):
+        self.sendFrame(self._session.unsubscribe(token, receipt))
         
-    def ack(self, headers):
-        self.sendFrame(self._session.ack(headers))
+    def ack(self, headers, receipt=None):
+        self.sendFrame(self._session.ack(headers, receipt))
     
-    def nack(self, headers):
-        self.sendFrame(self._session.nack(headers))
+    def nack(self, headers, receipt=None):
+        self.sendFrame(self._session.nack(headers, receipt))
     
-    def begin(self, transactionId):
-        self.sendFrame(self._session.begin(transactionId))
+    def begin(self, transaction, receipt=None):
+        self.sendFrame(self._session.begin(transaction, receipt))
         
-    def abort(self, transactionId):
-        self.sendFrame(self._session.abort(transactionId))
+    def abort(self, transaction, receipt=None):
+        self.sendFrame(self._session.abort(transaction, receipt))
         
-    def commit(self, transactionId):
-        self.sendFrame(self._session.commit(transactionId))
+    def commit(self, transaction, receipt=None):
+        self.sendFrame(self._session.commit(transaction, receipt))
     
     @contextlib.contextmanager
-    def transaction(self, transaction=None):
+    def transaction(self, transaction=None, receipt=None):
+        transaction = self._session.transaction(transaction)
+        self.begin(transaction, receipt)
         try:
-            transaction = self._session.transaction(transaction)
-            self.begin(transaction)
             yield transaction
-            self.commit(transaction)
+            self.commit(transaction, receipt)
         except:
-            self.abort(transaction)
+            self.abort(transaction, receipt)
     
     # frame transport
     
