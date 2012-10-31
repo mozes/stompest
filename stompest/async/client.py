@@ -32,17 +32,22 @@ LOG_CATEGORY = 'stompest.async.client'
 
 class Stomp(object):
     DEFAULT_ACK_MODE = 'auto'
+    MESSAGE_FAILED_HEADER = 'message-failed'
     
-    def __init__(self, config, onMessageFailed=None):
+    def __init__(self, config):
         self._config = config
         self.session = StompSession(self._config.version)
         self._protocol = None
         self._protocolCreator = StompProtocolCreator(self._config.uri)
         
-        self.__onMessageFailed = onMessageFailed
-        
         self.log = logging.getLogger(LOG_CATEGORY)
         
+        # wait for CONNECTED frame
+        self._connected = InFlightOperations('STOMP session negotiation')
+        
+        # keep track of active handlers for graceful disconnect
+        self._activeHandlers = InFlightOperations('Handler for message', keyError=StompProtocolError)
+                        
         self._handlers = {
             'MESSAGE': self._onMessage,
             'CONNECTED': self._onConnected,
@@ -51,12 +56,6 @@ class Stomp(object):
         }
         self._subscriptions = {}
         
-        # wait for CONNECTED frame
-        self._connected = InFlightOperations('STOMP session negotiation')
-        
-        # keep track of active handlers for graceful disconnect
-        self._activeHandlers = InFlightOperations('Message handler', keyError=StompProtocolError)
-                        
     #   
     # STOMP commands
     #
@@ -157,13 +156,13 @@ class Stomp(object):
         protocol.send(frame)
         return token
     
-    def subscribe(self, destination, handler, headers=None, receipt=None, ack=True, errorDestination=None):
+    def subscribe(self, destination, handler, headers=None, receipt=None, ack=True, errorDestination=None, onMessageFailed=None):
         protocol = self._protocol
         if not callable(handler):
             raise ValueError('Cannot subscribe (handler is missing): %s' % handler)
-        frame, token = self.session.subscribe(destination, headers, context={'handler': handler, 'receipt': receipt, 'errorDestination': errorDestination})
+        frame, token = self.session.subscribe(destination, headers, context={'handler': handler, 'receipt': receipt, 'errorDestination': errorDestination, 'onMessageFailed': onMessageFailed})
         ack = ack and (frame.headers.setdefault(StompSpec.ACK_HEADER, self.DEFAULT_ACK_MODE) in StompSpec.CLIENT_ACK_MODES)
-        self._subscriptions[token] = {'destination': destination, 'handler': self._createHandler(handler), 'ack': ack, 'errorDestination': errorDestination}
+        self._subscriptions[token] = {'destination': destination, 'handler': self._createHandler(handler), 'ack': ack, 'errorDestination': errorDestination, 'onMessageFailed': onMessageFailed}
         protocol.send(frame)
         return token
     
@@ -230,7 +229,7 @@ class Stomp(object):
                     self.ack(frame)
         except Exception as e:
             try:
-                self._onMessageFailed(e, frame, subscription['errorDestination'])
+                self._onMessageFailed(e, frame, subscription)
                 if subscription['ack']:
                     self.ack(frame)
             except Exception as e:
@@ -242,17 +241,17 @@ class Stomp(object):
     #
     # hook for MESSAGE frame error handling
     #
-    def _onMessageFailed(self, failure, frame, errorDestination):
-        if self.__onMessageFailed:
-            self.__onMessageFailed(self, failure, frame, errorDestination)
-        else:
-            self.sendToErrorDestination(frame, errorDestination)
+    def _onMessageFailed(self, failure, frame, subscription):
+        onMessageFailed = subscription['onMessageFailed'] or Stomp.sendToErrorDestination
+        onMessageFailed(self, failure, frame, subscription['errorDestination'])
     
-    def sendToErrorDestination(self, frame, errorDestination):
+    # this one is public on purpose as a building block for custom hooks
+    def sendToErrorDestination(self, failure, frame, errorDestination):
         if not errorDestination: # forward message to error queue if configured
             return
-        errorMessage = cloneFrame(frame, persistent=True)
-        self.send(errorDestination, errorMessage.body, errorMessage.headers)
+        errorFrame = cloneFrame(frame, persistent=True)
+        errorFrame.headers.setdefault(self.MESSAGE_FAILED_HEADER, str(failure))
+        self.send(errorDestination, errorFrame.body, errorFrame.headers)
         self.ack(frame)
         
     #

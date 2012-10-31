@@ -114,7 +114,7 @@ class HandlerExceptionWithErrorQueueIntegrationTestCase(AsyncClientBaseTestCase)
     @defer.inlineCallbacks
     def _test_onhandlerException_ackMessage_filterReservedHdrs_send2ErrorQ_and_disconnect(self, version):
         config = StompConfig(uri='tcp://%s:%d' % (HOST, PORT), version=version)
-        client = async.Stomp(config, onMessageFailed=self._onMessageFailedSendToErrorDestinationAndRaise)
+        client = async.Stomp(config)
         
         #Connect
         client = yield client.connect()
@@ -131,7 +131,7 @@ class HandlerExceptionWithErrorQueueIntegrationTestCase(AsyncClientBaseTestCase)
         #Use selector to guarantee message order.  AMQ doesn't guarantee order by default
         headers = {'selector': "food = 'barf'"}
         headers.update(defaultHeaders)
-        client.subscribe(self.queue, self._saveFrameAndBarf, headers, errorDestination=self.errorQueue)
+        client.subscribe(self.queue, self._saveFrameAndBarf, headers, errorDestination=self.errorQueue, onMessageFailed=self._onMessageFailedSendToErrorDestinationAndRaise)
         
         #Client disconnected and returned error
         try:
@@ -198,7 +198,7 @@ class HandlerExceptionWithErrorQueueIntegrationTestCase(AsyncClientBaseTestCase)
     @defer.inlineCallbacks
     def test_onhandlerException_disconnect(self):
         config = StompConfig(uri='tcp://%s:%d' % (HOST, PORT))
-        client = async.Stomp(config, onMessageFailed=self._onMessageFailedSendToErrorDestinationAndRaise)
+        client = async.Stomp(config)
         
         #Connect
         client = yield client.connect()
@@ -207,7 +207,7 @@ class HandlerExceptionWithErrorQueueIntegrationTestCase(AsyncClientBaseTestCase)
         client.send(self.queue, self.frame1, self.msg1Hdrs)
         
         #Barf on first frame (implicit disconnect)
-        client.subscribe(self.queue, self._saveFrameAndBarf, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': 1})
+        client.subscribe(self.queue, self._saveFrameAndBarf, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': 1}, onMessageFailed=self._onMessageFailedSendToErrorDestinationAndRaise)
         
         #Client disconnected and returned error
         try:

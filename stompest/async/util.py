@@ -35,15 +35,15 @@ class InFlightOperations(object):
     @contextlib.contextmanager
     def __call__(self, key=None, log=None):
         self.enter(key)
-        log and log.debug('[%s] %s started.' % (key, self._info))
+        log and log.debug('%s %s started.' % (self._info, key))
         try:
             yield
         except Exception as e:
-            log and log.error('[%s] %s failed: %s' % (key, self._info, e))
+            log and log.error('%s %s failed: %s' % (self._info, key, e))
             raise
         finally:
             self.exit(key)
-        log and log.debug('[%s] %s complete.' % (key, self._info))
+        log and log.debug('%s %s complete.' % (self._info, key))
         
     def __nonzero__(self):
         return bool(self._keys)
@@ -54,7 +54,7 @@ class InFlightOperations(object):
 
     def enter(self, key=None):
         if key in self._keys:
-            raise self._keyError('[%s] %s already in progress.' % (key, self._info))
+            raise self._keyError('[%s] %s already in progress.' % (self._info, key))
         self._keys.add(key)
         
     def exit(self, key=None):
@@ -97,5 +97,5 @@ def endpointFactory(broker, timeout=None):
     return clientFromString(reactor, '%(protocol)s:host=%(host)s:port=%(port)d%(timeout)s' % locals())
 
 def sendToErrorDestinationAndRaise(client, failure, frame, errorDestination):
-    client.sendToErrorDestination(frame, errorDestination)
+    client.sendToErrorDestination(failure, frame, errorDestination)
     raise failure
