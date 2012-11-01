@@ -222,32 +222,35 @@ Clients
 =======
 
 `sync`
-----
+------
 * Built on top of the abstract layers, the synchronous client adds a TCP connection and a synchronous API.
 * The concurrency scheme (synchronous, threaded, ...) is free to choose by the user.
 
 `async`
 -------
 * Based on the Twisted asynchronous framework.
-* Graceful shutdown - On disconnect or error, the client stops processing new messages and waits for all outstanding message handlers to finish before issuing the DISCONNECT command.
+* Fully unit-tested including a simulated STOMP broker.
+* Graceful shutdown: on disconnect or error, the client stops processing new messages and waits for all outstanding message handlers to finish before issuing the DISCONNECT command.
 * Error handling - fully customizable on a per-subscription level:
-    * Disconnecting - if you do not configure an errorDestination and an exception propagates up from a message handler, then the client will gracefully disconnect. 
-    
-    This is effectively a NACK for the message. You can [configure ActiveMQ](http://activemq.apache.org/message-redelivery-and-dlq-handling.html) with a redelivery policy to avoid the "poison pill" scenario where the broker keeps redelivering a bad message infinitely.
-
-    * Default error handling - passing an error destination parameter at subscription time will cause unhandled messages to be forwarded to that destination.
-    * Custom hook - you can override the default behavior with any customized error handling scheme.
-    
-* Fully unit-tested including a simulated STOMP broker
+    * Disconnect: if you do not configure an errorDestination and an exception propagates up from a message handler, then the client will gracefully disconnect. This is effectively a NACK for the message. You can [configure ActiveMQ](http://activemq.apache.org/message-redelivery-and-dlq-handling.html) with a redelivery policy to avoid the "poison pill" scenario where the broker keeps redelivering a bad message infinitely.
+    * Default error handling: passing an error destination parameter at subscription time will cause unhandled messages to be forwarded to that destination.
+    * Custom hook: you can override the default behavior with any customized error handling scheme.
 * Separately configurable timeouts for wire-level connection, the broker's CONNECTED reply, and graceful disconnect (in-flight handlers that do not finish in time).
 
 Caveats
 =======
 * Tested with ActiveMQ versions 5.5 and 5.6. Mileage may vary with other STOMP implementations.
-* stompest 2 is probably even better tested than stompest 1.x and used in production by one of the authors, but it has gained heavily on functionality. In the thorough redesign, the authors valued consistency, simplicity and symmetry over full backward compatibility to stompest 1.x. The migration is nevertheless very simple and straightforward, and will make your code simpler and more Pythonic. It is planned to add more features in the near future. Thus, the API should not be considered stable, which is why stompest 2 is still marked as Alpha software.
-* Automatic heartbeat handling is in the pipeline for the Twisted client, but not yet implemented.
-* The URI scheme supports only TCP, no SSL (the authors don't need it because they use the client in "safe" production environments). For the Twisted client, however, it should be straightforward to enhance the URI scheme by means of the [Endpoint API](http://twistedmatrix.com/documents/current/api/twisted.internet.endpoints.html).
-* [STOMP 1.2 protocol](http://stomp.github.com/stomp-specification-1.2.html) will probably only be implemented when there is a reference broker implementation available.
+* stompest 2 is probably even better tested than stompest 1.x and used in production by one of the authors, but it has gained heavily on functionality. In the thorough redesign, the authors valued consistency, simplicity and symmetry over full backward compatibility to stompest 1.x. The migration is nevertheless very simple and straightforward, and will make your code simpler and more Pythonic.
+* It is planned to add more features in the near future. Thus, the API should not be considered stable, which is why stompest 2 is still marked as Alpha software.
+
+To Do
+=====
+* Python doc style documentation of the API.
+* `RECEIPT` frame handling (with timeout) for `sync` and `async` clients.
+* `@connected` decorators which absorb the "check connected" boilerplate code (both clients).
+* manual (both clients) and automatic (`async` only) `HEARTBEAT` handling.
+* The URI scheme supports only TCP, no SSL (the authors don't need it because the client is run in "safe" production environments). For the `async` client, however, it should be straightforward to enhance the URI scheme by means of the [Endpoint API](http://twistedmatrix.com/documents/current/api/twisted.internet.endpoints.html). Contributions are welcome!
+* [STOMP 1.2 protocol](http://stomp.github.com/stomp-specification-1.2.html) (not before there is a reference broker implementation available).
 
 Changes
 =======
