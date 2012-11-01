@@ -4,30 +4,29 @@ Stompest is a [STOMP](http://stomp.github.com/) [1.0](http://stomp.github.com//s
 
 Modeled after the Perl [Net::Stomp](http://search.cpan.org/dist/Net-Stomp/lib/Net/Stomp.pm) module, the synchronous client is dead simple. It does not assume anything about your concurrency model (thread vs process) or force you to use it any particular way. It gets out of your way and lets you do what you want.
 
-The Twisted client is a full-featured STOMP protocol client. It supports destination-specific message and error handlers (with default "poison pill" error handling), concurrent message processing, graceful shutdown, and TCP level and STOMP session level connect and disconnect timeout.
+The Twisted client is a full-featured STOMP protocol client. It supports destination-specific message and error handlers (with default "poison pill" error handling), concurrent message processing, graceful shutdown, and connect and disconnect timeouts.
 
 Both clients make use of a generic set of components which can be used independently to roll your own STOMP client, viz.
 
-* a faithful implementation of the syntax of the [STOMP](http://stomp.github.com/) [1.0](http://stomp.github.com//stomp-specification-1.0.html) and [1.1](http://stomp.github.com//stomp-specification-1.1.html) protocols with a simple stateless function API,
+* a faithful implementation of the syntax of the STOMP 1.0 and 1.1 protocols with a simple stateless function API,
 
-* a separate implementation of the [STOMP](http://stomp.github.com/) [1.0](http://stomp.github.com//stomp-specification-1.0.html) and [1.1](http://stomp.github.com//stomp-specification-1.1.html) session state semantics, such as protocol version negotiation at connect time, transaction and subscription handling (including a generic subscription replay scheme which may be used to reconstruct the session state after a forced disconnect),
+* a separate implementation of the STOMP 1.0 and 1.1 session state semantics, such as protocol version negotiation at connect time, transaction and subscription handling (including a generic subscription replay scheme which may be used to reconstruct the session state after a forced disconnect),
 
-* a wire-level [STOMP](http://stomp.github.com/) frame parser and compiler,
+* a wire-level STOMP frame parser and compiler,
 
-* and a [failover transport](http://activemq.apache.org/failover-transport-reference.html) URI scheme akin to [ActiveMQ](http://activemq.apache.org/).
+* and a [failover transport](http://activemq.apache.org/failover-transport-reference.html) URI scheme akin to ActiveMQ.
 
-This module is thoroughly unit tested and production hardened for the functionality used by [Mozes](http://www.mozes.com/): persistent queueing on [ActiveMQ](http://activemq.apache.org/). Minor enhancements may be required to use this STOMP adapter with other brokers.
+This module is thoroughly unit tested and production hardened for the functionality used by [Mozes](http://www.mozes.com/): persistent queueing on ActiveMQ. Other users also use it in serious production environments. Minor enhancements may be required to use this STOMP adapter with other brokers.
 
 Examples
 ======== 
 
 Note
 ----
-If you use [ActiveMQ](http://activemq.apache.org/) to run these examples, make sure you enable the Stomp connector in the [ActiveMQ](http://activemq.apache.org/) config file, activemq.xml.
+If you use ActiveMQ to run these examples, make sure you enable the Stomp connector in the config file, activemq.xml (see http://activemq.apache.org/stomp.html for details):
    
     <transportConnector name="stomp"  uri="stomp://0.0.0.0:61613"/>
    
-See http://activemq.apache.org/stomp.html for details.
 
 Synchronous Producer
 --------------------
@@ -211,7 +210,7 @@ Session layer
 
 Failover layer
 --------------
-* Mimics the [failover transport](http://activemq.apache.org/failover-transport-reference.html) behavior of the [ActiveMQ](http://activemq.apache.org/) Java client
+* Mimics the [failover transport](http://activemq.apache.org/failover-transport-reference.html) behavior of the native ActiveMQ Java client
 * Produces a possibly infinite sequence of broker network addresses and connect delay times
 
 Parser layer
@@ -236,13 +235,14 @@ Twisted
     * Custom hook - you can override the default behavior with any error handling scheme you can think of.
     
 * Fully unit-tested including a simulated STOMP broker
-* Configurable connection timeout
+* Separately configurable timeouts for wire-level connection, the broker's CONNECTED reply, and graceful disconnect (in-flight handlers that do not finish in time).
 
 Caveats
 =======
 * Tested with ActiveMQ versions 5.5 and 5.6. Mileage may vary with other STOMP implementations.
-* stompest 2 is also very well tested and used in production by one of the contributors, but it has gained heavily on functionality, so it should be considered Alpha software. In the thorough redesign, the authors valued consistency, simplicity and symmetry over full backward compatibility to stompest 1.x, but the migration is very simple and straightforward.  
+* stompest 2 is probably even better tested than stompest 1.x and used in production by one of the contributors, but it has gained heavily on functionality. In the thorough redesign, the authors valued consistency, simplicity and symmetry over full backward compatibility to stompest 1.x. The migration is nevertheless very simple and straightforward, and will make your code simpler and more Pythonic. It is planned to add more features in the near future. Thus, the API should not be considered stable, which is why stompest 2 is still marked as Alpha software.
 * Automatic heartbeat handling is in the pipeline for the Twisted client, but not yet implemented.
+* [STOMP 1.2 protocol](http://stomp.github.com/stomp-specification-1.2.html) will probably only be implemented when there is a reference broker implementation available.
 
 Changes
 =======
