@@ -29,8 +29,8 @@ If you use ActiveMQ to run these examples, make sure you enable the Stomp connec
     <transportConnector name="stomp"  uri="stomp://0.0.0.0:61613"/>
    
 
-Synchronous Producer
---------------------
+`sync` producer
+----------------
 
     from stompest.protocol import StompConfig
     from stompest.sync import Stomp
@@ -44,8 +44,8 @@ Synchronous Producer
     client.send(QUEUE, 'test message 2')
     client.disconnect()
         
-Sychronous Consumer
--------------------
+`sync` consumer
+----------------
 
     from stompest.protocol import StompConfig
     from stompest.sync import Stomp
@@ -64,7 +64,7 @@ Sychronous Consumer
         
     client.disconnect()
     
-Twisted Producer
+`async` producer
 ----------------
 
     import logging
@@ -100,7 +100,7 @@ Twisted Producer
         Producer().run()
         reactor.run()
                  
-Twisted Transformer
+`async` transformer
 -------------------
 
     import logging
@@ -147,7 +147,7 @@ Twisted Transformer
         IncrementTransformer().run()
         reactor.run()
         
-Twisted Consumer
+`async` consumer
 ----------------
 
     import logging
