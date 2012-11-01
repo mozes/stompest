@@ -231,12 +231,12 @@ Clients
 -------
 * Based on the Twisted asynchronous framework.
 * Fully unit-tested including a simulated STOMP broker.
-* Graceful shutdown: on disconnect or error, the client stops processing new messages and waits for all outstanding message handlers to finish before issuing the DISCONNECT command.
+* Graceful shutdown: on disconnect or error, the client stops processing new messages and waits for all outstanding message handlers to finish before issuing the `DISCONNECT` command.
 * Error handling - fully customizable on a per-subscription level:
-    * Disconnect: if you do not configure an errorDestination and an exception propagates up from a message handler, then the client will gracefully disconnect. This is effectively a NACK for the message. You can [configure ActiveMQ](http://activemq.apache.org/message-redelivery-and-dlq-handling.html) with a redelivery policy to avoid the "poison pill" scenario where the broker keeps redelivering a bad message infinitely.
-    * Default error handling: passing an error destination parameter at subscription time will cause unhandled messages to be forwarded to that destination.
+    * Disconnect: if you do not configure an errorDestination and an exception propagates up from a message handler, then the client will gracefully disconnect. This is effectively a `NACK` for the message (actually, disconnecting is the only way to `NACK` in STOMP 1.0). You can [configure ActiveMQ](http://activemq.apache.org/message-redelivery-and-dlq-handling.html) with a redelivery policy to avoid the "poison pill" scenario where the broker keeps redelivering a bad message infinitely.
+    * Default error handling: passing an error destination parameter at subscription time will cause unhandled messages to be forwarded to that destination and then `ACK`ed.
     * Custom hook: you can override the default behavior with any customized error handling scheme.
-* Separately configurable timeouts for wire-level connection, the broker's CONNECTED reply, and graceful disconnect (in-flight handlers that do not finish in time).
+* Separately configurable timeouts for wire-level connection, the broker's `CONNECTED` reply frame, and graceful disconnect (in-flight handlers that do not finish in time).
 
 Caveats
 =======
@@ -249,7 +249,7 @@ To Do
 * Python doc style documentation of the API.
 * `RECEIPT` frame handling (with timeout) for `sync` and `async` clients.
 * `@connected` decorators which absorb the "check connected" boilerplate code (both clients).
-* manual (both clients) and automatic (`async` only) `HEARTBEAT` handling.
+* Automatic (`async` client only) `HEARTBEAT` handling.
 * The URI scheme supports only TCP, no SSL (the authors don't need it because the client is run in "safe" production environments). For the `async` client, however, it should be straightforward to enhance the URI scheme by means of the [Endpoint API](http://twistedmatrix.com/documents/current/api/twisted.internet.endpoints.html). Contributions are welcome!
 * [STOMP 1.2 protocol](http://stomp.github.com/stomp-specification-1.2.html) (not before there is a reference broker implementation available).
 
