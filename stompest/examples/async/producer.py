@@ -39,7 +39,7 @@ class Producer(object):
                 stomp.send(self.QUEUE, json.dumps({'count': j}))
         finally:
             # give the reactor time to complete the writes
-            yield task.deferLater(1, stomp.disconnect)
+            yield task.deferLater(reactor, 1, stomp.disconnect)
     
 if __name__ == '__main__':
     logging.basicConfig(level=logging.DEBUG)

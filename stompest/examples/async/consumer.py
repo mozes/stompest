@@ -43,12 +43,12 @@ class Consumer(object):
         }
         stomp.subscribe(self.QUEUE, self.consume, headers, errorDestination=self.ERROR_QUEUE)
     
-    def consume(self, stomp, frame):
+    def consume(self, client, frame):
         """
         NOTE: you can return a Deferred here
         """
         data = json.loads(frame.body)
-        print 'Received frame with count %s' % data['count']
+        print 'Received frame with count %d' % data['count']
     
 if __name__ == '__main__':
     logging.basicConfig(level=logging.DEBUG)

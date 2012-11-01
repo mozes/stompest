@@ -18,15 +18,15 @@ from stompest.protocol import StompConfig
 from stompest.sync import Stomp
 
 CONFIG = StompConfig('tcp://localhost:61613')
-QUEUE = '/queue/simpleTest'
+QUEUE = '/queue/test'
 
-stomp = Stomp(CONFIG)
-stomp.connect()
-stomp.subscribe(QUEUE, {'ack': 'client'})
+client = Stomp(CONFIG)
+client.connect()
+client.subscribe(QUEUE, {'ack': 'client'})
 
 while True:
-    frame = stomp.receiveFrame()
+    frame = client.receiveFrame()
     print 'Got %s' % frame.info()
-    stomp.ack(frame)
+    client.ack(frame)
     
-stomp.disconnect()
+client.disconnect()
