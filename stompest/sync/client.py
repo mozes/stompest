@@ -34,7 +34,7 @@ class Stomp(object):
     def __init__(self, config):
         self.log = logging.getLogger(LOG_CATEGORY)
         self._config = config
-        self._session = StompSession(self._config.version)
+        self._session = StompSession(self._config.version, self._config.check)
         self._failover = StompFailoverProtocol(config.uri)
         self._transport = None
     
@@ -80,10 +80,13 @@ class Stomp(object):
         if not receipt:
             self.close()
     
-    def close(self):
-        self._session.flush()
-        self._transport.disconnect()
-
+    def close(self, flush=True):
+        self._session.close(flush)
+        try:
+            self._transport.disconnect()
+        finally:
+            self._transport = None
+    
     # STOMP frames
 
     def send(self, destination, body='', headers=None, receipt=None):
@@ -133,10 +136,18 @@ class Stomp(object):
     def sendFrame(self, frame):
         if self.log.isEnabledFor(logging.DEBUG):
             self.log.debug('Sending %s' % frame.info())
-        self._transport.send(frame)
-    
+        try:
+            self._transport.send(frame)
+        except Exception as e:
+            self.close(flush=False)
+            raise e
+            
     def receiveFrame(self):
-        frame = self._transport.receive()
+        try:
+            frame = self._transport.receive()
+        except Exception as e:
+            self.close(flush=False)
+            raise e
         if frame and self.log.isEnabledFor(logging.DEBUG):
             self.log.debug('Received %s' % frame.info())
         return frame

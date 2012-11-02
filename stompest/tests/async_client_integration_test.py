@@ -307,28 +307,23 @@ class SubscribeTestCase(AsyncClientBaseTestCase):
     def test_replay(self):
         config = StompConfig(uri='tcp://%s:%d' % (HOST, PORT))
         client = async.Stomp(config)
-        
         client = yield client.connect()
-        
         client.subscribe(self.queue, self._eatFrame, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': '1'})
         client.send(self.queue, self.frame)
         while self.framesHandled != 1:
             yield task.deferLater(reactor, 0.01, lambda: None)
-        
         client._protocol.loseConnection()
-        
         try:
             yield client.disconnected
         except StompConnectionError:
             pass
-        
         client = yield client.connect()
         client.send(self.queue, self.frame)
         while self.framesHandled != 2:
             yield task.deferLater(reactor, 0.01, lambda: None)
         
         try:
-            yield client.disconnect(RuntimeError('Hi'))
+            yield client.disconnect(failure=RuntimeError('Hi'))
         except RuntimeError as e:
             self.assertEquals(str(e), 'Hi')
         

@@ -55,6 +55,7 @@ class StompSessionTest(unittest.TestCase):
         self.assertEquals(session.id, 'hi')
         frame = session.disconnect()
         self.assertEquals(frame, commands.disconnect())
+        session.close()
         self.assertEquals(session.server, None)
         self.assertEquals(session.id, None)
         self.assertEquals(session.state, StompSession.DISCONNECTED)
@@ -73,6 +74,7 @@ class StompSessionTest(unittest.TestCase):
         self.assertEquals(session.version, '1.1')
         frame = session.disconnect('4711')
         self.assertEquals(frame, commands.disconnect('4711'))
+        session.close()
         self.assertEquals(session.server, None)
         self.assertEquals(session.id, None)
         self.assertEquals(session.state, StompSession.DISCONNECTED)
@@ -85,6 +87,7 @@ class StompSessionTest(unittest.TestCase):
         self.assertEquals(session.version, '1.0')
         self.assertRaises(StompProtocolError, session.disconnect, 4711)
         frame = session.disconnect()
+        session.close()
         self.assertEquals(frame, commands.disconnect())
         self.assertEquals(session.server, None)
         self.assertEquals(session.id, None)
@@ -100,6 +103,7 @@ class StompSessionTest(unittest.TestCase):
         self.assertEquals(session._versions, ['1.0', '1.1'])
         self.assertEquals(session.version, '1.1')
         session.disconnect('4711')
+        session.close()
         self.assertEquals(session.state, StompSession.DISCONNECTED)
         
     def test_session_subscribe(self):
@@ -131,9 +135,10 @@ class StompSessionTest(unittest.TestCase):
         self.assertEquals(list(session.replay()), [('bla2', headersWithId2, None)])
         session.subscribe('bla2', headersWithId2)
         session.disconnect()
+        session.close(flush=False)
         self.assertEquals(list(session.replay()), [('bla2', headersWithId2, None)])
         session.subscribe('bla2', headersWithId2)
-        session.flush()
+        session.close(flush=True)
         self.assertEquals(list(session.replay()), [])
         
         subscriptionsWithoutId1 = [('bla1', headers, None), ('bla2', headersWithId2, None)]
@@ -178,7 +183,7 @@ class StompSessionTest(unittest.TestCase):
         self.assertEquals(subscriptions, subscriptionWithId2)
         
         session.subscribe('bla2', headersWithId2)
-        session.flush()
+        session.close(flush=True)
         self.assertEquals(list(session.replay()), [])        
         
     def test_session_disconnect(self):
@@ -189,9 +194,11 @@ class StompSessionTest(unittest.TestCase):
         session.subscribe('bla', headers)
         frame = session.disconnect(receipt='4711')
         self.assertEquals(frame, commands.disconnect(receipt='4711'))
+        self.assertEquals(session.state, session.CONNECTED)
+        session.close(flush=False)
+        self.assertEquals(session.state, session.DISCONNECTED)
         self.assertEquals(list(session.replay()), [('bla', headers, None)])
         self.assertEquals(list(session.replay()), [])
-        self.assertEquals(session.state, session.DISCONNECTED)
         
         self.assertRaises(StompProtocolError, session.disconnect)
         

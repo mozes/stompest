@@ -56,7 +56,7 @@ class StompFrameTransport(object):
         
     def disconnect(self):
         try:
-            self._socket.close()
+            self._socket and self._socket.close()
         except IOError as e:
             raise StompConnectionError('Could not close connection cleanly [%s]' % e)
         finally:

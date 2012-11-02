@@ -28,7 +28,7 @@ logging.basicConfig(level=logging.DEBUG)
 HOST = 'fakeHost'
 PORT = 61613
 
-CONFIG = StompConfig('tcp://%s:%s' % (HOST, PORT))
+CONFIG = StompConfig('tcp://%s:%s' % (HOST, PORT), check=False)
 
 class SimpleStompTest(unittest.TestCase):
     def _get_transport_mock(self, receive=None, config=None):
@@ -122,7 +122,7 @@ class SimpleStompTest(unittest.TestCase):
 
     def test_stomp_version_1_1(self):
         destination = '/queue/foo'
-        stomp = self._get_transport_mock(config=StompConfig('tcp://%s:%s' % (HOST, PORT), version='1.1'))
+        stomp = self._get_transport_mock(config=StompConfig('tcp://%s:%s' % (HOST, PORT), version='1.1', check=False))
         stomp._transport = Mock()
         frame = StompFrame(StompSpec.MESSAGE, {StompSpec.MESSAGE_ID_HEADER: '4711', StompSpec.DESTINATION_HEADER: destination})
         self.assertRaises(StompProtocolError, stomp.nack, frame)

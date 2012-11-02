@@ -22,11 +22,12 @@ import socket
 from stompest.error import StompConnectTimeout
 
 class StompConfig(object):
-    def __init__(self, uri=None, login='', passcode='', version=None):
+    def __init__(self, uri=None, login='', passcode='', version=None, check=True):
         self.uri = uri
         self.login = login
         self.passcode = passcode
         self.version = version
+        self.check = check
 
 class StompFailoverProtocol(object):
     def __init__(self, uri):

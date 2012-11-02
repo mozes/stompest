@@ -111,7 +111,7 @@ class SimpleStompIntegrationTest(unittest.TestCase):
         stomp.send(self.DESTINATION, 'test message 1')
         headers = {StompSpec.ACK_HEADER: 'client-individual'}
         token = stomp.subscribe(self.DESTINATION, headers)
-        stomp._transport._socket.close()
+        stomp.sendFrame(StompFrame('DISCONNECT')) # DISCONNECT frame is out-of-band, as far as the session is concerned -> unexpected disconnect
         self.assertRaises(StompConnectionError, stomp.receiveFrame)
         stomp.connect()
         stomp.ack(stomp.receiveFrame())
@@ -120,7 +120,7 @@ class SimpleStompIntegrationTest(unittest.TestCase):
         headers = {'id': 'bla', StompSpec.ACK_HEADER: 'client-individual'}
         stomp.subscribe(self.DESTINATION, headers)
         headers[StompSpec.DESTINATION_HEADER] = self.DESTINATION
-        stomp._transport._socket.close()
+        stomp.sendFrame(StompFrame('DISCONNECT')) # DISCONNECT frame is out-of-band, as far as the session is concerned -> unexpected disconnect
         self.assertRaises(StompConnectionError, stomp.receiveFrame)
         stomp.connect()
         stomp.ack(stomp.receiveFrame())
