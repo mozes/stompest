@@ -46,14 +46,11 @@ def connect(login=None, passcode=None, headers=None, versions=None, host=None):
         headers[StompSpec.PASSCODE_HEADER] = passcode
     return StompFrame(StompSpec.CONNECT, headers)
 
-def disconnect(receipt=None, version=None):
+def disconnect(receipt=None):
     headers = {}
-    version = _version(version)
-    if receipt is not None:
-        if version == StompSpec.VERSION_1_0:
-            raise StompProtocolError('%s not supported (version %s)' % (StompSpec.RECEIPT_HEADER, version))
-        headers[StompSpec.RECEIPT_HEADER] = receipt
-    return StompFrame(StompSpec.DISCONNECT, headers)
+    frame = StompFrame(StompSpec.DISCONNECT, headers)
+    _addReceiptHeader(frame, receipt)
+    return frame
 
 def send(destination, body='', headers=None, receipt=None):
     frame = StompFrame(StompSpec.SEND, dict(headers or []), body)
@@ -203,8 +200,11 @@ def _ackHeaders(frame, version):
     return dict((key, value) for (key, value) in frame.headers.iteritems() if key in (StompSpec.SUBSCRIPTION_HEADER, StompSpec.MESSAGE_ID_HEADER, StompSpec.TRANSACTION_HEADER))
 
 def _addReceiptHeader(frame, receipt):
-    if receipt is not None:
-        frame.headers[StompSpec.RECEIPT_HEADER] = receipt
+    if not receipt:
+        return
+    if not isinstance(receipt, basestring):
+        raise StompProtocolError('Invalid receipt (not a string): %s' % repr(receipt))
+    frame.headers[StompSpec.RECEIPT_HEADER] = str(receipt)
 
 def _checkCommand(frame, commands=None):
     if frame.command not in (commands or StompSpec.COMMANDS):

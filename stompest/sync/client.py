@@ -77,8 +77,11 @@ class Stomp(object):
         
     def disconnect(self, receipt=None):
         self.sendFrame(self._session.disconnect(receipt))
+        if not receipt:
+            self.close()
+    
+    def close(self):
         self._session.flush()
-        # TODO: wait for RECEIPT frame with timeout
         self._transport.disconnect()
 
     # STOMP frames
@@ -118,6 +121,9 @@ class Stomp(object):
             self.commit(transaction, receipt)
         except:
             self.abort(transaction, receipt)
+    
+    def message(self, frame):
+        return self._session.message(frame)
     
     # frame transport
     

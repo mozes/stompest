@@ -70,14 +70,17 @@ class StompSession(object):
     
     def disconnect(self, receipt=None):
         self.__check(self.CONNECTED)
-        frame = commands.disconnect(receipt, self.version)
+        frame = commands.disconnect(receipt)
         self._reset()
+        self._receipt(receipt)
         return frame
     
     def send(self, destination, body='', headers=None, receipt=None):
         self.__check(self.CONNECTED)
-        return commands.send(destination, body, headers, receipt)
-    
+        frame = commands.send(destination, body, headers, receipt)
+        self._receipt(receipt)
+        return frame
+        
     def subscribe(self, destination, headers=None, receipt=None, context=None):
         self.__check(self.CONNECTED)
         frame, token = commands.subscribe(destination, headers, receipt, self.version)
@@ -85,6 +88,7 @@ class StompSession(object):
             raise StompProtocolError('Already subscribed [%s=%s]' % token)
         # TODO: promote receipt to the same level as destination and headers
         self._subscriptions[token] = (self._nextSubscription(), destination, copy.deepcopy(headers), context)
+        self._receipt(receipt)
         return frame, token
     
     def unsubscribe(self, token, receipt=None):
@@ -94,15 +98,20 @@ class StompSession(object):
             self._subscriptions.pop(token)
         except KeyError:
             raise StompProtocolError('No such subscription [%s=%s]' % token)
+        self._receipt(receipt)
         return frame
     
     def ack(self, frame, receipt=None):
         self.__check(self.CONNECTED)
-        return commands.ack(frame, receipt, self.version)
-        
+        frame = commands.ack(frame, receipt, self.version)
+        self._receipt(receipt)
+        return frame
+    
     def nack(self, frame, receipt=None):
         self.__check(self.CONNECTED)
-        return commands.nack(frame, receipt, self.version)
+        frame = commands.nack(frame, receipt, self.version)
+        self._receipt(receipt)
+        return frame
     
     def transaction(self, transaction=None):
         return str(transaction or uuid.uuid4())
@@ -113,6 +122,7 @@ class StompSession(object):
         if transaction in self._transactions:
             raise StompProtocolError('Transaction already active: %s' % transaction)
         self._transactions.add(transaction)
+        self._receipt(receipt)
         return frame
         
     def commit(self, transaction, receipt=None):
@@ -122,6 +132,7 @@ class StompSession(object):
             self._transactions.remove(transaction)
         except KeyError:
             raise StompProtocolError('Transaction unknown: %s' % transaction)
+        self._receipt(receipt)
         return frame
     
     def abort(self, transaction, receipt=None):
@@ -131,6 +142,7 @@ class StompSession(object):
             self._transactions.remove(transaction)
         except KeyError:
             raise StompProtocolError('Transaction unknown: %s' % transaction)
+        self._receipt(receipt)
         return frame
     
     def connected(self, headers):
@@ -148,6 +160,15 @@ class StompSession(object):
             raise StompProtocolError('No such subscription [%s=%s]' % token)
         return token
     
+    def receipt(self, frame):
+        self.__check(self.CONNECTED)
+        receipt = commands.receipt(frame, self.version)
+        try:
+            self._receipts.remove(receipt)
+        except KeyError:
+            raise StompProtocolError('Unexpected receipt: %s' % receipt)
+        return receipt
+    
     @property
     def id(self):
         return self._id
@@ -163,9 +184,10 @@ class StompSession(object):
     # state management
     
     def flush(self):
+        self._receipts = set()
         self._subscriptions = {}
         self._transactions = set()
-    
+        
     def replay(self):
         subscriptions = self._subscriptions
         self.flush()
@@ -174,6 +196,13 @@ class StompSession(object):
     
     # helpers
     
+    def _receipt(self, receipt):
+        if not receipt:
+            return
+        if receipt in self._receipts:
+            raise StompProtocolError('Duplicate receipt: %s' % receipt)
+        self._receipts.add(receipt)
+        
     def _reset(self):
         self._id = None
         self._server = None
