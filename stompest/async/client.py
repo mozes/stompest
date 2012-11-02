@@ -130,10 +130,6 @@ class Stomp(object):
         defer.returnValue(result)
     
     @connected
-    def sendFrame(self, frame):
-        self._protocol.send(frame)
-    
-    @connected
     def send(self, destination, body='', headers=None, receipt=None):
         self.sendFrame(commands.send(destination, body, headers, receipt))
         
