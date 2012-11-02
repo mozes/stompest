@@ -239,7 +239,7 @@ Clients
 Caveats
 =======
 * Tested with ActiveMQ versions 5.5 and 5.6. Mileage may vary with other STOMP implementations.
-* stompest 2 is probably even better tested than stompest 1.x and used in production by one of the authors, but it has gained heavily on functionality. In the thorough redesign, the authors valued consistency, simplicity and symmetry over full backward compatibility to stompest 1.x. The migration is nevertheless very simple and straightforward, and will make your code simpler and more Pythonic.
+* stompest 2 is probably even better tested than stompest 1.x and is about to be used in production by one of the authors, but it has gained heavily on functionality. In the thorough redesign, the authors valued consistency, simplicity and symmetry over full backward compatibility to stompest 1.x. The migration is nevertheless very simple and straightforward, and will make your code simpler and more Pythonic.
 * It is planned to add more features in the near future. Thus, the API should not be considered stable, which is why stompest 2 is still marked as Alpha software.
 
 To Do
@@ -247,7 +247,7 @@ To Do
 * Python doc style documentation of the API.
 * `RECEIPT` frame handling (with timeout) for `sync` and `async` clients.
 * `@connected` decorators which absorb the "check connected" boilerplate code (both clients).
-* Automatic (`async` client only) `HEARTBEAT` handling.
+* `async` client only: automatic `HEARTBEAT` handling.
 * The URI scheme supports only TCP, no SSL (the authors don't need it because the client is run in "safe" production environments). For the `async` client, however, it should be straightforward to enhance the URI scheme by means of the [Endpoint API](http://twistedmatrix.com/documents/current/api/twisted.internet.endpoints.html). Contributions are welcome!
 * [STOMP 1.2 protocol](http://stomp.github.com/stomp-specification-1.2.html) (not before there is a reference broker implementation available).
 
