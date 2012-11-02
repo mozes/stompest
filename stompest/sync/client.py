@@ -52,13 +52,13 @@ class Stomp(object):
                 if connectDelay:
                     self.log.debug('Delaying connect attempt for %d ms' % int(connectDelay * 1000))
                     time.sleep(connectDelay)
-                self.log.debug('Connecting to %s ...' % self._transport)
+                self.log.info('Connecting to %s ...' % self._transport)
                 try:
                     self._transport.connect()
                 except StompConnectionError as e:
                     self.log.warning('Could not connect to %s [%s]' % (self._transport, e))
                 else:
-                    self.log.debug('Connection established')
+                    self.log.info('Connection established')
                     self._connect(headers, versions, host)
                     break
         except StompConnectionError as e:
@@ -72,7 +72,7 @@ class Stomp(object):
         self._session.connected(frame)
         self.log.info('STOMP session established with broker %s' % self._transport)
         for (dest, headers, _) in self._session.replay():
-            self.log.debug('Replaying subscription %s' % headers)
+            self.log.info('Replaying subscription %s' % headers)
             self.subscribe(dest, headers)
         
     def disconnect(self, receipt=None):
@@ -125,12 +125,13 @@ class Stomp(object):
         return self._transport.canRead(timeout)
         
     def sendFrame(self, frame):
-        self.log.debug('Sending %s' % frame.info())
+        if self.log.isEnabledFor(logging.DEBUG):
+            self.log.debug('Sending %s' % frame.info())
         self._transport.send(frame)
     
     def receiveFrame(self):
         frame = self._transport.receive()
-        if frame:
+        if frame and self.log.isEnabledFor(logging.DEBUG):
             self.log.debug('Received %s' % frame.info())
         return frame
     

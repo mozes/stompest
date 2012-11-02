@@ -246,8 +246,7 @@ To Do
 =====
 * Python doc style documentation of the API.
 * `RECEIPT` frame handling (with timeout) for `sync` and `async` clients.
-* `@connected` decorators which absorb the "check connected" boilerplate code (both clients).
-* `async` client only: automatic `HEARTBEAT` handling.
+* `async` client only: heartbeating.
 * The URI scheme supports only TCP, no SSL (the authors don't need it because the client is run in "safe" production environments). For the `async` client, however, it should be straightforward to enhance the URI scheme by means of the [Endpoint API](http://twistedmatrix.com/documents/current/api/twisted.internet.endpoints.html). Contributions are welcome!
 * [STOMP 1.2 protocol](http://stomp.github.com/stomp-specification-1.2.html) (not before there is a reference broker implementation available).
 
@@ -256,4 +255,4 @@ Changes
 * 1.0.4 - Bug fix thanks to [Njal Karevoll](https://github.com/nkvoll).  No longer relies on newline after the null-byte frame separator.  Library is now compatible with RabbitMQ stomp adapter.
 * 1.1.1 - Thanks to [nikipore](https://github.com/nikipore) for adding support for binary messages.
 * 1.1.2 - Fixed issue with stomper adding a space in ACK message-id header. ActiveMQ 5.6.0 no longer tolerates this.
-* 2.0a1 - Complete redesign: feature-complete implementation of STOMP 1.0 and 1.1 (except heartbeat). Broker failover. Decoupled from [stomper](http://code.google.com/p/stomper/).
+* 2.0a1 - Complete redesign: feature-complete implementation of STOMP 1.0 and 1.1 (except heartbeating). Broker failover. Decoupled from [stomper](http://code.google.com/p/stomper/).

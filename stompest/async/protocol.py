@@ -43,7 +43,8 @@ class StompProtocol(Protocol):
             frame = self._parser.get()
             if not frame:
                 break
-            self.log.debug('Received %s' % frame.info())
+            if self.log.isEnabledFor(logging.DEBUG):
+                self.log.debug('Received %s' % frame.info())
             
             try:
                 self._onFrame(frame)
@@ -63,7 +64,8 @@ class StompProtocol(Protocol):
     # user interface
     #
     def send(self, frame):
-        self.log.debug('Sending %s' % frame.info())
+        if self.log.isEnabledFor(logging.DEBUG):
+            self.log.debug('Sending %s' % frame.info())
         self.transport.write(str(frame))
     
     def loseConnection(self):

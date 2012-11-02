@@ -26,7 +26,7 @@ from stompest.protocol import commands, StompSession, StompSpec
 from stompest.util import cloneFrame
 
 from .protocol import StompProtocolCreator
-from .util import InFlightOperations, exclusive
+from .util import InFlightOperations, connected, exclusive
 
 LOG_CATEGORY = 'stompest.async.client'
 
@@ -96,7 +96,7 @@ class Stomp(object):
     def disconnect(self, failure=None, timeout=None):
         if failure:
             self._disconnectReason = failure
-        self.log.debug('Disconnecting ...%s' % ('' if (not failure) else  ('[reason=%s]' % failure)))
+        self.log.info('Disconnecting ...%s' % ('' if (not failure) else  ('[reason=%s]' % failure)))
         try:
             # notify that we are ready to disconnect after outstanding messages are ack'ed
             if self._activeHandlers:
@@ -129,52 +129,59 @@ class Stomp(object):
         
         defer.returnValue(result)
     
+    @connected
+    def sendFrame(self, frame):
+        self._protocol.send(frame)
+    
+    @connected
     def send(self, destination, body='', headers=None, receipt=None):
-        self._protocol.send(commands.send(destination, body, headers, receipt))
+        self.sendFrame(commands.send(destination, body, headers, receipt))
         
+    @connected
     def ack(self, frame, receipt=None):
-        self._protocol.send(self.session.ack(frame, receipt))
+        self.sendFrame(self.session.ack(frame, receipt))
     
+    @connected
     def nack(self, frame, receipt=None):
-        self._protocol.send(self.session.nack(frame, receipt))
+        self.sendFrame(self.session.nack(frame, receipt))
     
+    @connected
     def begin(self, transaction=None, receipt=None):
-        protocol = self._protocol
         frame, token = self.session.begin(transaction, receipt)
-        protocol.send(frame)
-        return token
-        
-    def abort(self, transaction=None, receipt=None):
-        protocol = self._protocol
-        frame, token = self.session.abort(transaction, receipt)
-        protocol.send(frame)
-        return token
-        
-    def commit(self, transaction=None, receipt=None):
-        protocol = self._protocol
-        frame, token = self.session.commit(transaction, receipt)
-        protocol.send(frame)
+        self.sendFrame(frame)
         return token
     
+    @connected
+    def abort(self, transaction=None, receipt=None):
+        frame, token = self.session.abort(transaction, receipt)
+        self.sendFrame(frame)
+        return token
+    
+    @connected
+    def commit(self, transaction=None, receipt=None):
+        frame, token = self.session.commit(transaction, receipt)
+        self.sendFrame(frame)
+        return token
+    
+    @connected
     def subscribe(self, destination, handler, headers=None, receipt=None, ack=True, errorDestination=None, onMessageFailed=None):
-        protocol = self._protocol
         if not callable(handler):
             raise ValueError('Cannot subscribe (handler is missing): %s' % handler)
         frame, token = self.session.subscribe(destination, headers, receipt, {'handler': handler, 'receipt': receipt, 'errorDestination': errorDestination, 'onMessageFailed': onMessageFailed})
         ack = ack and (frame.headers.setdefault(StompSpec.ACK_HEADER, self.DEFAULT_ACK_MODE) in StompSpec.CLIENT_ACK_MODES)
         self._subscriptions[token] = {'destination': destination, 'handler': self._createHandler(handler), 'ack': ack, 'errorDestination': errorDestination, 'onMessageFailed': onMessageFailed}
-        protocol.send(frame)
+        self.sendFrame(frame)
         return token
     
+    @connected
     def unsubscribe(self, token, receipt=None):
-        protocol = self._protocol
         frame = self.session.unsubscribe(token, receipt)
         try:
             self._subscriptions.pop(token)
         except:
             self.log.warning('Cannot unsubscribe (subscription id unknown): %s=%s' % token)
             raise
-        protocol.send(frame)
+        self.sendFrame(frame)
             
     #
     # callbacks for received STOMP frames
@@ -188,7 +195,7 @@ class Stomp(object):
     
     def _onConnected(self, frame):
         self.session.connected(frame)
-        self.log.debug('Connected to stomp broker with session: %s' % self.session.id)
+        self.log.info('Connected to stomp broker with session: %s' % self.session.id)
         self._connected.waiting.callback(None)
 
     def _onError(self, frame):
@@ -286,7 +293,7 @@ class Stomp(object):
     
     def _replay(self):
         for (destination, headers, context) in self.session.replay():
-            self.log.debug('Replaying subscription: %s' % headers)
+            self.log.info('Replaying subscription: %s' % headers)
             self.subscribe(destination, headers=headers, **context)
     
     def _onConnectionLost(self, reason):
