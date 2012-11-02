@@ -3,15 +3,15 @@ stomp, stomper, stompest!
 
 stompest is a full-featured [STOMP](http://stomp.github.com/) [1.0](http://stomp.github.com//stomp-specification-1.0.html) and [1.1](http://stomp.github.com//stomp-specification-1.1.html) implementation for Python including both synchronous and [Twisted](http://twistedmatrix.com/) clients. The `sync.Stomp` client is dead simple. It does not assume anything about your concurrency model (thread vs process) or force you to use it any particular way. It gets out of your way and lets you do what you want. The `async.Stomp` client is based on [Twisted](http://twistedmatrix.com/), a very mature and powerful asynchronous programming framework. It supports destination specific message and error handlers (with default "poison pill" error handling), concurrent message processing, graceful shutdown, and connect and disconnect timeouts.
 
-Both clients make use of a generic set of components (the `protocol` module) which can be used independently to roll your own STOMP client, viz.
+Both clients make use of a generic set of components in the `protocol` module each of which can be used independently to roll your own STOMP client:
 
-* a wire-level STOMP frame parser and compiler (`protocol.StompParser`, `protocol.StompFrame`),
+* a wire-level STOMP frame parser `protocol.StompParser` and compiler `protocol.StompFrame`),
 
-* a faithful implementation of the syntax of the STOMP 1.0 and 1.1 protocols with a simple stateless function API (the `protocol.commands` module),
+* a faithful implementation of the syntax of the STOMP 1.0 and 1.1 protocols with a simple stateless function API in the `protocol.commands` module,
 
-* a separate implementation of the STOMP 1.0 and 1.1 session state semantics (`protocol.StompSession`), such as protocol version negotiation at connect time, transaction and subscription handling (including a generic subscription replay scheme which may be used to reconstruct the session state after a forced disconnect),
+* a separate implementation of the STOMP 1.0 and 1.1 session state semantics in `protocol.StompSession`, such as protocol version negotiation at connect time, transaction and subscription handling (including a generic subscription replay scheme which may be used to reconstruct the session state after a forced disconnect),
 
-* and `StompFailoverProtocol`, a [failover transport](http://activemq.apache.org/failover-transport-reference.html) URI scheme akin to ActiveMQ.
+* and `protocol.StompFailoverProtocol`, a [failover transport](http://activemq.apache.org/failover-transport-reference.html) URI scheme akin to ActiveMQ.
 
 This module is thoroughly unit tested and production hardened for the functionality used by [Mozes](http://www.mozes.com/): persistent queueing on ActiveMQ. Other users also use it in serious production environments. Minor enhancements may be required to use this STOMP adapter with other brokers.
 
