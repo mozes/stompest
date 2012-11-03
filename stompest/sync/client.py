@@ -23,6 +23,7 @@ from stompest.protocol import StompFailoverProtocol, StompSession
 
 from .transport import StompFrameTransport
 from stompest.protocol import commands
+from stompest.sync.util import connected
 
 LOG_CATEGORY = 'stompest.sync'
 
@@ -39,26 +40,26 @@ class Stomp(object):
         self._transport = None
     
     def connect(self, headers=None, versions=None, host=None):
-        if self.__transport:
-            try: # preserve existing connection
-                self._transport.canRead(0)
-                self.log.warning('Already connected to %s' % self._transport)
-                return
-            except StompConnectionError as e:
-                self.log.warning('Lost connection to %s [%s]' % (self._transport, e))
+        try: # preserve existing connection
+            self._transport
+            self.log.warning('Already connected to %s' % self._transport)
+            return
+        except StompConnectionError as e:
+            self.log.warning('Lost connection [%s]' % e)
         try:
             for (broker, connectDelay) in self._failover:
-                self._transport = self.factory(broker['host'], broker['port'], self._session.version)
+                transport = self.factory(broker['host'], broker['port'], self._session.version)
                 if connectDelay:
                     self.log.debug('Delaying connect attempt for %d ms' % int(connectDelay * 1000))
                     time.sleep(connectDelay)
-                self.log.info('Connecting to %s ...' % self._transport)
+                self.log.info('Connecting to %s ...' % transport)
                 try:
-                    self._transport.connect()
+                    transport.connect()
                 except StompConnectionError as e:
-                    self.log.warning('Could not connect to %s [%s]' % (self._transport, e))
+                    self.log.warning('Could not connect to %s [%s]' % (transport, e))
                 else:
                     self.log.info('Connection established')
+                    self._transport = transport
                     self._connect(headers, versions, host)
                     break
         except StompConnectionError as e:
@@ -74,48 +75,51 @@ class Stomp(object):
         for (dest, headers, _) in self._session.replay():
             self.log.info('Replaying subscription %s' % headers)
             self.subscribe(dest, headers)
-        
+    
+    @connected
     def disconnect(self, receipt=None):
         self.sendFrame(self._session.disconnect(receipt))
         if not receipt:
             self.close()
     
-    def close(self, flush=True):
-        self._session.close(flush)
-        try:
-            self._transport.disconnect()
-        finally:
-            self._transport = None
-    
     # STOMP frames
 
+    @connected
     def send(self, destination, body='', headers=None, receipt=None):
         self.sendFrame(commands.send(destination, body, headers, receipt))
         
+    @connected
     def subscribe(self, destination, headers, receipt=None, context=None):
         frame, token = self._session.subscribe(destination, headers, receipt, context)
         self.sendFrame(frame)
         return token
     
+    @connected
     def unsubscribe(self, token, receipt=None):
         self.sendFrame(self._session.unsubscribe(token, receipt))
         
+    @connected
     def ack(self, headers, receipt=None):
         self.sendFrame(self._session.ack(headers, receipt))
     
+    @connected
     def nack(self, headers, receipt=None):
         self.sendFrame(self._session.nack(headers, receipt))
     
+    @connected
     def begin(self, transaction, receipt=None):
         self.sendFrame(self._session.begin(transaction, receipt))
         
+    @connected
     def abort(self, transaction, receipt=None):
         self.sendFrame(self._session.abort(transaction, receipt))
         
+    @connected
     def commit(self, transaction, receipt=None):
         self.sendFrame(self._session.commit(transaction, receipt))
     
     @contextlib.contextmanager
+    @connected
     def transaction(self, transaction=None, receipt=None):
         transaction = self._session.transaction(transaction)
         self.begin(transaction, receipt)
@@ -130,33 +134,38 @@ class Stomp(object):
     
     # frame transport
     
+    def close(self, flush=True):
+        self._session.close(flush)
+        try:
+            self.__transport and self.__transport.disconnect()
+        finally:
+            self._transport = None
+    
     def canRead(self, timeout=None):
         return self._transport.canRead(timeout)
         
     def sendFrame(self, frame):
         if self.log.isEnabledFor(logging.DEBUG):
             self.log.debug('Sending %s' % frame.info())
-        try:
-            self._transport.send(frame)
-        except Exception as e:
-            self.close(flush=False)
-            raise e
+        self._transport.send(frame)
             
     def receiveFrame(self):
-        try:
-            frame = self._transport.receive()
-        except Exception as e:
-            self.close(flush=False)
-            raise e
+        frame = self._transport.receive()
         if frame and self.log.isEnabledFor(logging.DEBUG):
             self.log.debug('Received %s' % frame.info())
         return frame
     
     @property
     def _transport(self):
-        if not self.__transport:
+        transport = self.__transport
+        if not transport:
             raise StompConnectionError('Not connected')
-        return self.__transport
+        try:
+            transport.canRead(0)
+        except Exception as e:
+            self.close(flush=False)
+            raise e
+        return transport
     
     @_transport.setter
     def _transport(self, transport):

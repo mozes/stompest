@@ -23,8 +23,6 @@ from twisted.internet.endpoints import clientFromString
 
 from stompest.error import StompStillRunningError
 
-LOG_CATEGORY = 'stompest.async.util'
-
 class InFlightOperations(object):
     def __init__(self, info, keyError=KeyError):
         self._info = info

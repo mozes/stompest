@@ -34,7 +34,6 @@ class SimpleStompIntegrationTest(unittest.TestCase):
         config = StompConfig(uri='tcp://localhost:61613')
         stomp = Stomp(config)
         stomp.connect()
-        
         stomp.subscribe(self.DESTINATION, {StompSpec.ACK_HEADER: 'client'})
         stomp.subscribe(self.DESTINATION, {StompSpec.ID_HEADER: 'bla', StompSpec.ACK_HEADER: 'client'})
         while stomp.canRead(self.TIMEOUT):
