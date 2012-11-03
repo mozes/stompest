@@ -27,50 +27,77 @@ class InFlightOperations(object):
     def __init__(self, info, keyError=KeyError):
         self._info = info
         self._keyError = keyError
-        self._keys = set()
-        self.waiting = None
+        self._waiting = {}
         
     @contextlib.contextmanager
     def __call__(self, key=None, log=None):
         self.enter(key)
         log and log.debug('%s %s started.' % (self._info, key))
         try:
-            yield
+            yield key
         except Exception as e:
             log and log.error('%s %s failed: %s' % (self._info, key, e))
             raise
         finally:
+            if key not in self:
+                self.log.warning('%s %s was cancelled in the meantime.')
+                return
             self.exit(key)
         log and log.debug('%s %s complete.' % (self._info, key))
         
     def __nonzero__(self):
-        return bool(self._keys)
+        return bool(self._waiting)
+    
+    def __contains__(self, key):
+        return key in self._waiting
+    
+    def __iter__(self):
+        return iter(self._waiting)
+    
+    def __getitem__(self, key):
+        try:
+            return self._waiting[key]
+        except KeyError:
+            raise self._keyError('%s %s not in progress.' % (self._info, key))
+    
+    def get(self, key=None):
+        return self._waiting.get(key)
+    
+    def pop(self, key=None):
+        try:
+            return self._waiting.pop(key)
+        except KeyError:
+            raise self._keyError('%s %s not in progress.' % (self._info, key))
         
-    def cancel(self):
-        self.waiting.cancel()
-        self.waiting = None
-
     def enter(self, key=None):
-        if key in self._keys:
-            raise self._keyError('[%s] %s already in progress.' % (self._info, key))
-        self._keys.add(key)
+        if key in self:
+            raise self._keyError('%s %s already in progress.' % (self._info, key))
+        self._waiting[key] = defer.Deferred()
         
     def exit(self, key=None):
-        self._keys.remove(key)
-        if self.waiting and (not self):
-            self.waiting.callback(None)
+        waiting = self.pop(key)
+        if not waiting.called:
+            waiting.callback(None)
+    
+    def cancel(self, key=None):
+        self.pop(key).cancel()
     
     @defer.inlineCallbacks
-    def wait(self, timeout=None):
-        self.waiting = defer.Deferred()
+    def wait(self, key=None, timeout=None):
+        waiting = self[key]
         if timeout is not None:
-            timeout = task.deferLater(reactor, timeout, self.cancel)
+            timeout = task.deferLater(reactor, timeout, self.cancel, key)
         try:
-            result = yield self.waiting
+            yield waiting
         finally:
             timeout and timeout.cancel()
-            self.waiting = None
-        defer.returnValue(result)
+        
+    @defer.inlineCallbacks
+    def waitall(self, timeout=None):
+        if not self:
+            return
+        waiting = [self.wait(key, timeout) for key in self]
+        yield task.cooperate(iter(waiting)).whenDone()
     
 def exclusive(f):
     @functools.wraps(f)

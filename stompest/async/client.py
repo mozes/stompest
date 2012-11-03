@@ -46,7 +46,8 @@ class Stomp(object):
         self._connected = InFlightOperations('STOMP session negotiation')
         
         # keep track of active handlers for graceful disconnect
-        self._activeHandlers = InFlightOperations('Handler for message', keyError=StompProtocolError)
+        self._messages = InFlightOperations('Handler for message', keyError=StompProtocolError)
+        #self._receipts = InFlightOperations('Receipt waiting', keyError=StompProtocolError)
                         
         self._handlers = {
             'MESSAGE': self._onMessage,
@@ -82,8 +83,10 @@ class Stomp(object):
         
         try:
             self.sendFrame(frame)
-            yield self._connected.wait(connectedTimeout)
+            with self._connected(log=self.log):
+                yield self._connected.wait(timeout=connectedTimeout)
         except Exception as e:
+            print type(e)
             self.log.error('STOMP session connect failed [%s]' % e)
             yield self.disconnect(failure=e)
         
@@ -100,10 +103,10 @@ class Stomp(object):
         protocol = self._protocol
         try:
             # notify that we are ready to disconnect after outstanding messages are ack'ed
-            if self._activeHandlers:
+            if self._messages:
                 self.log.info('Waiting for outstanding message handlers to finish ... [timeout=%s]' % timeout)
                 try:
-                    yield self._activeHandlers.wait(timeout)
+                    yield self._messages.waitall(timeout)
                 except CancelledError:
                     self.log.warning('Handlers did not finish in time. Force disconnect ...')
                 else:
@@ -115,7 +118,10 @@ class Stomp(object):
                     self.sendFrame(frame)
                 except Exception as e:
                     self.log.warning('Could not send %s. [%s]' % (frame.info(), e))
-            
+                """
+                with self._receipts(receipt):
+                    yield self._receipts.
+                """
             protocol.loseConnection()
             result = yield self._disconnectedSignal
             
@@ -187,17 +193,18 @@ class Stomp(object):
     
     def _onConnected(self, frame):
         self.session.connected(frame)
-        self.log.info('Connected to stomp broker with session: %s' % self.session.id)
-        self._connected.waiting.callback(None)
-
+        self.log.info('Connected to stomp broker [session=%s]' % self.session.id)
+        self._connected.get().callback(None)
+        
     def _onError(self, frame):
-        if self._connected.waiting:
-            self._connected.waiting.errback(StompProtocolError('While trying to connect, received %s' % frame.info()))
+        connecting = self._connected.get()
+        if connecting:
+            connecting.errback(StompProtocolError('While trying to connect, received %s' % frame.info()))
             return
 
         #Workaround for AMQ < 5.2
         if 'Unexpected ACK received for message-id' in frame.headers.get('message', ''):
-            self.log.debug('AMQ brokers < 5.2 do not support client-individual mode.')
+            self.log.debug('AMQ brokers < 5.2 do not support client-individual mode')
         else:
             self.disconnect(failure=StompProtocolError('Received %s' % frame.info()))
         
@@ -222,7 +229,7 @@ class Stomp(object):
             return
         
         try:
-            with self._activeHandlers(messageId, self.log):
+            with self._messages(messageId, self.log):
                 yield subscription['handler'](self, frame)
                 if subscription['ack']:
                     self.ack(frame)
@@ -292,11 +299,11 @@ class Stomp(object):
     def _onConnectionLost(self, reason):
         self._protocol = None
         self.log.info('Disconnected: %s' % reason.getErrorMessage())
-        if (not self.disconnect.running) or self._activeHandlers.waiting:
+        if (not self.disconnect.running) or self._messages:
             self._disconnectReason = StompConnectionError('Unexpected connection loss [%s]' % reason.getErrorMessage())
         self.session.close(flush=not self._disconnectReason)
-        if self._activeHandlers.waiting:
-            self._activeHandlers.cancel()
+        for message in list(self._messages):
+            self._messages.cancel(message)
         if self._disconnectReason:
             #self.log.debug('Calling disconnected deferred errback: %s' % self._disconnectReason)
             self._disconnectedSignal.errback(self._disconnectReason)
