@@ -34,8 +34,10 @@ class Stomp(object):
     DEFAULT_ACK_MODE = 'auto'
     MESSAGE_FAILED_HEADER = 'message-failed'
     
-    def __init__(self, config):
+    def __init__(self, config, receiptTimeout=None):
         self._config = config
+        self._receiptTimeout = receiptTimeout
+        
         self.session = StompSession(self._config.version, self._config.check)
         self._protocol = None
         self._protocolCreator = StompProtocolCreator(self._config.uri)
@@ -47,7 +49,7 @@ class Stomp(object):
         
         # keep track of active handlers for graceful disconnect
         self._messages = InFlightOperations('Handler for message', keyError=StompProtocolError)
-        #self._receipts = InFlightOperations('Receipt waiting', keyError=StompProtocolError)
+        self._receipts = InFlightOperations('Waiting for receipt', keyError=StompProtocolError)
                         
         self._handlers = {
             'MESSAGE': self._onMessage,
@@ -83,8 +85,8 @@ class Stomp(object):
         
         try:
             self.sendFrame(frame)
-            with self._connected(log=self.log.isEnabledFor(logging.DEBUG) and self.log):
-                yield self._connected.wait(None, timeout=connectedTimeout)
+            with self._connected(log=self.log):
+                yield self._connected.wait(timeout=connectedTimeout)
         except Exception as e:
             self.log.error('STOMP session connect failed [%s]' % e)
             yield self.disconnect(failure=e)
@@ -117,7 +119,15 @@ class Stomp(object):
                     self.sendFrame(frame)
                 except Exception as e:
                     self.log.warning('Could not send %s. [%s]' % (frame.info(), e))
-
+                
+                try:
+                    with self._receipts(receipt, self.log):
+                        if receipt is None:
+                            self._receipts.get().callback(None)
+                        yield self._receipts.waitall(timeout=self._receiptTimeout)
+                except CancelledError:
+                    self.log.warning('Not all receipts arrived on time. Force disconnect ...')
+                    
             protocol.loseConnection()
             result = yield self._disconnectedSignal
             
@@ -128,8 +138,10 @@ class Stomp(object):
         defer.returnValue(result)
     
     @connected
+    @defer.inlineCallbacks
     def send(self, destination, body='', headers=None, receipt=None):
         self.sendFrame(self.session.send(destination, body, headers, receipt))
+        yield self._waitForReceipt(receipt)
         
     @connected
     def ack(self, frame, receipt=None):
@@ -225,7 +237,7 @@ class Stomp(object):
             return
         
         try:
-            with self._messages(messageId, self.log.isEnabledFor(logging.DEBUG) and self.log):
+            with self._messages(messageId, self.log):
                 yield subscription['handler'](self, frame)
                 if subscription['ack']:
                     self.ack(frame)
@@ -239,8 +251,11 @@ class Stomp(object):
                     self.disconnect(failure=e)
 
     def _onReceipt(self, frame):
-        pass
-    
+        receipt = self.session.receipt(frame)
+        waiting = self._receipts.get(receipt)
+        if waiting and (not waiting.called):
+            waiting.callback(None)
+        
     #
     # hook for MESSAGE frame error handling
     #
@@ -287,11 +302,6 @@ class Stomp(object):
             return handler(self, result)
         return _handler
     
-    def _replay(self):
-        for (destination, headers, context) in self.session.replay():
-            self.log.info('Replaying subscription: %s' % headers)
-            self.subscribe(destination, headers=headers, **context)
-    
     def _onConnectionLost(self, reason):
         self._protocol = None
         self.log.info('Disconnected: %s' % reason.getErrorMessage())
@@ -308,3 +318,16 @@ class Stomp(object):
             #self.log.debug('Calling disconnected deferred callback')
             self._disconnectedSignal.callback(None)
         self._disconnectedSignal = None
+        
+    def _replay(self):
+        for (destination, headers, context) in self.session.replay():
+            self.log.info('Replaying subscription: %s' % headers)
+            self.subscribe(destination, headers=headers, **context)
+    
+    @defer.inlineCallbacks
+    def _waitForReceipt(self, receipt):
+        if receipt is None:
+            return
+        with self._receipts(receipt, self.log):
+            yield self._receipts.wait(receipt, self._receiptTimeout)
+        

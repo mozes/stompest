@@ -239,13 +239,13 @@ class GracefulDisconnectTestCase(AsyncClientBaseTestCase):
     @defer.inlineCallbacks
     def test_onDisconnect_waitForOutstandingMessagesToFinish(self):
         config = StompConfig(uri='tcp://%s:%d' % (HOST, PORT))
-        client = async.Stomp(config)
+        client = async.Stomp(config, receiptTimeout=1.0)
         
         #Connect
         client = yield client.connect()
         
-        for _ in xrange(self.numMsgs):
-            client.send(self.queue, self.frame)
+        for j in xrange(self.numMsgs):
+            client.send(self.queue, self.frame, receipt='message-%d' % j)
         client.subscribe(self.queue, self._frameHandler, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': self.numMsgs})
 
         #Wait for disconnect
@@ -270,7 +270,7 @@ class GracefulDisconnectTestCase(AsyncClientBaseTestCase):
             reactor.callLater(1, d.callback, None) #@UndefinedVariable
             return d
         else:
-            client.disconnect()
+            client.disconnect(receipt='bye-bye')
             
     def _timesUp(self, client):
         print "Time's up!!!"

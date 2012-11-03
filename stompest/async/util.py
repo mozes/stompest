@@ -59,17 +59,17 @@ class InFlightOperations(collections.MutableMapping):
     
     @contextlib.contextmanager
     def __call__(self, key=None, log=None):
-        self.enter(key)
+        waiting = self.enter(key)
         info = self._info(key)
         log and log.debug('%s started.' % info)
         try:
-            yield
+            yield waiting
         except Exception as e:
             log and log.error('%s failed: %s' % (info, e))
             raise
         finally:
             if key not in self:
-                self.log.warning('%s was cancelled in the meantime.' % info)
+                log and log.warning('%s was cancelled in the meantime.' % info)
                 return
             self.exit(key)
         log and log.debug('%s complete.' % info)
@@ -81,28 +81,28 @@ class InFlightOperations(collections.MutableMapping):
         waiting = self.pop(key)
         if not waiting.called:
             waiting.callback(None)
-        
+
     def cancel(self, key=None):
         waiting = self.pop(key)
         if not waiting.called:
             waiting.cancel()
     
     @defer.inlineCallbacks
-    def wait(self, key, timeout=None):
+    def wait(self, key=None, timeout=None):
         waiting = self[key]
         if timeout is not None:
-            timeout = task.deferLater(reactor, timeout, self.cancel, key)
+            timeout = reactor.callLater(timeout, self.cancel, key) #@UndefinedVariable
         try:
             yield waiting
         finally:
-            timeout and timeout.cancel()
-        
+            if timeout and not timeout.called:
+                timeout.cancel()
+
     @defer.inlineCallbacks
     def waitall(self, timeout=None):
         if not self:
             return
-        waiting = [self.wait(key, timeout) for key in self]
-        yield task.cooperate(iter(waiting)).whenDone()
+        yield task.cooperate(iter([self.wait(key, timeout) for key in self])).whenDone()
     
     def _info(self, key):
         return ' '.join(filter(None, (self.info, key)))
