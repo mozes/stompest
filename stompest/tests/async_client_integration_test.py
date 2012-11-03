@@ -247,7 +247,7 @@ class GracefulDisconnectTestCase(AsyncClientBaseTestCase):
         for _ in xrange(self.numMsgs):
             client.send(self.queue, self.frame)
         client.subscribe(self.queue, self._frameHandler, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': self.numMsgs})
-        
+
         #Wait for disconnect
         yield client.disconnected
         

@@ -83,10 +83,9 @@ class Stomp(object):
         
         try:
             self.sendFrame(frame)
-            with self._connected(log=self.log):
-                yield self._connected.wait(timeout=connectedTimeout)
+            with self._connected(log=self.log.isEnabledFor(logging.DEBUG) and self.log):
+                yield self._connected.wait(None, timeout=connectedTimeout)
         except Exception as e:
-            print type(e)
             self.log.error('STOMP session connect failed [%s]' % e)
             yield self.disconnect(failure=e)
         
@@ -118,10 +117,7 @@ class Stomp(object):
                     self.sendFrame(frame)
                 except Exception as e:
                     self.log.warning('Could not send %s. [%s]' % (frame.info(), e))
-                """
-                with self._receipts(receipt):
-                    yield self._receipts.
-                """
+
             protocol.loseConnection()
             result = yield self._disconnectedSignal
             
@@ -229,7 +225,7 @@ class Stomp(object):
             return
         
         try:
-            with self._messages(messageId, self.log):
+            with self._messages(messageId, self.log.isEnabledFor(logging.DEBUG) and self.log):
                 yield subscription['handler'](self, frame)
                 if subscription['ack']:
                     self.ack(frame)

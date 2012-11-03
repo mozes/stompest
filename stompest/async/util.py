@@ -15,6 +15,7 @@ Copyright 2011 Mozes, Inc.
    See the License for the specific language governing permissions and
    limitations under the License.
 """
+import collections
 import contextlib
 import functools
 
@@ -23,33 +24,17 @@ from twisted.internet.endpoints import clientFromString
 
 from stompest.error import StompStillRunningError
 
-class InFlightOperations(object):
+class InFlightOperations(collections.MutableMapping):
     def __init__(self, info, keyError=KeyError):
-        self._info = info
+        self.info = info
         self._keyError = keyError
         self._waiting = {}
-        
-    @contextlib.contextmanager
-    def __call__(self, key=None, log=None):
-        self.enter(key)
-        log and log.debug('%s %s started.' % (self._info, key))
-        try:
-            yield key
-        except Exception as e:
-            log and log.error('%s %s failed: %s' % (self._info, key, e))
-            raise
-        finally:
-            if key not in self:
-                self.log.warning('%s %s was cancelled in the meantime.')
-                return
-            self.exit(key)
-        log and log.debug('%s %s complete.' % (self._info, key))
-        
-    def __nonzero__(self):
-        return bool(self._waiting)
     
     def __contains__(self, key):
         return key in self._waiting
+    
+    def __len__(self):
+        return len(self._waiting)
     
     def __iter__(self):
         return iter(self._waiting)
@@ -58,32 +43,52 @@ class InFlightOperations(object):
         try:
             return self._waiting[key]
         except KeyError:
-            raise self._keyError('%s %s not in progress.' % (self._info, key))
+            raise self._keyError('%s not in progress.' % self._info(key))
     
-    def get(self, key=None):
-        return self._waiting.get(key)
-    
-    def pop(self, key=None):
-        try:
-            return self._waiting.pop(key)
-        except KeyError:
-            raise self._keyError('%s %s not in progress.' % (self._info, key))
-        
-    def enter(self, key=None):
+    def __setitem__(self, key, value):
         if key in self:
-            raise self._keyError('%s %s already in progress.' % (self._info, key))
-        self._waiting[key] = defer.Deferred()
+            raise self._keyError('%s already in progress.' % self._info(key))
+        self._waiting[key] = value
+    
+    def __delitem__(self, key):
+        self[key]
+        del self._waiting[key]
+    
+    def get(self, key=None, default=None):
+        return super(InFlightOperations, self).get(key, default)
+    
+    @contextlib.contextmanager
+    def __call__(self, key=None, log=None):
+        self.enter(key)
+        info = self._info(key)
+        log and log.debug('%s started.' % info)
+        try:
+            yield
+        except Exception as e:
+            log and log.error('%s failed: %s' % (info, e))
+            raise
+        finally:
+            if key not in self:
+                self.log.warning('%s was cancelled in the meantime.' % info)
+                return
+            self.exit(key)
+        log and log.debug('%s complete.' % info)
+    
+    def enter(self, key=None):
+        self[key] = defer.Deferred()
         
     def exit(self, key=None):
         waiting = self.pop(key)
         if not waiting.called:
             waiting.callback(None)
-    
+        
     def cancel(self, key=None):
-        self.pop(key).cancel()
+        waiting = self.pop(key)
+        if not waiting.called:
+            waiting.cancel()
     
     @defer.inlineCallbacks
-    def wait(self, key=None, timeout=None):
+    def wait(self, key, timeout=None):
         waiting = self[key]
         if timeout is not None:
             timeout = task.deferLater(reactor, timeout, self.cancel, key)
@@ -98,6 +103,9 @@ class InFlightOperations(object):
             return
         waiting = [self.wait(key, timeout) for key in self]
         yield task.cooperate(iter(waiting)).whenDone()
+    
+    def _info(self, key):
+        return ' '.join(filter(None, (self.info, key)))
     
 def exclusive(f):
     @functools.wraps(f)
