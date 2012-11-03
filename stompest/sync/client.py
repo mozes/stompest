@@ -132,6 +132,9 @@ class Stomp(object):
     def message(self, frame):
         return self._session.message(frame)
     
+    def receipt(self, frame):
+        return self._session.receipt(frame)
+    
     # frame transport
     
     def close(self, flush=True):
