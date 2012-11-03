@@ -243,9 +243,7 @@ class GracefulDisconnectTestCase(AsyncClientBaseTestCase):
         
         #Connect
         client = yield client.connect()
-        
-        for j in xrange(self.numMsgs):
-            client.send(self.queue, self.frame, receipt='message-%d' % j)
+        yield task.cooperate(iter([client.send(self.queue, self.frame, receipt='message-%d' % j) for j in xrange(self.numMsgs)])).whenDone()
         client.subscribe(self.queue, self._frameHandler, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': self.numMsgs})
 
         #Wait for disconnect
@@ -288,7 +286,7 @@ class SubscribeTestCase(AsyncClientBaseTestCase):
         
         client = yield client.connect()
         
-        token = client.subscribe(self.queue, self._eatFrame, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': '1'})
+        token = yield client.subscribe(self.queue, self._eatFrame, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': '1'})
         client.send(self.queue, self.frame)
         while self.framesHandled != 1:
             yield task.deferLater(reactor, 0.01, lambda: None)

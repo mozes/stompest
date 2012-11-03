@@ -96,6 +96,7 @@ class Stomp(object):
         defer.returnValue(self)
     
     @exclusive
+    @connected
     @defer.inlineCallbacks
     def disconnect(self, receipt=None, failure=None, timeout=None):
         if failure:
@@ -144,32 +145,43 @@ class Stomp(object):
         yield self._waitForReceipt(receipt)
         
     @connected
+    @defer.inlineCallbacks
     def ack(self, frame, receipt=None):
         self.sendFrame(self.session.ack(frame, receipt))
+        yield self._waitForReceipt(receipt)
     
     @connected
+    @defer.inlineCallbacks
     def nack(self, frame, receipt=None):
         self.sendFrame(self.session.nack(frame, receipt))
+        yield self._waitForReceipt(receipt)
     
     @connected
+    @defer.inlineCallbacks
     def begin(self, transaction=None, receipt=None):
         frame, token = self.session.begin(transaction, receipt)
         self.sendFrame(frame)
-        return token
+        yield self._waitForReceipt(receipt)
+        defer.returnValue(token)
     
     @connected
+    @defer.inlineCallbacks
     def abort(self, transaction=None, receipt=None):
         frame, token = self.session.abort(transaction, receipt)
         self.sendFrame(frame)
-        return token
+        yield self._waitForReceipt(receipt)
+        defer.returnValue(token)
     
     @connected
+    @defer.inlineCallbacks
     def commit(self, transaction=None, receipt=None):
         frame, token = self.session.commit(transaction, receipt)
         self.sendFrame(frame)
-        return token
+        yield self._waitForReceipt(receipt)
+        defer.returnValue(token)
     
     @connected
+    @defer.inlineCallbacks
     def subscribe(self, destination, handler, headers=None, receipt=None, ack=True, errorDestination=None, onMessageFailed=None):
         if not callable(handler):
             raise ValueError('Cannot subscribe (handler is missing): %s' % handler)
@@ -177,9 +189,11 @@ class Stomp(object):
         ack = ack and (frame.headers.setdefault(StompSpec.ACK_HEADER, self.DEFAULT_ACK_MODE) in StompSpec.CLIENT_ACK_MODES)
         self._subscriptions[token] = {'destination': destination, 'handler': self._createHandler(handler), 'ack': ack, 'errorDestination': errorDestination, 'onMessageFailed': onMessageFailed}
         self.sendFrame(frame)
-        return token
+        yield self._waitForReceipt(receipt)
+        defer.returnValue(token)
     
     @connected
+    @defer.inlineCallbacks
     def unsubscribe(self, token, receipt=None):
         frame = self.session.unsubscribe(token, receipt)
         try:
@@ -188,6 +202,7 @@ class Stomp(object):
             self.log.warning('Cannot unsubscribe (subscription id unknown): %s=%s' % token)
             raise
         self.sendFrame(frame)
+        yield self._waitForReceipt(receipt)
             
     #
     # callbacks for received STOMP frames
@@ -327,7 +342,7 @@ class Stomp(object):
     @defer.inlineCallbacks
     def _waitForReceipt(self, receipt):
         if receipt is None:
-            return
+            defer.returnValue(None)
         with self._receipts(receipt, self.log):
             yield self._receipts.wait(receipt, self._receiptTimeout)
         
