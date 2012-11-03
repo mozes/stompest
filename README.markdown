@@ -62,7 +62,7 @@ Examples
     import logging
     import json
     
-    from twisted.internet import defer, reactor, task
+    from twisted.internet import defer, reactor
     
     from stompest.async import Stomp
     from stompest.protocol import StompConfig
@@ -77,21 +77,17 @@ Examples
             
         @defer.inlineCallbacks
         def run(self):
-            # establish connection
             stomp = yield Stomp(self.config).connect()
-            # enqueue 10 messages
-            try:
-                for j in range(10):
-                    stomp.send(self.QUEUE, json.dumps({'count': j}))
-            finally:
-                # give the reactor time to complete the writes
-                yield task.deferLater(reactor, 1, stomp.disconnect)
+            for j in range(10):
+                stomp.send(self.QUEUE, json.dumps({'count': j}), receipt='message-%d' % j)
+            yield stomp.disconnect() # graceful disconnect: waits until all receipts have arrived
+            reactor.stop()
         
     if __name__ == '__main__':
         logging.basicConfig(level=logging.DEBUG)
         Producer().run()
         reactor.run()
-                 
+                         
 `async` transformer
 -------------------
 
@@ -245,7 +241,6 @@ Caveats
 To Do
 =====
 * Python doc style documentation of the API.
-* `RECEIPT` frame handling (with timeout) for `sync` and `async` clients.
 * `async` client only: heartbeating.
 * The URI scheme supports only TCP, no SSL (the authors don't need it because the client is run in "safe" production environments). For the `async` client, however, it should be straightforward to enhance the URI scheme by means of the [Endpoint API](http://twistedmatrix.com/documents/current/api/twisted.internet.endpoints.html). Contributions are welcome!
 * [STOMP 1.2 protocol](http://stomp.github.com/stomp-specification-1.2.html) (not before there is a reference broker implementation available).

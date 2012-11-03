@@ -16,7 +16,7 @@ Copyright 2011 Mozes, Inc.
 import logging
 import json
 
-from twisted.internet import defer, reactor, task
+from twisted.internet import defer, reactor
 
 from stompest.async import Stomp
 from stompest.protocol import StompConfig
@@ -31,15 +31,11 @@ class Producer(object):
         
     @defer.inlineCallbacks
     def run(self):
-        # establish connection
         stomp = yield Stomp(self.config).connect()
-        # enqueue 10 messages
-        try:
-            for j in range(10):
-                stomp.send(self.QUEUE, json.dumps({'count': j}))
-        finally:
-            # give the reactor time to complete the writes
-            yield task.deferLater(reactor, 1, stomp.disconnect)
+        for j in range(10):
+            stomp.send(self.QUEUE, json.dumps({'count': j}), receipt='message-%d' % j)
+        yield stomp.disconnect() # graceful disconnect: waits until all receipts have arrived
+        reactor.stop()
     
 if __name__ == '__main__':
     logging.basicConfig(level=logging.DEBUG)
