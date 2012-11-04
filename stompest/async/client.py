@@ -320,7 +320,6 @@ class Stomp(object):
             reason = self._disconnectReason or reason # existing reason wins
         self.__disconnectReason = reason
         
-
     #
     # private helpers
     #

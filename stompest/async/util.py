@@ -95,11 +95,10 @@ class InFlightOperations(collections.MutableMapping):
             if timeout and not timeout.called:
                 timeout.cancel()
 
-    @defer.inlineCallbacks
     def waitall(self, timeout=None):
         if not self:
             return
-        yield task.cooperate(iter([self.wait(key, timeout) for key in self])).whenDone()
+        return task.cooperate(iter([self.wait(key, timeout) for key in self])).whenDone()
     
     def _info(self, key):
         return ' '.join(str(x) for x in (self.info, key) if x is not None)
