@@ -25,13 +25,9 @@ from twisted.internet.endpoints import clientFromString
 from stompest.error import StompStillRunningError
 
 class InFlightOperations(collections.MutableMapping):
-    def __init__(self, info, keyError=KeyError):
+    def __init__(self, info):
         self.info = info
-        self._keyError = keyError
         self._waiting = {}
-    
-    def __contains__(self, key):
-        return key in self._waiting
     
     def __len__(self):
         return len(self._waiting)
@@ -43,15 +39,16 @@ class InFlightOperations(collections.MutableMapping):
         try:
             return self._waiting[key]
         except KeyError:
-            raise self._keyError('%s not in progress.' % self._info(key))
+            raise KeyError('%s not in progress' % self._info(key))
     
     def __setitem__(self, key, value):
         if key in self:
-            raise self._keyError('%s already in progress.' % self._info(key))
+            raise KeyError('%s already in progress' % self._info(key))
+        if not isinstance(value, defer.Deferred):
+            raise ValueError('%s is not a deferred')
         self._waiting[key] = value
     
     def __delitem__(self, key):
-        self[key]
         del self._waiting[key]
     
     def get(self, key=None, default=None):
@@ -83,7 +80,7 @@ class InFlightOperations(collections.MutableMapping):
             waiting.callback(None)
 
     def cancel(self, key=None):
-        waiting = self.pop(key)
+        waiting = self[key]
         if not waiting.called:
             waiting.cancel()
     
@@ -105,7 +102,7 @@ class InFlightOperations(collections.MutableMapping):
         yield task.cooperate(iter([self.wait(key, timeout) for key in self])).whenDone()
     
     def _info(self, key):
-        return ' '.join(filter(None, (self.info, key)))
+        return ' '.join(str(x) for x in (self.info, key) if x is not None)
     
 def exclusive(f):
     @functools.wraps(f)

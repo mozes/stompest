@@ -25,7 +25,6 @@ from stompest.async import Stomp
 from stompest.error import StompConnectionError, StompConnectTimeout, StompProtocolError
 from stompest.protocol import StompConfig
 from stompest.tests.broker_simulator import BlackHoleStompServer, ErrorOnConnectStompServer, ErrorOnSendStompServer, RemoteControlViaFrameStompServer
-from twisted.internet.defer import CancelledError
 
 observer = log.PythonLoggingObserver()
 observer.start()
@@ -175,15 +174,13 @@ class AsyncClientDisconnectTimeoutTestCase(AsyncClientBaseTestCase):
         port = self.connections[0].getHost().port
         config = StompConfig(uri='tcp://localhost:%d' % port, version='1.1')
         client = Stomp(config)
-        
         yield client.connect()
-        
         self._got_message = defer.Deferred()
         client.subscribe('/queue/bla', self._on_message, headers={'id': 4711}, ack=False) # we're acking the frames ourselves
         yield self._got_message
         try:
             yield client.disconnect(timeout=0.02)
-        except CancelledError:
+        except StompProtocolError:
             pass
         else:
             raise
@@ -205,7 +202,7 @@ class AsyncClientDisconnectTimeoutTestCase(AsyncClientBaseTestCase):
         client.send('/queue/fake', 'shutdown') # tell the broker to drop the connection
         try:
             yield disconnected
-        except StompConnectionError:
+        except StompProtocolError:
             pass
         else:
             raise

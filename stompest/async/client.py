@@ -50,8 +50,8 @@ class Stomp(object):
         self._connected = InFlightOperations('STOMP session negotiation')
         
         # keep track of active handlers for graceful disconnect
-        self._messages = InFlightOperations('Handler for message', keyError=StompProtocolError)
-        self._receipts = InFlightOperations('Waiting for receipt', keyError=StompProtocolError)
+        self._messages = InFlightOperations('Handler for message')
+        self._receipts = InFlightOperations('Waiting for receipt')
                         
         self._handlers = {
             'MESSAGE': self._onMessage,
@@ -61,6 +61,13 @@ class Stomp(object):
         }
         self._subscriptions = {}
         
+    @property
+    def disconnected(self):
+        return self._disconnectedSignal
+    
+    def sendFrame(self, frame):
+        self._protocol.send(frame)
+    
     #   
     # STOMP commands
     #
@@ -104,14 +111,15 @@ class Stomp(object):
             self._disconnectReason = failure
         self.log.info('Disconnecting ...%s' % ('' if (not failure) else  ('[reason=%s]' % failure)))
         protocol = self._protocol
+        disconnectedSignal = self._disconnectedSignal
         try:
             # notify that we are ready to disconnect after outstanding messages are ack'ed
             if self._messages:
                 self.log.info('Waiting for outstanding message handlers to finish ... [timeout=%s]' % timeout)
                 try:
                     yield self._messages.waitall(timeout)
-                except CancelledError:
-                    self.log.warning('Handlers did not finish in time. Force disconnect ...')
+                except CancelledError as e:
+                    self._disconnectReason = StompProtocolError('Handlers did not finish in time.')
                 else:
                     self.log.info('All handlers complete. Resuming disconnect ...')
             
@@ -120,19 +128,18 @@ class Stomp(object):
                 try:
                     self.sendFrame(frame)
                 except Exception as e:
-                    self.log.warning('Could not send %s. [%s]' % (frame.info(), e))
+                    self._disconnectReason = StompConnectionError('Could not send %s. [%s]' % (frame.info(), e))
                 
                 try:
-                    with self._receipts(receipt, self.log):
-                        if receipt is None:
-                            self._receipts.get().callback(None)
-                        yield self._receipts.waitall(timeout=self._receiptTimeout)
+                    if receipt:
+                        yield self._waitForReceipt(receipt)
+                    yield self._receipts.waitall(timeout=self._receiptTimeout)
                 except CancelledError:
-                    self.log.warning('Not all receipts arrived on time. Force disconnect ...')
+                    self._disconnectReason = StompProtocolError('Not all receipts arrived on time.')
                     
             protocol.loseConnection()
-            result = yield self._disconnectedSignal
-            
+            result = yield disconnectedSignal
+
         except Exception as e:
             self.log.error(e)
             raise
@@ -289,7 +296,7 @@ class Stomp(object):
         self.ack(frame)
         
     #
-    # protocol
+    # properties
     #
     @property
     def _protocol(self):
@@ -301,14 +308,19 @@ class Stomp(object):
     @_protocol.setter
     def _protocol(self, protocol):
         self.__protocol = protocol
-            
+    
     @property
-    def disconnected(self):
-        return self._disconnectedSignal
+    def _disconnectReason(self):
+        return self.__disconnectReason
     
-    def sendFrame(self, frame):
-        self._protocol.send(frame)
-    
+    @_disconnectReason.setter
+    def _disconnectReason(self, reason):
+        if reason:
+            self.log.error(str(reason))
+            reason = self._disconnectReason or reason # existing reason wins
+        self.__disconnectReason = reason
+        
+
     #
     # private helpers
     #
@@ -321,7 +333,7 @@ class Stomp(object):
     def _onConnectionLost(self, reason):
         self._protocol = None
         self.log.info('Disconnected: %s' % reason.getErrorMessage())
-        if (not self.disconnect.running) or self._messages:
+        if not self.disconnect.running:
             self._disconnectReason = StompConnectionError('Unexpected connection loss [%s]' % reason.getErrorMessage())
         self._session.close(flush=not self._disconnectReason)
         for message in list(self._messages):
