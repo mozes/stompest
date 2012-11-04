@@ -109,8 +109,8 @@ class StompSessionTest(unittest.TestCase):
     def test_session_subscribe(self):
         session = StompSession()
         headers = {'bla2': 'bla3'}
-        frame, token = session.subscribe('bla1', headers)
-        self.assertEquals((frame, token), commands.subscribe('bla1', headers, version='1.0'))
+        frame, token = session.subscribe('bla1', headers, receipt='4711')
+        self.assertEquals((frame, token), commands.subscribe('bla1', headers, '4711', version='1.0'))
         
         self.assertEquals(token, (StompSpec.DESTINATION_HEADER, 'bla1'))
         self.assertEquals(token, commands.message(StompFrame(StompSpec.MESSAGE, dict([token, (StompSpec.MESSAGE_ID_HEADER, '4711')])), version='1.0'))
@@ -125,31 +125,31 @@ class StompSessionTest(unittest.TestCase):
         session.subscribe('bla2', headersWithId2)
         
         subscriptions = list(session.replay())
-        self.assertEquals(subscriptions, [('bla1', headers, None), ('bla2', headersWithId1, None), ('bla2', headersWithId2, None)])
+        self.assertEquals(subscriptions, [('bla1', headers, '4711', None), ('bla2', headersWithId1, None, None), ('bla2', headersWithId2, None, None)])
         self.assertEquals(list(session.replay()), [])
 
         session.subscribe('bla2', headersWithId2)
-        self.assertEquals(list(session.replay()), [('bla2', headersWithId2, None)])
+        self.assertEquals(list(session.replay()), [('bla2', headersWithId2, None, None)])
         session.subscribe('bla2', headersWithId2)
         self.assertRaises(StompProtocolError, session.subscribe, 'bla2', headersWithId2)
-        self.assertEquals(list(session.replay()), [('bla2', headersWithId2, None)])
+        self.assertEquals(list(session.replay()), [('bla2', headersWithId2, None, None)])
         session.subscribe('bla2', headersWithId2)
         session.disconnect()
         session.close(flush=False)
-        self.assertEquals(list(session.replay()), [('bla2', headersWithId2, None)])
+        self.assertEquals(list(session.replay()), [('bla2', headersWithId2, None, None)])
         session.subscribe('bla2', headersWithId2)
         session.close(flush=True)
         self.assertEquals(list(session.replay()), [])
         
-        subscriptionsWithoutId1 = [('bla1', headers, None), ('bla2', headersWithId2, None)]
+        subscriptionsWithoutId1 = [('bla1', headers, None, None), ('bla2', headersWithId2, None, None)]
         
-        s = [session.subscribe(dest, headers_) for dest, headers_, _ in subscriptions]
+        s = [session.subscribe(dest, headers_) for dest, headers_, _, _ in subscriptions]
         session.unsubscribe(s[1][1])
         self.assertEquals(list(session.replay()), subscriptionsWithoutId1)
         
-        subscriptionWithId2 = [('bla2', headersWithId2, None)]
+        subscriptionWithId2 = [('bla2', headersWithId2, None, None)]
         
-        s = [session.subscribe(dest, headers_) for dest, headers_, _ in subscriptionsWithoutId1]
+        s = [session.subscribe(dest, headers_) for dest, headers_, _, _ in subscriptionsWithoutId1]
         session.unsubscribe(s[0][1])
         self.assertEquals(list(session.replay()), subscriptionWithId2)
         
@@ -197,7 +197,7 @@ class StompSessionTest(unittest.TestCase):
         self.assertEquals(session.state, session.CONNECTED)
         session.close(flush=False)
         self.assertEquals(session.state, session.DISCONNECTED)
-        self.assertEquals(list(session.replay()), [('bla', headers, None)])
+        self.assertEquals(list(session.replay()), [('bla', headers, None, None)])
         self.assertEquals(list(session.replay()), [])
         
         self.assertRaises(StompProtocolError, session.disconnect)

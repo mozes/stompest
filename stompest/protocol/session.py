@@ -90,9 +90,8 @@ class StompSession(object):
         frame, token = commands.subscribe(destination, headers, receipt, self.version)
         if token in self._subscriptions:
             raise StompProtocolError('Already subscribed [%s=%s]' % token)
-        # TODO: promote receipt to the same level as destination and headers
-        self._subscriptions[token] = (self._nextSubscription(), destination, copy.deepcopy(headers), context)
         self._receipt(receipt)
+        self._subscriptions[token] = (self._nextSubscription(), destination, copy.deepcopy(headers), receipt, context)
         return frame, token
     
     def unsubscribe(self, token, receipt=None):
@@ -173,6 +172,8 @@ class StompSession(object):
             raise StompProtocolError('Unexpected receipt: %s' % receipt)
         return receipt
     
+    # session information
+    
     @property
     def id(self):
         return self._id
@@ -185,13 +186,13 @@ class StompSession(object):
     def state(self):
         return self._state
     
-    # subscription replay
+    #subscription replay
     
     def replay(self):
         subscriptions = self._subscriptions
         self._flush()
-        for (_, destination, headers, context) in sorted(subscriptions.itervalues()):
-            yield destination, headers, context
+        for (_, destination, headers, receipt, context) in sorted(subscriptions.itervalues()):
+            yield destination, headers, receipt, context
     
     # helpers
     

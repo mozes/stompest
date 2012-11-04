@@ -186,7 +186,7 @@ class Stomp(object):
     def subscribe(self, destination, handler, headers=None, receipt=None, ack=True, errorDestination=None, onMessageFailed=None):
         if not callable(handler):
             raise ValueError('Cannot subscribe (handler is missing): %s' % handler)
-        frame, token = self._session.subscribe(destination, headers, receipt, {'handler': handler, 'receipt': receipt, 'errorDestination': errorDestination, 'onMessageFailed': onMessageFailed})
+        frame, token = self._session.subscribe(destination, headers, receipt, {'handler': handler, 'errorDestination': errorDestination, 'onMessageFailed': onMessageFailed})
         ack = ack and (frame.headers.setdefault(StompSpec.ACK_HEADER, self.DEFAULT_ACK_MODE) in StompSpec.CLIENT_ACK_MODES)
         self._subscriptions[token] = {'destination': destination, 'handler': self._createHandler(handler), 'ack': ack, 'errorDestination': errorDestination, 'onMessageFailed': onMessageFailed}
         self.sendFrame(frame)
@@ -336,9 +336,9 @@ class Stomp(object):
         self._disconnectedSignal = None
         
     def _replay(self):
-        for (destination, headers, context) in self._session.replay():
+        for (destination, headers, receipt, context) in self._session.replay():
             self.log.info('Replaying subscription: %s' % headers)
-            self.subscribe(destination, headers=headers, **context)
+            self.subscribe(destination, headers=headers, receipt=receipt, **context)
     
     @defer.inlineCallbacks
     def _waitForReceipt(self, receipt):

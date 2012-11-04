@@ -29,7 +29,6 @@ LOG_CATEGORY = 'stompest.sync'
 
 connected = checkattr('_transport')
 
-# TODO: introduce connect/connected/disconnect timeouts as in async.Stomp
 class Stomp(object):
     factory = StompFrameTransport
     
@@ -77,9 +76,9 @@ class Stomp(object):
         frame = self.receiveFrame()
         self._session.connected(frame)
         self.log.info('STOMP session established with broker %s' % self._transport)
-        for (dest, headers, _) in self._session.replay():
+        for (destination, headers, receipt, _) in self._session.replay():
             self.log.info('Replaying subscription %s' % headers)
-            self.subscribe(dest, headers)
+            self.subscribe(destination, headers, receipt)
     
     @connected
     def disconnect(self, receipt=None):
@@ -94,8 +93,8 @@ class Stomp(object):
         self.sendFrame(commands.send(destination, body, headers, receipt))
         
     @connected
-    def subscribe(self, destination, headers, receipt=None, context=None):
-        frame, token = self._session.subscribe(destination, headers, receipt, context)
+    def subscribe(self, destination, headers, receipt=None):
+        frame, token = self._session.subscribe(destination, headers, receipt)
         self.sendFrame(frame)
         return token
     
