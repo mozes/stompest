@@ -23,12 +23,14 @@ from twisted.internet.defer import CancelledError
 
 from stompest.error import StompConnectionError, StompFrameError, StompProtocolError
 from stompest.protocol import StompSession, StompSpec
-from stompest.util import cloneFrame
+from stompest.util import checkattr, cloneFrame
 
 from .protocol import StompProtocolCreator
-from .util import InFlightOperations, connected, exclusive
+from .util import InFlightOperations, exclusive
 
 LOG_CATEGORY = 'stompest.async.client'
+
+connected = checkattr('_protocol')
 
 class Stomp(object):
     DEFAULT_ACK_MODE = 'auto'

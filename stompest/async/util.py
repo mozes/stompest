@@ -124,13 +124,6 @@ def exclusive(f):
     
     return _exclusive
 
-def connected(f):
-    @functools.wraps(f)
-    def _connected(self, *args, **kwargs):
-        self._protocol
-        return f(self, *args, **kwargs)
-    return _connected
-
 def endpointFactory(broker, timeout=None):
     timeout = (':timeout=%d' % timeout) if timeout else ''
     locals().update(broker)

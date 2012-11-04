@@ -20,12 +20,14 @@ import time
 
 from stompest.error import StompConnectionError
 from stompest.protocol import StompFailoverProtocol, StompSession
+from stompest.util import checkattr
 
 from .transport import StompFrameTransport
 from stompest.protocol import commands
-from stompest.sync.util import connected
 
 LOG_CATEGORY = 'stompest.sync'
+
+connected = checkattr('_transport')
 
 # TODO: introduce connect/connected/disconnect timeouts as in async.Stomp
 
