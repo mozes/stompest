@@ -20,8 +20,7 @@ from twisted.internet import defer, reactor, task
 from twisted.trial import unittest
 
 from stompest.async.util import exclusive, InFlightOperations
-from stompest.error import StompStillRunningError
-from twisted.internet.defer import CancelledError
+from stompest.error import StompCancelledError, StompAlreadyRunningError
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -38,7 +37,7 @@ class ExclusiveWrapperTest(unittest.TestCase):
             
         d = defer.Deferred()
         running = f(d)
-        self.assertRaises(StompStillRunningError, lambda: f(d))
+        self.assertRaises(StompAlreadyRunningError, lambda: f(d))
         self.assertFalse(running.called)
         result = yield running
         self.assertEquals(result, 4711)        
@@ -52,7 +51,7 @@ class ExclusiveWrapperTest(unittest.TestCase):
         for _ in xrange(5):
             running = g()
             for _ in xrange(5):
-                self.assertRaises(StompStillRunningError, g)
+                self.assertRaises(StompAlreadyRunningError, g)
             try:
                 yield running
             except KeyError:
@@ -65,7 +64,7 @@ class ExclusiveWrapperTest(unittest.TestCase):
             return task.deferLater(reactor, 0, lambda: (args, kwargs))
         
         running = h(1, 2, a=3, b=4)
-        self.assertRaises(StompStillRunningError, h)
+        self.assertRaises(StompAlreadyRunningError, h)
 
         result = yield running
         self.assertEquals(result, ((1, 2), {'a': 3, 'b': 4}))
@@ -79,19 +78,18 @@ class InFlightOperationsTest(unittest.TestCase):
         self.assertRaises(KeyError, op.pop, 1)
         self.assertIdentical(op.get(1), None)
         self.assertIdentical(op.get(1, 2), 2)
-        self.assertRaises(ValueError, op.__setitem__, 1, 2)
-        op[1] = d = defer.Deferred()
+        op[1] = []
         self.assertEquals(list(op), [1])
-        self.assertIdentical(op[1], d)
-        self.assertIdentical(op.get(1), d)
-        self.assertRaises(KeyError, op.__setitem__, 1, defer.Deferred())
-        self.assertIdentical(op.pop(1), d)
+        self.assertEquals(op[1], [])
+        self.assertEquals(op.get(1), [])
+        self.assertRaises(KeyError, op.__setitem__, 1, [])
+        self.assertEquals(op.pop(1), [])
         self.assertRaises(KeyError, op.pop, 1)
-        op[1] = d
-        self.assertEquals(op.popitem(), (1, d))
+        op[1] = []
+        self.assertEquals(op.popitem(), (1, []))
         self.assertEquals(list(op), [])
-        self.assertIdentical(op.setdefault(1, d), d)
-        self.assertIdentical(op.setdefault(1, d), d)
+        self.assertEquals(op.setdefault(1, []), [])
+        self.assertEquals(op.setdefault(1, []), [])
     
     @defer.inlineCallbacks
     def test_context(self):
@@ -99,79 +97,121 @@ class InFlightOperationsTest(unittest.TestCase):
         with op() as x:
             self.assertEquals(x, None)
             self.assertEquals(list(op), [None])
-            d = op.get()
-            self.assertIsInstance(d, defer.Deferred)
-            self.assertFalse(d.called)
+            self.assertEquals(op.get(x), [])
+            self.assertIdentical(op.get(x), op.get())
         self.assertEquals(list(op), [])
-        result = yield d
-        self.assertEquals(result, None)
         
         with op(log=logging.getLogger(LOG_CATEGORY)) as x:
-            task.deferLater(reactor, 0, op.get().callback, None)
-            result = yield op.wait(timeout=None)
-            self.assertEquals(result, None)
+            self.assertEquals(x, None)
             self.assertEquals(list(op), [None])
-            result = yield op.get()
-            self.assertEquals(result, None)
+            self.assertEquals(op.get(x), [])
+            self.assertIdentical(op.get(x), op.get())
+        self.assertEquals(list(op), [])
+        
+        try:
+            with op(log=logging.getLogger(LOG_CATEGORY)):
+                reactor.callLater(0, op.cancel)
+                yield op.wait(timeout=None)
+        except StompCancelledError:
+            pass
+        else:
+            raise
         self.assertEquals(list(op), [])
         
         with op(log=logging.getLogger(LOG_CATEGORY)):
-            task.deferLater(reactor, 0, op.get().errback, RuntimeError('hi'))
-            try:
-                yield op.wait(timeout=None)
-            except RuntimeError as e:
-                self.assertEquals(str(e), 'hi')
-            else:
-                raise
-            self.assertEquals(list(op), [None])
+            w1 = op.wait(timeout=None)
+            w2 = op.wait(timeout=None)
+            reactor.callLater(0, op.cancel)
+            for w in (w1, w2):
+                try:
+                    yield w
+                except StompCancelledError:
+                    pass
+                else:
+                    raise
+                self.assertEquals(list(op), [])
         self.assertEquals(list(op), [])
         
         try:
             with op():
-                d = op.get()
                 raise RuntimeError('hi')
         except RuntimeError:
             pass
-        
         self.assertEquals(list(op), [])
-        result = yield d
-        self.assertEquals(result, None)
-                
+        
+        try:
+            with op():
+                wait = op.wait()
+                raise RuntimeError('hi')
+        except RuntimeError:
+            pass
+        self.assertEquals(list(op), [])
+        try:
+            yield wait
+        except StompCancelledError:
+            pass
+        except:
+            raise
+        
+            with op(log=logging.getLogger(LOG_CATEGORY)):
+                reactor.callLater(0, op.cancel)
+                try:
+                    yield op.wait(timeout=None)
+                except StompCancelledError:
+                    pass
+                else:
+                    raise
+                self.assertEquals(list(op), [None])
+        self.assertEquals(list(op), [])
+        
         with op(1, logging.getLogger(LOG_CATEGORY)) as x:
             self.assertEquals(x, None)
             self.assertEquals(list(op), [1])
-            task.deferLater(reactor, 0, op.get(1).callback, None)
-            result = yield op.wait(1, None)
-            self.assertEquals(result, None)
-            self.assertEquals(list(op), [1])
-            result = yield op.get(1)
-            self.assertEquals(result, None)
+            reactor.callLater(0, op.cancel, 1)
+            try:
+                yield op.wait(1, None)
+            except StompCancelledError:
+                pass
+            else:
+                raise
+            self.assertEquals(list(op), [])
         self.assertEquals(list(op), [])
-    
+        
     @defer.inlineCallbacks
     def test_plain(self):
         op = InFlightOperations('test')
         op.enter()
         self.assertEquals(list(op), [None])
-        d = op.get()
-        self.assertIsInstance(d, defer.Deferred)
-        self.assertFalse(d.called)
+        self.assertEquals(op.get(), [])
         op.exit()
-        result = yield d
-        self.assertEquals(result, None)
+        self.assertEquals(list(op), [])
         
         op = InFlightOperations('test')
         op.enter()
-        d = op.get()
+        d = op.wait()
         op.cancel()
-        self.assertEquals(list(op), [None])
+        self.assertEquals(list(op), [])
         try:
-            result = yield d
-        except CancelledError:
+            yield d
+        except StompCancelledError:
             pass
         else:
             raise
         op.exit()
+        self.assertEquals(list(op), [])
+        
+    @defer.inlineCallbacks
+    def test_wait_and_timeout(self):
+        op = InFlightOperations('test')
+        with op():
+            for _ in xrange(5):
+                try:
+                    yield op.wait(timeout=0)
+                except StompCancelledError:
+                    pass
+                else:
+                    raise
+            self.assertEquals(list(op), [None])
         self.assertEquals(list(op), [])
         
 if __name__ == '__main__':

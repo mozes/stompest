@@ -22,7 +22,8 @@ from twisted.python import log
 from twisted.trial import unittest
 
 from stompest.async import Stomp
-from stompest.error import StompConnectionError, StompConnectTimeout, StompProtocolError
+from stompest.error import StompCancelledError, StompConnectionError, StompConnectTimeout, StompProtocolError
+    
 from stompest.protocol import StompConfig
 from stompest.tests.broker_simulator import BlackHoleStompServer, ErrorOnConnectStompServer, ErrorOnSendStompServer, RemoteControlViaFrameStompServer
 
@@ -180,7 +181,7 @@ class AsyncClientDisconnectTimeoutTestCase(AsyncClientBaseTestCase):
         yield self._got_message
         try:
             yield client.disconnect(timeout=0.02)
-        except StompProtocolError:
+        except StompCancelledError:
             pass
         else:
             raise
@@ -202,7 +203,7 @@ class AsyncClientDisconnectTimeoutTestCase(AsyncClientBaseTestCase):
         client.send('/queue/fake', 'shutdown') # tell the broker to drop the connection
         try:
             yield disconnected
-        except StompProtocolError:
+        except StompCancelledError:
             pass
         else:
             raise

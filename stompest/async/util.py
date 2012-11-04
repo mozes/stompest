@@ -22,13 +22,13 @@ import functools
 from twisted.internet import defer, reactor, task
 from twisted.internet.endpoints import clientFromString
 
-from stompest.error import StompStillRunningError
+from stompest.error import StompAlreadyRunningError, StompCancelledError, StompNotRunningError
 
 class InFlightOperations(collections.MutableMapping):
     def __init__(self, info):
         self.info = info
         self._waiting = {}
-    
+            
     def __len__(self):
         return len(self._waiting)
     
@@ -39,13 +39,11 @@ class InFlightOperations(collections.MutableMapping):
         try:
             return self._waiting[key]
         except KeyError:
-            raise KeyError('%s not in progress' % self._info(key))
+            raise StompNotRunningError('%s not in progress' % self._info(key))
     
     def __setitem__(self, key, value):
         if key in self:
-            raise KeyError('%s already in progress' % self._info(key))
-        if not isinstance(value, defer.Deferred):
-            raise ValueError('%s is not a deferred')
+            raise StompAlreadyRunningError('%s already in progress' % self._info(key))
         self._waiting[key] = value
     
     def __delitem__(self, key):
@@ -56,39 +54,41 @@ class InFlightOperations(collections.MutableMapping):
     
     @contextlib.contextmanager
     def __call__(self, key=None, log=None):
-        waiting = self.enter(key)
+        self.enter(key)
         info = self._info(key)
         log and log.debug('%s started.' % info)
         try:
-            yield waiting
+            yield
         except Exception as e:
-            log and log.error('%s failed: %s' % (info, e))
+            log and log.error('%s failed [%s]' % (info, e))
+            self.cancel(key)
             raise
         finally:
-            if key not in self:
-                log and log.warning('%s was cancelled in the meantime.' % info)
-                return
             self.exit(key)
         log and log.debug('%s complete.' % info)
     
     def enter(self, key=None):
-        self[key] = defer.Deferred()
+        self[key] = []
         
     def exit(self, key=None):
-        waiting = self.pop(key)
-        if not waiting.called:
-            waiting.callback(None)
-
-    def cancel(self, key=None):
-        waiting = self[key]
-        if not waiting.called:
-            waiting.cancel()
+        self.done(key)
+    
+    def done(self, key=None):
+        for waiting in self.pop(key, []):
+            if not waiting.called:
+                waiting.callback(None)
+        
+    def cancel(self, key=None, reason=None):
+        for waiting in self.pop(key, []):
+            if not waiting.called:
+                waiting.errback(reason or StompCancelledError('%s cancelled' % self._info(key)))
     
     @defer.inlineCallbacks
     def wait(self, key=None, timeout=None):
-        waiting = self[key]
+        waiting = defer.Deferred()
+        self[key].append(waiting)
         if timeout is not None:
-            timeout = reactor.callLater(timeout, self.cancel, key) #@UndefinedVariable
+            timeout = reactor.callLater(timeout, waiting.errback, StompCancelledError('Waited too long for %s to complete. [timeout=%s]' % (self._info(key), timeout))) #@UndefinedVariable
         try:
             yield waiting
         finally:
@@ -105,7 +105,7 @@ def exclusive(f):
     @functools.wraps(f)
     def _exclusive(*args, **kwargs):
         if _exclusive.running:
-            raise StompStillRunningError('%s still running' % f.__name__)
+            raise StompAlreadyRunningError('%s still running' % f.__name__)
         _exclusive.running = True
         task.deferLater(reactor, 0, f, *args, **kwargs).addBoth(_reload).chainDeferred(_exclusive.result)
         return _exclusive.result

@@ -19,9 +19,8 @@ import functools
 import logging
 
 from twisted.internet import defer
-from twisted.internet.defer import CancelledError
 
-from stompest.error import StompConnectionError, StompFrameError, StompProtocolError
+from stompest.error import StompCancelledError, StompConnectionError, StompFrameError, StompProtocolError
 from stompest.protocol import StompSession, StompSpec
 from stompest.util import checkattr, cloneFrame
 
@@ -93,8 +92,8 @@ class Stomp(object):
         self._disconnectReason = None
         
         try:
-            self.sendFrame(frame)
             with self._connected(log=self.log):
+                self.sendFrame(frame)
                 yield self._connected.wait(timeout=connectedTimeout)
         except Exception as e:
             yield self.disconnect(failure=e)
@@ -118,8 +117,8 @@ class Stomp(object):
                 self.log.info('Waiting for outstanding message handlers to finish ... [timeout=%s]' % timeout)
                 try:
                     yield self._messages.waitall(timeout)
-                except CancelledError as e:
-                    self._disconnectReason = StompProtocolError('Handlers did not finish in time.')
+                except StompCancelledError as e:
+                    self._disconnectReason = StompCancelledError('Handlers did not finish in time.')
                 else:
                     self.log.info('All handlers complete. Resuming disconnect ...')
             
@@ -133,8 +132,8 @@ class Stomp(object):
                 try:
                     self._waitForReceipt(receipt)
                     yield self._receipts.waitall()
-                except CancelledError:
-                    self._disconnectReason = StompProtocolError('Not all receipts arrived on time.')
+                except StompCancelledError:
+                    self._disconnectReason = StompCancelledError('Not all receipts arrived on time.')
                     
             protocol.loseConnection()
             result = yield disconnectedSignal
@@ -224,12 +223,11 @@ class Stomp(object):
     def _onConnected(self, frame):
         self._session.connected(frame)
         self.log.info('Connected to stomp broker [session=%s]' % self._session.id)
-        self._connected.get().callback(None)
+        self._connected.exit()
         
     def _onError(self, frame):
-        connecting = self._connected.get()
-        if connecting:
-            connecting.errback(StompProtocolError('While trying to connect, received %s' % frame.info()))
+        if self._connected:
+            self._connected.cancel(reason=StompProtocolError('While trying to connect, received %s' % frame.info()))
             return
 
         #Workaround for AMQ < 5.2
@@ -274,10 +272,8 @@ class Stomp(object):
 
     def _onReceipt(self, frame):
         receipt = self._session.receipt(frame)
-        waiting = self._receipts.get(receipt)
-        if waiting and (not waiting.called):
-            waiting.callback(None)
-        
+        self._receipts.done(receipt)
+                
     #
     # hook for MESSAGE frame error handling
     #
@@ -335,7 +331,7 @@ class Stomp(object):
             self._disconnectReason = StompConnectionError('Unexpected connection loss [%s]' % reason.getErrorMessage())
         self._session.close(flush=not self._disconnectReason)
         for message in list(self._messages):
-            self._messages.cancel(message)
+            self._messages.cancel(message, self._disconnectReason)
         if self._disconnectReason:
             #self.log.debug('Calling disconnected deferred errback: %s' % self._disconnectReason)
             self._disconnectedSignal.errback(self._disconnectReason)
