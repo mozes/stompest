@@ -330,8 +330,9 @@ class Stomp(object):
         if not self.disconnect.running:
             self._disconnectReason = StompConnectionError('Unexpected connection loss [%s]' % reason.getErrorMessage())
         self.session.close(flush=not self._disconnectReason)
-        for message in list(self._messages):
-            self._messages.cancel(message, self._disconnectReason)
+        for operations in (self._connected, self._messages, self._receipts):
+            for key in list(operations):
+                operations.cancel(key, self._disconnectReason)
         if self._disconnectReason:
             #self.log.debug('Calling disconnected deferred errback: %s' % self._disconnectReason)
             self._disconnectedSignal.errback(self._disconnectReason)
