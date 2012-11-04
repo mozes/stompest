@@ -29,6 +29,7 @@ logging.basicConfig(level=logging.DEBUG)
 HOST = 'localhost'
 PORT = 61613
 
+LOG_CATEGORY = __name__
 CONFIG = StompConfig('tcp://%s:%s' % (HOST, PORT))
 
 class StompestTestError(Exception):
@@ -37,6 +38,7 @@ class StompestTestError(Exception):
 class AsyncClientBaseTestCase(unittest.TestCase):
     queue = None
     errorQueue = None
+    log = logging.getLogger(LOG_CATEGORY)
     
     def cleanQueues(self):
         self.cleanQueue(self.queue)
@@ -52,7 +54,7 @@ class AsyncClientBaseTestCase(unittest.TestCase):
         while stomp.canRead(0.2):
             frame = stomp.receiveFrame()
             stomp.ack(frame)
-            print "Dequeued old %s" % frame.info()
+            self.log.debug('Dequeued old %s' % frame.info())
         stomp.disconnect()
         
     def setUp(self):
@@ -64,7 +66,7 @@ class AsyncClientBaseTestCase(unittest.TestCase):
         self.framesHandled = 0
         
     def _saveFrameAndBarf(self, _, frame):
-        print 'Save message and barf'
+        self.log.info('Save message and barf')
         self.unhandledFrame = frame
         raise StompestTestError('this is a test')
         
@@ -75,22 +77,22 @@ class AsyncClientBaseTestCase(unittest.TestCase):
         self._eatOneFrameAndDisconnect(client, frame)
     
     def _eatOneFrameAndDisconnect(self, client, frame):
-        print 'Eat message and disconnect'
+        self.log.debug('Eat message and disconnect')
         self.consumedFrame = frame
         client.disconnect()
     
     def _saveErrorFrameAndDisconnect(self, client, frame):
-        print 'Save error message and disconnect'
+        self.log.debug('Save error message and disconnect')
         self.errorQueueFrame = frame
         client.disconnect()
 
     def _eatFrame(self, client, frame):
-        print 'Eat message'
+        self.log.debug('Eat message')
         self.consumedFrame = frame
         self.framesHandled += 1
     
     def _nackFrame(self, client, frame):
-        print 'NACK message'
+        self.log.debug('NACK message')
         self.consumedFrame = frame
         self.framesHandled += 1
         client.nack(frame)
@@ -271,7 +273,7 @@ class GracefulDisconnectTestCase(AsyncClientBaseTestCase):
             client.disconnect(receipt='bye-bye')
             
     def _timesUp(self, client):
-        print "Time's up!!!"
+        self.log.debug("Time's up!!!")
         self.timeExpired = True
         client.disconnect()
 

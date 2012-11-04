@@ -131,9 +131,8 @@ class Stomp(object):
                     self._disconnectReason = StompConnectionError('Could not send %s. [%s]' % (frame.info(), e))
                 
                 try:
-                    if receipt:
-                        yield self._waitForReceipt(receipt)
-                    yield self._receipts.waitall(timeout=self._receiptTimeout)
+                    self._waitForReceipt(receipt)
+                    yield self._receipts.waitall()
                 except CancelledError:
                     self._disconnectReason = StompProtocolError('Not all receipts arrived on time.')
                     

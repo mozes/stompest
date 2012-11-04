@@ -96,8 +96,6 @@ class InFlightOperations(collections.MutableMapping):
                 timeout.cancel()
 
     def waitall(self, timeout=None):
-        if not self:
-            return
         return task.cooperate(iter([self.wait(key, timeout) for key in self])).whenDone()
     
     def _info(self, key):
