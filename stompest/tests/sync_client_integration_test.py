@@ -101,7 +101,6 @@ class SimpleStompIntegrationTest(unittest.TestCase):
 
         stomp = Stomp(StompConfig(uri='failover:(tcp://localhost:61614,tcp://localhost:61613)?startupMaxReconnectAttempts=1,randomize=false'))
         stomp.connect()
-        stomp.connect()
         stomp.disconnect()
         
     def test_3_socket_failure_and_replay(self):

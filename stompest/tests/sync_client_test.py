@@ -80,6 +80,10 @@ class SimpleStompTest(unittest.TestCase):
         self.assertRaises(StompProtocolError, stomp.connect)
         self.assertEquals(stomp._transport.receive.call_count, 1)
     
+    def test_connect_when_connected_raises_StompConnectionError(self):
+        stomp = self._get_transport_mock()
+        self.assertRaises(StompConnectionError, stomp.connect)
+    
     def test_connect_writes_correct_frame(self):
         login = 'curious'
         passcode = 'george'

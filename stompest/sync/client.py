@@ -18,7 +18,7 @@ import contextlib
 import logging
 import time
 
-from stompest.error import StompConnectionError
+from stompest.error import StompConnectionError, StompProtocolError
 from stompest.protocol import StompFailoverProtocol, StompSession
 from stompest.util import checkattr
 
@@ -30,7 +30,6 @@ LOG_CATEGORY = 'stompest.sync'
 connected = checkattr('_transport')
 
 # TODO: introduce connect/connected/disconnect timeouts as in async.Stomp
-
 class Stomp(object):
     factory = StompFrameTransport
     
@@ -41,13 +40,14 @@ class Stomp(object):
         self._failover = StompFailoverProtocol(config.uri)
         self._transport = None
     
-    def connect(self, headers=None, versions=None, host=None):
+    def connect(self, headers=None, versions=None, host=None, connectTimeout=None, connectedTimeout=None):
         try: # preserve existing connection
             self._transport
-            self.log.warning('Already connected to %s' % self._transport)
-            return
-        except StompConnectionError as e:
-            self.log.warning('Lost connection [%s]' % e)
+        except StompConnectionError:
+            pass
+        else:
+            raise StompConnectionError('Already connected to %s' % self._transport)
+        
         try:
             for (broker, connectDelay) in self._failover:
                 transport = self.factory(broker['host'], broker['port'], self._session.version)
@@ -56,21 +56,24 @@ class Stomp(object):
                     time.sleep(connectDelay)
                 self.log.info('Connecting to %s ...' % transport)
                 try:
-                    transport.connect()
+                    transport.connect(connectTimeout)
                 except StompConnectionError as e:
                     self.log.warning('Could not connect to %s [%s]' % (transport, e))
                 else:
                     self.log.info('Connection established')
                     self._transport = transport
-                    self._connect(headers, versions, host)
+                    self._connect(headers, versions, host, connectedTimeout)
                     break
         except StompConnectionError as e:
             self.log.error('Reconnect failed [%s]' % e)
             raise
         
-    def _connect(self, headers=None, versions=None, host=None):
+    def _connect(self, headers=None, versions=None, host=None, timeout=None):
         frame = self._session.connect(self._config.login, self._config.passcode, headers, versions, host)
         self.sendFrame(frame)
+        if not self.canRead(timeout):
+            self._session.disconnect()
+            raise StompProtocolError('STOMP session connect failed [timeout=%s]' % timeout)
         frame = self.receiveFrame()
         self._session.connected(frame)
         self.log.info('STOMP session established with broker %s' % self._transport)

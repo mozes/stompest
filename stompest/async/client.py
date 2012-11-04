@@ -90,7 +90,6 @@ class Stomp(object):
             with self._connected(log=self.log):
                 yield self._connected.wait(timeout=connectedTimeout)
         except Exception as e:
-            self.log.error('STOMP session connect failed [%s]' % e)
             yield self.disconnect(failure=e)
         
         self._replay()
