@@ -120,6 +120,11 @@ class HandlerExceptionWithErrorQueueIntegrationTestCase(AsyncClientBaseTestCase)
         
         #Connect
         client = yield client.connect()
+
+        if client.session.version != version:
+            print 'Broker does not support STOMP protocol %s. Skipping this test case.' % version
+            yield client.disconnect()
+            defer.returnValue(None)
         
         #Enqueue two messages
         client.send(self.queue, self.frame1, self.msg1Hdrs)
@@ -344,7 +349,11 @@ class NackTestCase(AsyncClientBaseTestCase):
         client = async.Stomp(config)
         
         client = yield client.connect()
-        
+        if client.session.version == '1.0':
+            print 'Broker does only support STOMP protocol 1.0. Skipping this test case.'
+            yield client.disconnect()
+            defer.returnValue(None)
+                
         client.subscribe(self.queue, self._nackFrame, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': '1', 'id': '4711'}, ack=False)
         client.send(self.queue, self.frame)
         while self.framesHandled != 1:

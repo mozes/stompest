@@ -128,6 +128,10 @@ class SimpleStompIntegrationTest(unittest.TestCase):
     def test_4_integration_stomp_1_1(self):
         stomp = Stomp(StompConfig(uri='tcp://localhost:61613', version='1.1'))
         stomp.connect()
+        if stomp.session.version == '1.0':
+            print 'Broker localhost:61613 does not support STOMP protocol version 1.1'
+            stomp.disconnect()
+            return
         stomp.send(self.DESTINATION, 'test message 1')
         stomp.send(self.DESTINATION, 'test message 2')
         self.assertFalse(stomp.canRead(self.TIMEOUT))

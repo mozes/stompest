@@ -35,7 +35,7 @@ class Stomp(object):
     def __init__(self, config):
         self.log = logging.getLogger(LOG_CATEGORY)
         self._config = config
-        self._session = StompSession(self._config.version, self._config.check)
+        self.session = StompSession(self._config.version, self._config.check)
         self._failover = StompFailoverProtocol(config.uri)
         self._transport = None
     
@@ -49,7 +49,7 @@ class Stomp(object):
         
         try:
             for (broker, connectDelay) in self._failover:
-                transport = self.factory(broker['host'], broker['port'], self._session.version)
+                transport = self.factory(broker['host'], broker['port'], self.session.version)
                 if connectDelay:
                     self.log.debug('Delaying connect attempt for %d ms' % int(connectDelay * 1000))
                     time.sleep(connectDelay)
@@ -68,21 +68,21 @@ class Stomp(object):
             raise
         
     def _connect(self, headers=None, versions=None, host=None, timeout=None):
-        frame = self._session.connect(self._config.login, self._config.passcode, headers, versions, host)
+        frame = self.session.connect(self._config.login, self._config.passcode, headers, versions, host)
         self.sendFrame(frame)
         if not self.canRead(timeout):
-            self._session.disconnect()
+            self.session.disconnect()
             raise StompProtocolError('STOMP session connect failed [timeout=%s]' % timeout)
         frame = self.receiveFrame()
-        self._session.connected(frame)
+        self.session.connected(frame)
         self.log.info('STOMP session established with broker %s' % self._transport)
-        for (destination, headers, receipt, _) in self._session.replay():
+        for (destination, headers, receipt, _) in self.session.replay():
             self.log.info('Replaying subscription %s' % headers)
             self.subscribe(destination, headers, receipt)
     
     @connected
     def disconnect(self, receipt=None):
-        self.sendFrame(self._session.disconnect(receipt))
+        self.sendFrame(self.session.disconnect(receipt))
         if not receipt:
             self.close()
     
@@ -94,38 +94,38 @@ class Stomp(object):
         
     @connected
     def subscribe(self, destination, headers, receipt=None):
-        frame, token = self._session.subscribe(destination, headers, receipt)
+        frame, token = self.session.subscribe(destination, headers, receipt)
         self.sendFrame(frame)
         return token
     
     @connected
     def unsubscribe(self, token, receipt=None):
-        self.sendFrame(self._session.unsubscribe(token, receipt))
+        self.sendFrame(self.session.unsubscribe(token, receipt))
         
     @connected
     def ack(self, headers, receipt=None):
-        self.sendFrame(self._session.ack(headers, receipt))
+        self.sendFrame(self.session.ack(headers, receipt))
     
     @connected
     def nack(self, headers, receipt=None):
-        self.sendFrame(self._session.nack(headers, receipt))
+        self.sendFrame(self.session.nack(headers, receipt))
     
     @connected
     def begin(self, transaction, receipt=None):
-        self.sendFrame(self._session.begin(transaction, receipt))
+        self.sendFrame(self.session.begin(transaction, receipt))
         
     @connected
     def abort(self, transaction, receipt=None):
-        self.sendFrame(self._session.abort(transaction, receipt))
+        self.sendFrame(self.session.abort(transaction, receipt))
         
     @connected
     def commit(self, transaction, receipt=None):
-        self.sendFrame(self._session.commit(transaction, receipt))
+        self.sendFrame(self.session.commit(transaction, receipt))
     
     @contextlib.contextmanager
     @connected
     def transaction(self, transaction=None, receipt=None):
-        transaction = self._session.transaction(transaction)
+        transaction = self.session.transaction(transaction)
         self.begin(transaction, receipt)
         try:
             yield transaction
@@ -134,15 +134,15 @@ class Stomp(object):
             self.abort(transaction, receipt)
     
     def message(self, frame):
-        return self._session.message(frame)
+        return self.session.message(frame)
     
     def receipt(self, frame):
-        return self._session.receipt(frame)
+        return self.session.receipt(frame)
     
     # frame transport
     
     def close(self, flush=True):
-        self._session.close(flush)
+        self.session.close(flush)
         try:
             self.__transport and self.__transport.disconnect()
         finally:
