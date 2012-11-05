@@ -261,10 +261,10 @@ class GracefulDisconnectTestCase(AsyncClientBaseTestCase):
         self.timeExpired = False
         self.timeoutDelayedCall = reactor.callLater(1, self._timesUp, client) #@UndefinedVariable
         client.subscribe(self.queue, self._eatOneFrameAndDisconnect, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': self.numMsgs})
-
+        
         #Wait for disconnect
         yield client.disconnected
-        
+
         #Time should have expired if there were no messages left in the queue
         self.assertTrue(self.timeExpired)
                 

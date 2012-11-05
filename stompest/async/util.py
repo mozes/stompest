@@ -44,63 +44,91 @@ class InFlightOperations(collections.MutableMapping):
     def __setitem__(self, key, value):
         if key in self:
             raise StompAlreadyRunningError('%s already in progress' % self._info(key))
+        if not isinstance(value, Waiting):
+            raise ValueError('invalid value: %s' % value)
         self._waiting[key] = value
     
     def __delitem__(self, key):
         del self._waiting[key]
     
-    def get(self, key=None, default=None):
-        return super(InFlightOperations, self).get(key, default)
-    
     @contextlib.contextmanager
-    def __call__(self, key=None, log=None):
-        self.enter(key)
+    def __call__(self, key, log=None):
+        self[key] = Waiting(self._info(key))
         info = self._info(key)
         log and log.debug('%s started.' % info)
         try:
-            yield
+            yield self[key]
+            self.done(key)
         except Exception as e:
             log and log.error('%s failed [%s]' % (info, e))
-            self.cancel(key)
+            self.error(key, e)
             raise
         finally:
-            self.exit(key)
+            self.pop(key)
         log and log.debug('%s complete.' % info)
     
-    def enter(self, key=None):
-        self[key] = []
+    def error(self, key, reason):
+        waiting = self[key]
+        if not waiting.called:
+            waiting.errback(reason)
         
-    def exit(self, key=None):
-        self.done(key)
-    
-    def done(self, key=None):
-        for waiting in self.pop(key, []):
-            if not waiting.called:
-                waiting.callback(None)
+    def done(self, key, result=None):
+        waiting = self[key]
+        if not waiting.called:
+            waiting.callback(result)
         
-    def cancel(self, key=None, reason=None):
-        for waiting in self.pop(key, []):
-            if not waiting.called:
-                waiting.errback(reason or StompCancelledError('%s cancelled' % self._info(key)))
-    
-    @defer.inlineCallbacks
-    def wait(self, key=None, timeout=None):
-        waiting = defer.Deferred()
-        self[key].append(waiting)
-        if timeout is not None:
-            timeout = reactor.callLater(timeout, waiting.errback, StompCancelledError('Waited too long for %s to complete. [timeout=%s]' % (self._info(key), timeout))) #@UndefinedVariable
-        try:
-            yield waiting
-        finally:
-            if timeout and not timeout.called:
-                timeout.cancel()
-
     def waitall(self, timeout=None):
-        return task.cooperate(iter([self.wait(key, timeout) for key in self])).whenDone()
+        return task.cooperate(iter([self[key].wait(timeout) for key in self])).whenDone()
     
     def _info(self, key):
         return ' '.join(str(x) for x in (self.info, key) if x is not None)
     
+class Waiting(object):
+    def __init__(self, info):
+        self._waiting = []
+        self._deferred = defer.Deferred()
+        self._info = info
+    
+    @property
+    def called(self):
+        return self._deferred.called
+    
+    def callback(self, result):
+        self._deferred.callback(None)
+        for waiting in self._waiting:
+            if not waiting.called:
+                waiting.callback(result)
+    
+    def errback(self, fail=None):
+        self._deferred.callback(None)
+        for waiting in self._waiting:
+            if not waiting.called:
+                waiting.errback(fail)
+    
+    def cancel(self):
+        self._deferred.callback(None)
+        for waiting in self._waiting:
+            if not waiting.called:
+                waiting.cancel()
+    
+    def wait(self, timeout=None):
+        if self.called:
+            self._deferred.callback(None)
+        waiting = defer.Deferred()
+        self._waiting.append(waiting)
+        return wait(waiting, timeout, StompCancelledError('Waited too long for %s to complete. [timeout=%s]' % (self._info, timeout)))
+
+@defer.inlineCallbacks
+def wait(deferred, timeout, fail=None):
+    if timeout is not None:
+        timeout = reactor.callLater(timeout, deferred.errback, fail) #@UndefinedVariable
+    try:
+        result = yield deferred
+    finally:
+        if timeout and not timeout.called:
+            timeout.cancel()
+    defer.returnValue(result)
+
 def exclusive(f):
     @functools.wraps(f)
     def _exclusive(*args, **kwargs):

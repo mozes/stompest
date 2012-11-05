@@ -92,9 +92,9 @@ class Stomp(object):
         self._disconnectReason = None
         
         try:
-            with self._connected(log=self.log):
+            with self._connected(None, self.log):
                 self.sendFrame(frame)
-                yield self._connected.wait(timeout=connectedTimeout)
+                yield self._connected[None].wait(timeout=connectedTimeout)
         except Exception as e:
             yield self.disconnect(failure=e)
         
@@ -110,7 +110,8 @@ class Stomp(object):
             self._disconnectReason = failure
         self.log.info('Disconnecting ...%s' % ('' if (not failure) else  ('[reason=%s]' % failure)))
         protocol = self._protocol
-        disconnectedSignal = self._disconnectedSignal
+        disconnectedSignal = defer.Deferred()
+        self._disconnectedSignal.chainDeferred(disconnectedSignal)
         try:
             # notify that we are ready to disconnect after outstanding messages are ack'ed
             if self._messages:
@@ -130,10 +131,9 @@ class Stomp(object):
                     self._disconnectReason = StompConnectionError('Could not send %s. [%s]' % (frame.info(), e))
                 
                 try:
-                    self._waitForReceipt(receipt)
-                    yield self._receipts.waitall()
+                    yield self._waitForReceipt(receipt)
                 except StompCancelledError:
-                    self._disconnectReason = StompCancelledError('Not all receipts arrived on time.')
+                    self._disconnectReason = StompCancelledError('Receipt for disconnect command did not arrive on time.')
                     
             protocol.loseConnection()
             result = yield disconnectedSignal
@@ -223,11 +223,11 @@ class Stomp(object):
     def _onConnected(self, frame):
         self.session.connected(frame)
         self.log.info('Connected to stomp broker [session=%s]' % self.session.id)
-        self._connected.exit()
+        self._connected[None].callback(None)
         
     def _onError(self, frame):
         if self._connected:
-            self._connected.cancel(reason=StompProtocolError('While trying to connect, received %s' % frame.info()))
+            self._connected[None].errback(StompProtocolError('While trying to connect, received %s' % frame.info()))
             return
 
         #Workaround for AMQ < 5.2
@@ -272,8 +272,8 @@ class Stomp(object):
 
     def _onReceipt(self, frame):
         receipt = self.session.receipt(frame)
-        self._receipts.done(receipt)
-                
+        self._receipts[receipt].callback(None)
+    
     #
     # hook for MESSAGE frame error handling
     #
@@ -331,8 +331,8 @@ class Stomp(object):
             self._disconnectReason = StompConnectionError('Unexpected connection loss [%s]' % reason.getErrorMessage())
         self.session.close(flush=not self._disconnectReason)
         for operations in (self._connected, self._messages, self._receipts):
-            for key in list(operations):
-                operations.cancel(key, self._disconnectReason)
+            for waiting in operations.values():
+                waiting.errback(StompCancelledError('In-flight operation cancelled (connection lost)'))
         if self._disconnectReason:
             #self.log.debug('Calling disconnected deferred errback: %s' % self._disconnectReason)
             self._disconnectedSignal.errback(self._disconnectReason)
@@ -352,5 +352,5 @@ class Stomp(object):
         if receipt is None:
             defer.returnValue(None)
         with self._receipts(receipt, self.log):
-            yield self._receipts.wait(receipt, self._receiptTimeout)
+            yield self._receipts[receipt].wait(self._receiptTimeout)
         
