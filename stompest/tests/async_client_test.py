@@ -23,7 +23,7 @@ from twisted.trial import unittest
 
 from stompest.async import Stomp
 from stompest.error import StompCancelledError, StompConnectionError, StompConnectTimeout, StompProtocolError
-    
+
 from stompest.protocol import StompConfig
 from stompest.tests.broker_simulator import BlackHoleStompServer, ErrorOnConnectStompServer, ErrorOnSendStompServer, RemoteControlViaFrameStompServer
 
@@ -100,12 +100,15 @@ class AsyncClientErrorAfterConnectedTestCase(AsyncClientBaseTestCase):
         port = self.connections[0].getHost().port
         config = StompConfig(uri='failover:(tcp://nosuchhost:65535,tcp://localhost:%d)?startupMaxReconnectAttempts=1,initialReconnectDelay=0,randomize=false' % port)
         client = Stomp(config)
+        
         yield client.connect()
         client.send('/queue/fake', 'fake message')
         try:
             yield client.disconnected
         except StompProtocolError:
             pass
+        else:
+            raise
 
 class AsyncClientFailoverOnDisconnectTestCase(AsyncClientBaseTestCase):
     protocols = [RemoteControlViaFrameStompServer, ErrorOnSendStompServer]

@@ -25,7 +25,7 @@ from stompest.util import checkattr
 from .transport import StompFrameTransport
 from stompest.protocol import commands
 
-LOG_CATEGORY = 'stompest.sync'
+LOG_CATEGORY = __name__
 
 connected = checkattr('_transport')
 

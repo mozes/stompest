@@ -53,32 +53,22 @@ class InFlightOperations(collections.MutableMapping):
     
     @contextlib.contextmanager
     def __call__(self, key, log=None):
-        self[key] = Waiting(self._info(key))
+        self[key] = waiting = Waiting(self._info(key))
         info = self._info(key)
         log and log.debug('%s started.' % info)
         try:
-            yield self[key]
-            self.done(key)
+            yield waiting
+            waiting = self[key]
+            if not waiting.called:
+                waiting.callback(None)
         except Exception as e:
             log and log.error('%s failed [%s]' % (info, e))
-            self.error(key, e)
+            if not waiting.called:
+                waiting.errback(e)
             raise
         finally:
             self.pop(key)
         log and log.debug('%s complete.' % info)
-    
-    def error(self, key, reason):
-        waiting = self[key]
-        if not waiting.called:
-            waiting.errback(reason)
-        
-    def done(self, key, result=None):
-        waiting = self[key]
-        if not waiting.called:
-            waiting.callback(result)
-        
-    def waitall(self, timeout=None):
-        return task.cooperate(iter([self[key].wait(timeout) for key in self])).whenDone()
     
     def _info(self, key):
         return ' '.join(str(x) for x in (self.info, key) if x is not None)

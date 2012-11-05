@@ -22,7 +22,7 @@ from twisted.internet.protocol import Factory, Protocol
 from stompest.error import StompFrameError
 from stompest.protocol import StompFrame, StompParser, StompSpec
 
-LOG_CATEGORY = 'stompest.tests.broker_simulator'
+LOG_CATEGORY = __name__
 
 class BlackHoleStompServer(Protocol):
     delimiter = StompSpec.FRAME_DELIMITER

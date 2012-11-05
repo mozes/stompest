@@ -24,7 +24,7 @@ from stompest.protocol import StompFailoverProtocol, StompParser
 
 from .util import endpointFactory
 
-LOG_CATEGORY = 'stompest.async.protocol'
+LOG_CATEGORY = __name__
 
 class StompProtocol(Protocol):
     #
