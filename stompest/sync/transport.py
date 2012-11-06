@@ -36,10 +36,10 @@ class StompFrameTransport(object):
     def __str__(self):
         return '%s:%d' % (self.host, self.port)
     
-    def connect(self):
-        self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    def connect(self, timeout=None):
+        kwargs = {} if (timeout is None) else {'timeout': timeout}
         try:
-            self._socket.connect((self.host, self.port))
+            self._socket = socket.create_connection((self.host, self.port), **kwargs)
         except IOError as e:
             raise StompConnectionError('Could not establish connection [%s]' % e)
         self._parser.reset()
@@ -56,7 +56,7 @@ class StompFrameTransport(object):
         
     def disconnect(self):
         try:
-            self._socket.close()
+            self._socket and self._socket.close()
         except IOError as e:
             raise StompConnectionError('Could not close connection cleanly [%s]' % e)
         finally:

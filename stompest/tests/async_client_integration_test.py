@@ -29,6 +29,7 @@ logging.basicConfig(level=logging.DEBUG)
 HOST = 'localhost'
 PORT = 61613
 
+LOG_CATEGORY = __name__
 CONFIG = StompConfig('tcp://%s:%s' % (HOST, PORT))
 
 class StompestTestError(Exception):
@@ -37,6 +38,7 @@ class StompestTestError(Exception):
 class AsyncClientBaseTestCase(unittest.TestCase):
     queue = None
     errorQueue = None
+    log = logging.getLogger(LOG_CATEGORY)
     
     def cleanQueues(self):
         self.cleanQueue(self.queue)
@@ -52,7 +54,7 @@ class AsyncClientBaseTestCase(unittest.TestCase):
         while stomp.canRead(0.2):
             frame = stomp.receiveFrame()
             stomp.ack(frame)
-            print "Dequeued old %s" % frame.info()
+            self.log.debug('Dequeued old %s' % frame.info())
         stomp.disconnect()
         
     def setUp(self):
@@ -64,7 +66,7 @@ class AsyncClientBaseTestCase(unittest.TestCase):
         self.framesHandled = 0
         
     def _saveFrameAndBarf(self, _, frame):
-        print 'Save message and barf'
+        self.log.info('Save message and barf')
         self.unhandledFrame = frame
         raise StompestTestError('this is a test')
         
@@ -75,22 +77,22 @@ class AsyncClientBaseTestCase(unittest.TestCase):
         self._eatOneFrameAndDisconnect(client, frame)
     
     def _eatOneFrameAndDisconnect(self, client, frame):
-        print 'Eat message and disconnect'
+        self.log.debug('Eat message and disconnect')
         self.consumedFrame = frame
         client.disconnect()
     
     def _saveErrorFrameAndDisconnect(self, client, frame):
-        print 'Save error message and disconnect'
+        self.log.debug('Save error message and disconnect')
         self.errorQueueFrame = frame
         client.disconnect()
 
     def _eatFrame(self, client, frame):
-        print 'Eat message'
+        self.log.debug('Eat message')
         self.consumedFrame = frame
         self.framesHandled += 1
     
     def _nackFrame(self, client, frame):
-        print 'NACK message'
+        self.log.debug('NACK message')
         self.consumedFrame = frame
         self.framesHandled += 1
         client.nack(frame)
@@ -118,6 +120,11 @@ class HandlerExceptionWithErrorQueueIntegrationTestCase(AsyncClientBaseTestCase)
         
         #Connect
         client = yield client.connect()
+
+        if client.session.version != version:
+            print 'Broker does not support STOMP protocol %s. Skipping this test case.' % version
+            yield client.disconnect()
+            defer.returnValue(None)
         
         #Enqueue two messages
         client.send(self.queue, self.frame1, self.msg1Hdrs)
@@ -239,15 +246,13 @@ class GracefulDisconnectTestCase(AsyncClientBaseTestCase):
     @defer.inlineCallbacks
     def test_onDisconnect_waitForOutstandingMessagesToFinish(self):
         config = StompConfig(uri='tcp://%s:%d' % (HOST, PORT))
-        client = async.Stomp(config)
+        client = async.Stomp(config, receiptTimeout=1.0)
         
         #Connect
         client = yield client.connect()
-        
-        for _ in xrange(self.numMsgs):
-            client.send(self.queue, self.frame)
+        yield task.cooperate(iter([client.send(self.queue, self.frame, receipt='message-%d' % j) for j in xrange(self.numMsgs)])).whenDone()
         client.subscribe(self.queue, self._frameHandler, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': self.numMsgs})
-        
+
         #Wait for disconnect
         yield client.disconnected
         
@@ -256,10 +261,10 @@ class GracefulDisconnectTestCase(AsyncClientBaseTestCase):
         self.timeExpired = False
         self.timeoutDelayedCall = reactor.callLater(1, self._timesUp, client) #@UndefinedVariable
         client.subscribe(self.queue, self._eatOneFrameAndDisconnect, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': self.numMsgs})
-
+        
         #Wait for disconnect
         yield client.disconnected
-        
+
         #Time should have expired if there were no messages left in the queue
         self.assertTrue(self.timeExpired)
                 
@@ -270,10 +275,10 @@ class GracefulDisconnectTestCase(AsyncClientBaseTestCase):
             reactor.callLater(1, d.callback, None) #@UndefinedVariable
             return d
         else:
-            client.disconnect()
+            client.disconnect(receipt='bye-bye')
             
     def _timesUp(self, client):
-        print "Time's up!!!"
+        self.log.debug("Time's up!!!")
         self.timeExpired = True
         client.disconnect()
 
@@ -288,7 +293,7 @@ class SubscribeTestCase(AsyncClientBaseTestCase):
         
         client = yield client.connect()
         
-        token = client.subscribe(self.queue, self._eatFrame, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': '1'})
+        token = yield client.subscribe(self.queue, self._eatFrame, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': '1'})
         client.send(self.queue, self.frame)
         while self.framesHandled != 1:
             yield task.deferLater(reactor, 0.01, lambda: None)
@@ -307,28 +312,23 @@ class SubscribeTestCase(AsyncClientBaseTestCase):
     def test_replay(self):
         config = StompConfig(uri='tcp://%s:%d' % (HOST, PORT))
         client = async.Stomp(config)
-        
         client = yield client.connect()
-        
         client.subscribe(self.queue, self._eatFrame, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': '1'})
         client.send(self.queue, self.frame)
         while self.framesHandled != 1:
             yield task.deferLater(reactor, 0.01, lambda: None)
-        
         client._protocol.loseConnection()
-        
         try:
             yield client.disconnected
         except StompConnectionError:
             pass
-        
         client = yield client.connect()
         client.send(self.queue, self.frame)
         while self.framesHandled != 2:
             yield task.deferLater(reactor, 0.01, lambda: None)
         
         try:
-            yield client.disconnect(RuntimeError('Hi'))
+            yield client.disconnect(failure=RuntimeError('Hi'))
         except RuntimeError as e:
             self.assertEquals(str(e), 'Hi')
         
@@ -349,7 +349,11 @@ class NackTestCase(AsyncClientBaseTestCase):
         client = async.Stomp(config)
         
         client = yield client.connect()
-        
+        if client.session.version == '1.0':
+            print 'Broker does only support STOMP protocol 1.0. Skipping this test case.'
+            yield client.disconnect()
+            defer.returnValue(None)
+                
         client.subscribe(self.queue, self._nackFrame, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': '1', 'id': '4711'}, ack=False)
         client.send(self.queue, self.frame)
         while self.framesHandled != 1:

@@ -15,70 +15,115 @@ Copyright 2011, 2012 Mozes, Inc.
    See the License for the specific language governing permissions and
    limitations under the License.
 """
+import collections
 import contextlib
 import functools
 
 from twisted.internet import defer, reactor, task
 from twisted.internet.endpoints import clientFromString
 
-from stompest.error import StompStillRunningError
+from stompest.error import StompAlreadyRunningError, StompCancelledError, StompNotRunningError
 
-LOG_CATEGORY = 'stompest.async.util'
-
-class InFlightOperations(object):
-    def __init__(self, info, keyError=KeyError):
-        self._info = info
-        self._keyError = keyError
-        self._keys = set()
-        self.waiting = None
-        
-    @contextlib.contextmanager
-    def __call__(self, key=None, log=None):
-        self.enter(key)
-        log and log.debug('%s %s started.' % (self._info, key))
+class InFlightOperations(collections.MutableMapping):
+    def __init__(self, info):
+        self.info = info
+        self._waiting = {}
+            
+    def __len__(self):
+        return len(self._waiting)
+    
+    def __iter__(self):
+        return iter(self._waiting)
+    
+    def __getitem__(self, key):
         try:
-            yield
+            return self._waiting[key]
+        except KeyError:
+            raise StompNotRunningError('%s not in progress' % self._info(key))
+    
+    def __setitem__(self, key, value):
+        if key in self:
+            raise StompAlreadyRunningError('%s already in progress' % self._info(key))
+        if not isinstance(value, Waiting):
+            raise ValueError('invalid value: %s' % value)
+        self._waiting[key] = value
+    
+    def __delitem__(self, key):
+        del self._waiting[key]
+    
+    @contextlib.contextmanager
+    def __call__(self, key, log=None):
+        self[key] = waiting = Waiting(self._info(key))
+        info = self._info(key)
+        log and log.debug('%s started.' % info)
+        try:
+            yield waiting
+            waiting = self[key]
+            if not waiting.called:
+                waiting.callback(None)
         except Exception as e:
-            log and log.error('%s %s failed: %s' % (self._info, key, e))
+            log and log.error('%s failed [%s]' % (info, e))
+            if not waiting.called:
+                waiting.errback(e)
             raise
         finally:
-            self.exit(key)
-        log and log.debug('%s %s complete.' % (self._info, key))
-        
-    def __nonzero__(self):
-        return bool(self._keys)
-        
+            self.pop(key)
+        log and log.debug('%s complete.' % info)
+    
+    def _info(self, key):
+        return ' '.join(str(x) for x in (self.info, key) if x is not None)
+    
+class Waiting(object):
+    def __init__(self, info):
+        self._waiting = []
+        self._deferred = defer.Deferred()
+        self._info = info
+    
+    @property
+    def called(self):
+        return self._deferred.called
+    
+    def callback(self, result):
+        self._deferred.callback(None)
+        for waiting in self._waiting:
+            if not waiting.called:
+                waiting.callback(result)
+    
+    def errback(self, fail=None):
+        self._deferred.callback(None)
+        for waiting in self._waiting:
+            if not waiting.called:
+                waiting.errback(fail)
+    
     def cancel(self):
-        self.waiting.cancel()
-        self.waiting = None
-
-    def enter(self, key=None):
-        if key in self._keys:
-            raise self._keyError('[%s] %s already in progress.' % (self._info, key))
-        self._keys.add(key)
-        
-    def exit(self, key=None):
-        self._keys.remove(key)
-        if self.waiting and (not self):
-            self.waiting.callback(None)
+        self._deferred.callback(None)
+        for waiting in self._waiting:
+            if not waiting.called:
+                waiting.cancel()
     
-    @defer.inlineCallbacks
     def wait(self, timeout=None):
-        self.waiting = defer.Deferred()
-        if timeout is not None:
-            timeout = task.deferLater(reactor, timeout, self.cancel)
-        try:
-            result = yield self.waiting
-        finally:
-            timeout and timeout.cancel()
-            self.waiting = None
-        defer.returnValue(result)
-    
+        if self.called:
+            self._deferred.callback(None)
+        waiting = defer.Deferred()
+        self._waiting.append(waiting)
+        return wait(waiting, timeout, StompCancelledError('Waited too long for %s to complete. [timeout=%s]' % (self._info, timeout)))
+
+@defer.inlineCallbacks
+def wait(deferred, timeout, fail=None):
+    if timeout is not None:
+        timeout = reactor.callLater(timeout, deferred.errback, fail) #@UndefinedVariable
+    try:
+        result = yield deferred
+    finally:
+        if timeout and not timeout.called:
+            timeout.cancel()
+    defer.returnValue(result)
+
 def exclusive(f):
     @functools.wraps(f)
     def _exclusive(*args, **kwargs):
         if _exclusive.running:
-            raise StompStillRunningError('%s still running' % f.__name__)
+            raise StompAlreadyRunningError('%s still running' % f.__name__)
         _exclusive.running = True
         task.deferLater(reactor, 0, f, *args, **kwargs).addBoth(_reload).chainDeferred(_exclusive.result)
         return _exclusive.result

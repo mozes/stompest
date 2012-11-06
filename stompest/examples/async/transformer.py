@@ -34,7 +34,7 @@ class IncrementTransformer(object):
     @defer.inlineCallbacks
     def run(self):
         # establish connection
-        stomp = yield Stomp(self.config).connect()
+        client = yield Stomp(self.config).connect()
         # subscribe to inbound queue
         headers = {
             # client-individual mode is only supported in AMQ >= 5.2 but necessary for concurrent processing
@@ -42,15 +42,15 @@ class IncrementTransformer(object):
             # this is the maximal number of messages the broker will let you work on at the same time
             'activemq.prefetchSize': 100, 
         }
-        stomp.subscribe(self.IN_QUEUE, self.addOne, headers, errorDestination=self.ERROR_QUEUE)
+        client.subscribe(self.IN_QUEUE, self.addOne, headers, errorDestination=self.ERROR_QUEUE)
     
-    def addOne(self, stomp, frame):
+    def addOne(self, client, frame):
         """
         NOTE: you can return a Deferred here
         """
         data = json.loads(frame.body)
         data['count'] += 1
-        stomp.send(self.OUT_QUEUE, json.dumps(data))
+        client.send(self.OUT_QUEUE, json.dumps(data))
     
 if __name__ == '__main__':
     logging.basicConfig(level=logging.DEBUG)

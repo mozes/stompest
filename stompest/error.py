@@ -34,6 +34,18 @@ class StompConnectTimeout(StompConnectionError):
     """Raised for timeout waiting for connect response from broker
     """
 
-class StompStillRunningError(StompError):
+class StompExclusiveOperationError(StompError):
+    """Raised for in-flight exclusive operation errors
+    """
+    
+class StompAlreadyRunningError(StompExclusiveOperationError, KeyError):
     """Raised when an in-flight exclusive operation is called more than once
-    """ 
+    """
+
+class StompNotRunningError(StompExclusiveOperationError, KeyError):
+    """Raised when a non-running exclusive operation is accessed
+    """
+
+class StompCancelledError(StompExclusiveOperationError):
+    """Raised when an in-flight exclusive operation was cancelled
+    """

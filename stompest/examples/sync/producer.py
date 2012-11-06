@@ -18,10 +18,10 @@ from stompest.protocol import StompConfig
 from stompest.sync import Stomp
 
 CONFIG = StompConfig('tcp://localhost:61613')
-QUEUE = '/queue/simpleTest'
+QUEUE = '/queue/test'
 
-stomp = Stomp(CONFIG)
-stomp.connect()
-stomp.send(QUEUE, 'test message1')
-stomp.send(QUEUE, 'test message2')
-stomp.disconnect()
+client = Stomp(CONFIG)
+client.connect()
+client.send(QUEUE, 'test message 1')
+client.send(QUEUE, 'test message 2')
+client.disconnect()

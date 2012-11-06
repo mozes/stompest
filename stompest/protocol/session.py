@@ -31,7 +31,7 @@ class StompSession(object):
         self._check = check
         self._nextSubscription = itertools.count().next
         self._reset()
-        self.flush()
+        self._flush()
     
     @property
     def version(self):
@@ -62,79 +62,94 @@ class StompSession(object):
     # STOMP commands
     
     def connect(self, login=None, passcode=None, headers=None, versions=None, host=None):
-        self.__check(self.DISCONNECTED)
+        self.__check('connect', [self.DISCONNECTED])
         self._versions = versions
         frame = commands.connect(login, passcode, headers, self._versions, host)
         self._state = self.CONNECTING
         return frame
     
     def disconnect(self, receipt=None):
-        self.__check(self.CONNECTED)
-        frame = commands.disconnect(receipt, self.version)
-        self._reset()
+        self.__check('disconnect', [self.CONNECTED])
+        frame = commands.disconnect(receipt)
+        self._receipt(receipt)
         return frame
     
+    def close(self, flush=True):
+        self._reset()
+        if flush:
+            self._flush()
+        
     def send(self, destination, body='', headers=None, receipt=None):
-        self.__check(self.CONNECTED)
-        return commands.send(destination, body, headers, receipt)
-    
+        self.__check('send', [self.CONNECTED])
+        frame = commands.send(destination, body, headers, receipt)
+        self._receipt(receipt)
+        return frame
+        
     def subscribe(self, destination, headers=None, receipt=None, context=None):
-        self.__check(self.CONNECTED)
+        self.__check('subscribe', [self.CONNECTED])
         frame, token = commands.subscribe(destination, headers, receipt, self.version)
         if token in self._subscriptions:
             raise StompProtocolError('Already subscribed [%s=%s]' % token)
-        # TODO: promote receipt to the same level as destination and headers
-        self._subscriptions[token] = (self._nextSubscription(), destination, copy.deepcopy(headers), context)
+        self._receipt(receipt)
+        self._subscriptions[token] = (self._nextSubscription(), destination, copy.deepcopy(headers), receipt, context)
         return frame, token
     
     def unsubscribe(self, token, receipt=None):
-        self.__check(self.CONNECTED)
+        self.__check('unsubscribe', [self.CONNECTED])
         frame = commands.unsubscribe(token, receipt, self.version)
         try:
             self._subscriptions.pop(token)
         except KeyError:
             raise StompProtocolError('No such subscription [%s=%s]' % token)
+        self._receipt(receipt)
         return frame
     
     def ack(self, frame, receipt=None):
-        self.__check(self.CONNECTED)
-        return commands.ack(frame, receipt, self.version)
-        
+        self.__check('ack', [self.CONNECTED])
+        frame = commands.ack(frame, receipt, self.version)
+        self._receipt(receipt)
+        return frame
+    
     def nack(self, frame, receipt=None):
-        self.__check(self.CONNECTED)
-        return commands.nack(frame, receipt, self.version)
+        self.__check('nack', [self.CONNECTED])
+        frame = commands.nack(frame, receipt, self.version)
+        self._receipt(receipt)
+        return frame
     
     def transaction(self, transaction=None):
         return str(transaction or uuid.uuid4())
     
     def begin(self, transaction=None, receipt=None):
-        self.__check(self.CONNECTED)
+        self.__check('begin', [self.CONNECTED])
         frame = commands.begin(transaction, receipt)
         if transaction in self._transactions:
             raise StompProtocolError('Transaction already active: %s' % transaction)
         self._transactions.add(transaction)
+        self._receipt(receipt)
         return frame
         
     def commit(self, transaction, receipt=None):
-        self.__check(self.CONNECTED)
+        self.__check('commit', [self.CONNECTED])
         frame = commands.commit(transaction, receipt)
         try:
             self._transactions.remove(transaction)
         except KeyError:
             raise StompProtocolError('Transaction unknown: %s' % transaction)
+        self._receipt(receipt)
         return frame
     
     def abort(self, transaction, receipt=None):
-        self.__check(self.CONNECTED)
+        self.__check('abort', [self.CONNECTED])
         frame = commands.abort(transaction, receipt)
         try:
             self._transactions.remove(transaction)
         except KeyError:
             raise StompProtocolError('Transaction unknown: %s' % transaction)
+        self._receipt(receipt)
         return frame
     
     def connected(self, headers):
-        self.__check(self.CONNECTING)
+        self.__check('connected', [self.CONNECTING])
         try:
             self.version, self._server, self._id = commands.connected(headers, versions=self._versions)
         finally:
@@ -142,11 +157,22 @@ class StompSession(object):
         self._state = self.CONNECTED
         
     def message(self, frame):
-        self.__check(self.CONNECTED)
+        self.__check('message', [self.CONNECTED])
         token = commands.message(frame, self.version)
         if token not in self._subscriptions:
             raise StompProtocolError('No such subscription [%s=%s]' % token)
         return token
+    
+    def receipt(self, frame):
+        self.__check('receipt', [self.CONNECTED])
+        receipt = commands.receipt(frame, self.version)
+        try:
+            self._receipts.remove(receipt)
+        except KeyError:
+            raise StompProtocolError('Unexpected receipt: %s' % receipt)
+        return receipt
+    
+    # session information
     
     @property
     def id(self):
@@ -160,26 +186,34 @@ class StompSession(object):
     def state(self):
         return self._state
     
-    # state management
-    
-    def flush(self):
-        self._subscriptions = {}
-        self._transactions = set()
+    #subscription replay
     
     def replay(self):
         subscriptions = self._subscriptions
-        self.flush()
-        for (_, destination, headers, context) in sorted(subscriptions.itervalues()):
-            yield destination, headers, context
+        self._flush()
+        for (_, destination, headers, receipt, context) in sorted(subscriptions.itervalues()):
+            yield destination, headers, receipt, context
     
     # helpers
     
+    def _flush(self):
+        self._receipts = set()
+        self._subscriptions = {}
+        self._transactions = set()
+        
+    def _receipt(self, receipt):
+        if not receipt:
+            return
+        if receipt in self._receipts:
+            raise StompProtocolError('Duplicate receipt: %s' % receipt)
+        self._receipts.add(receipt)
+        
     def _reset(self):
         self._id = None
         self._server = None
         self._state = self.DISCONNECTED
         self._versions = None
         
-    def __check(self, state):
-        if self._check and (self.state != state):
-            raise StompProtocolError('Cannot handle command in state %s != %s' % (self.state, state))
+    def __check(self, command, states):
+        if self._check and (self.state not in states):
+            raise StompProtocolError('Cannot handle command %s in state %s (only in states %s)' % (repr(command), repr(self.state), ', '.join(map(repr, states))))

@@ -22,10 +22,10 @@ from twisted.python import log
 from twisted.trial import unittest
 
 from stompest.async import Stomp
-from stompest.error import StompConnectionError, StompConnectTimeout, StompProtocolError
+from stompest.error import StompCancelledError, StompConnectionError, StompConnectTimeout, StompProtocolError
+
 from stompest.protocol import StompConfig
 from stompest.tests.broker_simulator import BlackHoleStompServer, ErrorOnConnectStompServer, ErrorOnSendStompServer, RemoteControlViaFrameStompServer
-from twisted.internet.defer import CancelledError
 
 observer = log.PythonLoggingObserver()
 observer.start()
@@ -49,19 +49,29 @@ class AsyncClientBaseTestCase(unittest.TestCase):
 
 class AsyncClientConnectTimeoutTestCase(AsyncClientBaseTestCase):
     protocols = [BlackHoleStompServer]
-    TIMEOUT = 0.01
+    TIMEOUT = 0.02
 
     def test_connection_timeout(self):
         port = self.connections[0].getHost().port
         config = StompConfig(uri='tcp://localhost:%d' % port)
         client = Stomp(config)
-        return self.assertFailure(client.connect(connectTimeout=self.TIMEOUT, connectedTimeout=self.TIMEOUT), StompConnectTimeout)
+        try:
+            yield client.connect(connectTimeout=self.TIMEOUT, connectedTimeout=self.TIMEOUT)
+        except StompConnectTimeout:
+            pass
+        else:
+            raise
 
     def test_connection_timeout_after_failover(self):
         port = self.connections[0].getHost().port
         config = StompConfig(uri='failover:(tcp://nosuchhost:65535,tcp://localhost:%d)?startupMaxReconnectAttempts=2,initialReconnectDelay=0,randomize=false' % port)
         client = Stomp(config)
-        return self.assertFailure(client.connect(connectTimeout=self.TIMEOUT, connectedTimeout=self.TIMEOUT), StompConnectTimeout)
+        try:
+            yield client.connect(connectTimeout=self.TIMEOUT, connectedTimeout=self.TIMEOUT)
+        except StompConnectTimeout:
+            pass
+        else:
+            raise
     
     @defer.inlineCallbacks
     def test_not_connected(self):
@@ -90,12 +100,15 @@ class AsyncClientErrorAfterConnectedTestCase(AsyncClientBaseTestCase):
         port = self.connections[0].getHost().port
         config = StompConfig(uri='failover:(tcp://nosuchhost:65535,tcp://localhost:%d)?startupMaxReconnectAttempts=1,initialReconnectDelay=0,randomize=false' % port)
         client = Stomp(config)
+        
         yield client.connect()
         client.send('/queue/fake', 'fake message')
         try:
             yield client.disconnected
         except StompProtocolError:
             pass
+        else:
+            raise
 
 class AsyncClientFailoverOnDisconnectTestCase(AsyncClientBaseTestCase):
     protocols = [RemoteControlViaFrameStompServer, ErrorOnSendStompServer]
@@ -175,15 +188,13 @@ class AsyncClientDisconnectTimeoutTestCase(AsyncClientBaseTestCase):
         port = self.connections[0].getHost().port
         config = StompConfig(uri='tcp://localhost:%d' % port, version='1.1')
         client = Stomp(config)
-        
         yield client.connect()
-        
         self._got_message = defer.Deferred()
         client.subscribe('/queue/bla', self._on_message, headers={'id': 4711}, ack=False) # we're acking the frames ourselves
         yield self._got_message
         try:
             yield client.disconnect(timeout=0.02)
-        except CancelledError:
+        except StompCancelledError:
             pass
         else:
             raise
@@ -205,7 +216,7 @@ class AsyncClientDisconnectTimeoutTestCase(AsyncClientBaseTestCase):
         client.send('/queue/fake', 'shutdown') # tell the broker to drop the connection
         try:
             yield disconnected
-        except StompConnectionError:
+        except StompCancelledError:
             pass
         else:
             raise

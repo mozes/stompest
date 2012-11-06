@@ -18,35 +18,40 @@ Copyright 2011, 2012 Mozes, Inc.
 import functools
 import logging
 
-from twisted.internet import defer
-from twisted.internet.defer import CancelledError
+from twisted.internet import defer, task
 
-from stompest.error import StompConnectionError, StompFrameError, StompProtocolError
-from stompest.protocol import commands, StompSession, StompSpec
-from stompest.util import cloneFrame
+from stompest.error import StompCancelledError, StompConnectionError, StompFrameError, StompProtocolError
+from stompest.protocol import StompSession, StompSpec
+from stompest.util import checkattr, cloneFrame
 
 from .protocol import StompProtocolCreator
 from .util import InFlightOperations, exclusive
+from stompest.async.util import Waiting
 
-LOG_CATEGORY = 'stompest.async.client'
+LOG_CATEGORY = __name__
+
+connected = checkattr('_protocol')
 
 class Stomp(object):
     DEFAULT_ACK_MODE = 'auto'
     MESSAGE_FAILED_HEADER = 'message-failed'
     
-    def __init__(self, config):
+    def __init__(self, config, receiptTimeout=None):
         self._config = config
-        self.session = StompSession(self._config.version)
+        self._receiptTimeout = receiptTimeout
+        
+        self.session = StompSession(self._config.version, self._config.check)
         self._protocol = None
         self._protocolCreator = StompProtocolCreator(self._config.uri)
         
         self.log = logging.getLogger(LOG_CATEGORY)
         
         # wait for CONNECTED frame
-        self._connected = InFlightOperations('STOMP session negotiation')
+        self._connecting = InFlightOperations('STOMP session negotiation')
         
         # keep track of active handlers for graceful disconnect
-        self._activeHandlers = InFlightOperations('Handler for message', keyError=StompProtocolError)
+        self._messages = InFlightOperations('Handler for message')
+        self._receipts = InFlightOperations('Waiting for receipt')
                         
         self._handlers = {
             'MESSAGE': self._onMessage,
@@ -56,6 +61,13 @@ class Stomp(object):
         }
         self._subscriptions = {}
         
+    @property
+    def disconnected(self):
+        return self._disconnected.wait()
+    
+    def sendFrame(self, frame):
+        self._protocol.send(frame)
+    
     #   
     # STOMP commands
     #
@@ -77,104 +89,127 @@ class Stomp(object):
             self.log.error('Endpoint connect failed')
             raise
         
-        self._disconnectedSignal = defer.Deferred()
+        self._disconnected = Waiting('disconnected')
         self._disconnectReason = None
         
         try:
-            self.sendFrame(frame)
-            yield self._connected.wait(connectedTimeout)
+            with self._connecting(None, self.log):
+                self.sendFrame(frame)
+                yield self._connecting[None].wait(timeout=connectedTimeout)
         except Exception as e:
-            self.log.error('STOMP session connect failed [%s]' % e)
-            yield self.disconnect(e)
+            self.log.error('Could not establish STOMP session. Disconnecting ...')
+            yield self.disconnect(failure=e)
         
         self._replay()
         
         defer.returnValue(self)
     
     @exclusive
+    @connected
     @defer.inlineCallbacks
-    def disconnect(self, failure=None, timeout=None):
+    def disconnect(self, receipt=None, failure=None, timeout=None):
         if failure:
             self._disconnectReason = failure
-        self.log.debug('Disconnecting ...%s' % ('' if (not failure) else  ('[reason=%s]' % failure)))
+        self.log.info('Disconnecting ...%s' % ('' if (not failure) else  ('[reason=%s]' % failure)))
+        protocol = self._protocol
+        disconnected = self.disconnected
         try:
             # notify that we are ready to disconnect after outstanding messages are ack'ed
-            if self._activeHandlers:
+            if self._messages:
                 self.log.info('Waiting for outstanding message handlers to finish ... [timeout=%s]' % timeout)
                 try:
-                    yield self._activeHandlers.wait(timeout)
-                except CancelledError:
-                    self.log.warning('Handlers did not finish in time. Force disconnect ...')
+                    yield task.cooperate(iter([handler.wait(timeout) for handler in self._messages.values()])).whenDone()
+                except StompCancelledError as e:
+                    self._disconnectReason = StompCancelledError('Handlers did not finish in time.')
                 else:
                     self.log.info('All handlers complete. Resuming disconnect ...')
             
-            frame = self.session.disconnect()
-            
-            if not self._disconnectReason:
-                self.session.flush()
-            
-            try:
-                self.sendFrame(frame)
-                self._protocol.loseConnection()
-            except Exception as e:
-                self.log.warning('Could not send %s. [%s]' % (frame.info(), e))
+            if self.session.state == self.session.CONNECTED:
+                frame = self.session.disconnect(receipt)
+                try:
+                    self.sendFrame(frame)
+                except Exception as e:
+                    self._disconnectReason = StompConnectionError('Could not send %s. [%s]' % (frame.info(), e))
                 
-            result = yield self._disconnectedSignal
-            
+                try:
+                    yield self._waitForReceipt(receipt)
+                except StompCancelledError:
+                    self._disconnectReason = StompCancelledError('Receipt for disconnect command did not arrive on time.')
+                    
+            protocol.loseConnection()
+            result = yield disconnected
+
         except Exception as e:
             self.log.error(e)
             raise
-        finally:
-            self._protocol = None
         
         defer.returnValue(result)
     
+    @connected
+    @defer.inlineCallbacks
     def send(self, destination, body='', headers=None, receipt=None):
-        self._protocol.send(commands.send(destination, body, headers, receipt))
+        self.sendFrame(self.session.send(destination, body, headers, receipt))
+        yield self._waitForReceipt(receipt)
         
+    @connected
+    @defer.inlineCallbacks
     def ack(self, frame, receipt=None):
-        self._protocol.send(self.session.ack(frame, receipt))
+        self.sendFrame(self.session.ack(frame, receipt))
+        yield self._waitForReceipt(receipt)
     
+    @connected
+    @defer.inlineCallbacks
     def nack(self, frame, receipt=None):
-        self._protocol.send(self.session.nack(frame, receipt))
+        self.sendFrame(self.session.nack(frame, receipt))
+        yield self._waitForReceipt(receipt)
     
+    @connected
+    @defer.inlineCallbacks
     def begin(self, transaction=None, receipt=None):
-        protocol = self._protocol
         frame, token = self.session.begin(transaction, receipt)
-        protocol.send(frame)
-        return token
-        
-    def abort(self, transaction=None, receipt=None):
-        protocol = self._protocol
-        frame, token = self.session.abort(transaction, receipt)
-        protocol.send(frame)
-        return token
-        
-    def commit(self, transaction=None, receipt=None):
-        protocol = self._protocol
-        frame, token = self.session.commit(transaction, receipt)
-        protocol.send(frame)
-        return token
+        self.sendFrame(frame)
+        yield self._waitForReceipt(receipt)
+        defer.returnValue(token)
     
+    @connected
+    @defer.inlineCallbacks
+    def abort(self, transaction=None, receipt=None):
+        frame, token = self.session.abort(transaction, receipt)
+        self.sendFrame(frame)
+        yield self._waitForReceipt(receipt)
+        defer.returnValue(token)
+    
+    @connected
+    @defer.inlineCallbacks
+    def commit(self, transaction=None, receipt=None):
+        frame, token = self.session.commit(transaction, receipt)
+        self.sendFrame(frame)
+        yield self._waitForReceipt(receipt)
+        defer.returnValue(token)
+    
+    @connected
+    @defer.inlineCallbacks
     def subscribe(self, destination, handler, headers=None, receipt=None, ack=True, errorDestination=None, onMessageFailed=None):
-        protocol = self._protocol
         if not callable(handler):
             raise ValueError('Cannot subscribe (handler is missing): %s' % handler)
-        frame, token = self.session.subscribe(destination, headers, receipt, {'handler': handler, 'receipt': receipt, 'errorDestination': errorDestination, 'onMessageFailed': onMessageFailed})
+        frame, token = self.session.subscribe(destination, headers, receipt, {'handler': handler, 'errorDestination': errorDestination, 'onMessageFailed': onMessageFailed})
         ack = ack and (frame.headers.setdefault(StompSpec.ACK_HEADER, self.DEFAULT_ACK_MODE) in StompSpec.CLIENT_ACK_MODES)
         self._subscriptions[token] = {'destination': destination, 'handler': self._createHandler(handler), 'ack': ack, 'errorDestination': errorDestination, 'onMessageFailed': onMessageFailed}
-        protocol.send(frame)
-        return token
+        self.sendFrame(frame)
+        yield self._waitForReceipt(receipt)
+        defer.returnValue(token)
     
+    @connected
+    @defer.inlineCallbacks
     def unsubscribe(self, token, receipt=None):
-        protocol = self._protocol
         frame = self.session.unsubscribe(token, receipt)
         try:
             self._subscriptions.pop(token)
         except:
             self.log.warning('Cannot unsubscribe (subscription id unknown): %s=%s' % token)
             raise
-        protocol.send(frame)
+        self.sendFrame(frame)
+        yield self._waitForReceipt(receipt)
             
     #
     # callbacks for received STOMP frames
@@ -188,19 +223,19 @@ class Stomp(object):
     
     def _onConnected(self, frame):
         self.session.connected(frame)
-        self.log.debug('Connected to stomp broker with session: %s' % self.session.id)
-        self._connected.waiting.callback(None)
-
+        self.log.info('Connected to stomp broker [session=%s]' % self.session.id)
+        self._connecting[None].callback(None)
+    
     def _onError(self, frame):
-        if self._connected.waiting:
-            self._connected.waiting.errback(StompProtocolError('While trying to connect, received %s' % frame.info()))
+        if self._connecting:
+            self._connecting[None].errback(StompProtocolError('While trying to connect, received %s' % frame.info()))
             return
 
         #Workaround for AMQ < 5.2
         if 'Unexpected ACK received for message-id' in frame.headers.get('message', ''):
-            self.log.debug('AMQ brokers < 5.2 do not support client-individual mode.')
+            self.log.debug('AMQ brokers < 5.2 do not support client-individual mode')
         else:
-            self.disconnect(failure=StompProtocolError('Received %s' % frame.info()))
+            self.disconnect(failure=StompProtocolError('Received %s' % frame.info())).addErrback(lambda _: None)
         
     @defer.inlineCallbacks
     def _onMessage(self, frame):
@@ -223,7 +258,7 @@ class Stomp(object):
             return
         
         try:
-            with self._activeHandlers(messageId, self.log):
+            with self._messages(messageId, self.log):
                 yield subscription['handler'](self, frame)
                 if subscription['ack']:
                     self.ack(frame)
@@ -233,10 +268,12 @@ class Stomp(object):
                 if subscription['ack']:
                     self.ack(frame)
             except Exception as e:
-                self.disconnect(failure=e)
-        
+                if not self.disconnect.running:
+                    self.disconnect(failure=e).addErrback(lambda _: None)
+
     def _onReceipt(self, frame):
-        pass
+        receipt = self.session.receipt(frame)
+        self._receipts[receipt].callback(None)
     
     #
     # hook for MESSAGE frame error handling
@@ -255,7 +292,7 @@ class Stomp(object):
         self.ack(frame)
         
     #
-    # protocol
+    # properties
     #
     @property
     def _protocol(self):
@@ -267,14 +304,18 @@ class Stomp(object):
     @_protocol.setter
     def _protocol(self, protocol):
         self.__protocol = protocol
-            
+    
     @property
-    def disconnected(self):
-        return self._disconnectedSignal
+    def _disconnectReason(self):
+        return self.__disconnectReason
     
-    def sendFrame(self, frame):
-        self._protocol.send(frame)
-    
+    @_disconnectReason.setter
+    def _disconnectReason(self, reason):
+        if reason:
+            self.log.error(str(reason))
+            reason = self._disconnectReason or reason # existing reason wins
+        self.__disconnectReason = reason
+        
     #
     # private helpers
     #
@@ -284,23 +325,33 @@ class Stomp(object):
             return handler(self, result)
         return _handler
     
-    def _replay(self):
-        for (destination, headers, context) in self.session.replay():
-            self.log.debug('Replaying subscription: %s' % headers)
-            self.subscribe(destination, headers=headers, **context)
-    
     def _onConnectionLost(self, reason):
         self._protocol = None
         self.log.info('Disconnected: %s' % reason.getErrorMessage())
-        if (not self.disconnect.running) or self._activeHandlers.waiting:
+        if not self.disconnect.running:
             self._disconnectReason = StompConnectionError('Unexpected connection loss [%s]' % reason.getErrorMessage())
-        if self._activeHandlers.waiting:
-            self._activeHandlers.cancel()
+        self.session.close(flush=not self._disconnectReason)
+        for operations in (self._connecting, self._messages, self._receipts):
+            for waiting in operations.values():
+                waiting.errback(StompCancelledError('In-flight operation cancelled (connection lost)'))
         if self._disconnectReason:
             #self.log.debug('Calling disconnected deferred errback: %s' % self._disconnectReason)
-            self._disconnectedSignal.errback(self._disconnectReason)
+            self._disconnected.errback(self._disconnectReason)
             self._disconnectReason = None
         else:
             #self.log.debug('Calling disconnected deferred callback')
-            self._disconnectedSignal.callback(None)
-        self._disconnectedSignal = None
+            self._disconnected.callback(None)
+        self._disconnected = None
+        
+    def _replay(self):
+        for (destination, headers, receipt, context) in self.session.replay():
+            self.log.info('Replaying subscription: %s' % headers)
+            self.subscribe(destination, headers=headers, receipt=receipt, **context)
+    
+    @defer.inlineCallbacks
+    def _waitForReceipt(self, receipt):
+        if receipt is None:
+            defer.returnValue(None)
+        with self._receipts(receipt, self.log):
+            yield self._receipts[receipt].wait(self._receiptTimeout)
+        
