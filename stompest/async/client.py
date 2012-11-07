@@ -27,8 +27,7 @@ from stompest.protocol import StompSession, StompSpec
 from stompest.util import checkattr, cloneFrame
 
 from .protocol import StompProtocolCreator
-from .util import InFlightOperations, exclusive
-from stompest.async.util import Waiting
+from .util import InFlightOperations, exclusive, wait
 
 LOG_CATEGORY = __name__
 
@@ -68,7 +67,7 @@ class Stomp(object):
         
     @property
     def disconnected(self):
-        return self._disconnected.wait()
+        return self._disconnected
     
     def sendFrame(self, frame):
         self._protocol.send(frame)
@@ -94,13 +93,13 @@ class Stomp(object):
             self.log.error('Endpoint connect failed')
             raise
         
-        self._disconnected = Waiting('disconnected')
+        self._disconnected = defer.Deferred()
         self._disconnectReason = None
         
         try:
-            with self._connecting(None, self.log):
+            with self._connecting(None, self.log) as connected:
                 self.sendFrame(frame)
-                yield self._connecting[None].wait(timeout=connectedTimeout)
+                yield wait(connected, connectedTimeout, StompCancelledError('STOMP broker did not answer on time [timeout=%s]' % connectedTimeout))
         except Exception as e:
             self.log.error('Could not establish STOMP session. Disconnecting ...')
             yield self.disconnect(failure=e)
@@ -123,7 +122,7 @@ class Stomp(object):
             if self._messages:
                 self.log.info('Waiting for outstanding message handlers to finish ... [timeout=%s]' % timeout)
                 try:
-                    yield task.cooperate(iter([handler.wait(timeout) for handler in self._messages.values()])).whenDone()
+                    yield task.cooperate(iter([wait(handler, timeout, StompCancelledError('Going down to disconnect now')) for handler in self._messages.values()])).whenDone()
                 except StompCancelledError as e:
                     self._disconnectReason = StompCancelledError('Handlers did not finish in time.')
                 else:
@@ -240,7 +239,7 @@ class Stomp(object):
         if 'Unexpected ACK received for message-id' in frame.headers.get('message', ''):
             self.log.debug('AMQ brokers < 5.2 do not support client-individual mode')
         else:
-            self.disconnect(failure=StompProtocolError('Received %s' % frame.info())).addErrback(lambda _: None)
+            self.disconnect(failure=StompProtocolError('Received %s' % frame.info()))
         
     @defer.inlineCallbacks
     def _onMessage(self, frame):
@@ -263,7 +262,8 @@ class Stomp(object):
             return
         
         try:
-            with self._messages(messageId, self.log):
+            with self._messages(messageId, self.log) as finished:
+                finished.addErrback(lambda _: None)
                 yield subscription['handler'](self, frame)
                 if subscription['ack']:
                     self.ack(frame)
@@ -274,7 +274,7 @@ class Stomp(object):
                     self.ack(frame)
             except Exception as e:
                 if not self.disconnect.running:
-                    self.disconnect(failure=e).addErrback(lambda _: None)
+                    self.disconnect(failure=e)
 
     def _onReceipt(self, frame):
         receipt = self.session.receipt(frame)
@@ -338,7 +338,8 @@ class Stomp(object):
         self.session.close(flush=not self._disconnectReason)
         for operations in (self._connecting, self._messages, self._receipts):
             for waiting in operations.values():
-                waiting.errback(StompCancelledError('In-flight operation cancelled (connection lost)'))
+                if not waiting.called:
+                    waiting.errback(StompCancelledError('In-flight operation cancelled (connection lost)'))
         if self._disconnectReason:
             #self.log.debug('Calling disconnected deferred errback: %s' % self._disconnectReason)
             self._disconnected.errback(self._disconnectReason)
@@ -357,6 +358,7 @@ class Stomp(object):
     def _waitForReceipt(self, receipt):
         if receipt is None:
             defer.returnValue(None)
-        with self._receipts(receipt, self.log):
-            yield self._receipts[receipt].wait(self._receiptTimeout)
+        with self._receipts(receipt, self.log) as receiptArrived:
+            timeout = self._receiptTimeout
+            yield wait(receiptArrived, timeout, StompCancelledError('Receipt did not arrive on time: %s [timeout=%s]' % (receipt, timeout)))
         

@@ -5,7 +5,7 @@
    :members:
 
 ``async.client``
-================
+----------------
 
 .. automodule:: stompest.async.client
    :members:

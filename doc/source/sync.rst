@@ -5,7 +5,7 @@
    :members:
 
 ``sync.client``
-===============
+---------------
 
 .. automodule:: stompest.sync.client
    :members:
