@@ -18,6 +18,10 @@ Both clients make use of a generic set of components in the `protocol` module ea
 
 This module is thoroughly unit tested and production hardened for the functionality used by [Mozes](http://www.mozes.com/): persistent queueing on ActiveMQ. Other users also use it in serious production environments. Minor enhancements may be required to use this STOMP adapter with other brokers.
 
+Documentation
+=============
+The stompest API is documented [here](file:///Volumes/Daten/Scratch/git/stompest-doc/html/index.html).
+
 Examples
 ======== 
 
