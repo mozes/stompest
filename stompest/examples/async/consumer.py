@@ -23,7 +23,7 @@ class Consumer(object):
             # (requires ActiveMQ >= 5.2)
             'ack': 'client-individual',
             # the maximal number of messages the broker will let you work on at the same time
-            'activemq.prefetchSize': 100, 
+            'activemq.prefetchSize': '100', 
         }
         stomp.subscribe(self.QUEUE, self.consume, headers, errorDestination=self.ERROR_QUEUE)
     

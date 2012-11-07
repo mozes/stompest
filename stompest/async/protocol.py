@@ -70,10 +70,6 @@ class StompProtocol(Protocol):
     
     def loseConnection(self):
         self.transport.loseConnection()
-        
-    #
-    # Private helper methods
-    #
             
 class StompFactory(Factory):
     protocol = StompProtocol
