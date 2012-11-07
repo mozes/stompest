@@ -20,7 +20,7 @@ This module is thoroughly unit tested and production hardened for the functional
 
 Documentation
 =============
-The stompest API is documented [here](file:///Volumes/Daten/Scratch/git/stompest-doc/html/index.html).
+The stompest API is documented [here](http://nikipore.github.com/stompest/).
 
 Examples
 ======== 
