@@ -29,12 +29,13 @@ Examples
     
     CONFIG = StompConfig('tcp://localhost:61613')
     QUEUE = '/queue/test'
-    
-    client = Stomp(CONFIG)
-    client.connect()
-    client.send(QUEUE, 'test message 1')
-    client.send(QUEUE, 'test message 2')
-    client.disconnect()
+        
+    if __name__ == '__main__':
+        client = Stomp(CONFIG)
+        client.connect()
+        client.send(QUEUE, 'test message 1')
+        client.send(QUEUE, 'test message 2')
+        client.disconnect()
         
 `sync` consumer
 ----------------
@@ -45,16 +46,17 @@ Examples
     CONFIG = StompConfig('tcp://localhost:61613')
     QUEUE = '/queue/test'
     
-    client = Stomp(CONFIG)
-    client.connect()
-    client.subscribe(QUEUE, {'ack': 'client'})
+    if __name__ == '__main__':
+        client = Stomp(CONFIG)
+        client.connect()
+        client.subscribe(QUEUE, {'ack': 'client'})
     
-    while True:
-        frame = client.receiveFrame()
-        print 'Got %s' % frame.info()
-        client.ack(frame)
+        while True:
+            frame = client.receiveFrame()
+            print 'Got %s' % frame.info()
+            client.ack(frame)
         
-    client.disconnect()
+        client.disconnect()
     
 `async` producer
 ----------------

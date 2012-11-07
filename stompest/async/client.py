@@ -1,4 +1,6 @@
 """
+"""
+"""
 Twisted STOMP client
 
 Copyright 2011, 2012 Mozes, Inc.
@@ -37,6 +39,9 @@ class Stomp(object):
     MESSAGE_FAILED_HEADER = 'message-failed'
     
     def __init__(self, config, receiptTimeout=None):
+        """
+        :config: a :StompConfig: object
+        """
         self._config = config
         self._receiptTimeout = receiptTimeout
         

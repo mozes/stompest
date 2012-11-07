@@ -1,4 +1,3 @@
-# -*- coding: iso-8859-1 -*-
 """
 Copyright 2011, 2012 Mozes, Inc.
 

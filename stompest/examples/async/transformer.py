@@ -1,18 +1,3 @@
-"""
-Copyright 2011 Mozes, Inc.
-
-   Licensed under the Apache License, Version 2.0 (the "License");
-   you may not use this file except in compliance with the License.
-   You may obtain a copy of the License at
-
-       http://www.apache.org/licenses/LICENSE-2.0
-
-   Unless required by applicable law or agreed to in writing, software
-   distributed under the License is distributed on an "AS IS" BASIS,
-   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either expressed or implied.
-   See the License for the specific language governing permissions and
-   limitations under the License.
-"""
 import logging
 import json
 
@@ -33,13 +18,12 @@ class IncrementTransformer(object):
         
     @defer.inlineCallbacks
     def run(self):
-        # establish connection
         client = yield Stomp(self.config).connect()
-        # subscribe to inbound queue
         headers = {
-            # client-individual mode is only supported in AMQ >= 5.2 but necessary for concurrent processing
+            # client-individual mode is necessary for concurrent processing
+            # (requires ActiveMQ >= 5.2)
             'ack': 'client-individual',
-            # this is the maximal number of messages the broker will let you work on at the same time
+            # the maximal number of messages the broker will let you work on at the same time
             'activemq.prefetchSize': 100, 
         }
         client.subscribe(self.IN_QUEUE, self.addOne, headers, errorDestination=self.ERROR_QUEUE)
