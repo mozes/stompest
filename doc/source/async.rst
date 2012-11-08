@@ -1,11 +1,5 @@
-``async``
-=========
-
-.. automodule:: stompest.async
-   :members:
-
-``async.client``
-----------------
+Asynchronous Client
+===================
 
 .. automodule:: stompest.async.client
    :members:

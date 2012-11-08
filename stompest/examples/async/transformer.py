@@ -1,5 +1,5 @@
-import logging
 import json
+import logging
 
 from twisted.internet import reactor, defer
 
