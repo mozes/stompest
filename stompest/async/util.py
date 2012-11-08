@@ -22,11 +22,11 @@ import functools
 from twisted.internet import defer, reactor, task
 from twisted.internet.endpoints import clientFromString
 
-from stompest.error import StompAlreadyRunningError, StompCancelledError, StompNotRunningError
+from stompest.error import StompAlreadyRunningError, StompNotRunningError
 
 class InFlightOperations(collections.MutableMapping):
     def __init__(self, info):
-        self.info = info
+        self._info = info
         self._waiting = {}
             
     def __len__(self):
@@ -39,12 +39,12 @@ class InFlightOperations(collections.MutableMapping):
         try:
             return self._waiting[key]
         except KeyError:
-            raise StompNotRunningError('%s not in progress' % self._info(key))
+            raise StompNotRunningError('%s not in progress' % self.info(key))
     
     def __setitem__(self, key, value):
         if key in self:
-            raise StompAlreadyRunningError('%s already in progress' % self._info(key))
-        if not isinstance(value, Waiting):
+            raise StompAlreadyRunningError('%s already in progress' % self.info(key))
+        if not isinstance(value, defer.Deferred):
             raise ValueError('invalid value: %s' % value)
         self._waiting[key] = value
     
@@ -53,12 +53,11 @@ class InFlightOperations(collections.MutableMapping):
     
     @contextlib.contextmanager
     def __call__(self, key, log=None):
-        self[key] = waiting = Waiting(self._info(key))
-        info = self._info(key)
+        self[key] = waiting = defer.Deferred()
+        info = self.info(key)
         log and log.debug('%s started.' % info)
         try:
             yield waiting
-            waiting = self[key]
             if not waiting.called:
                 waiting.callback(None)
         except Exception as e:
@@ -70,43 +69,8 @@ class InFlightOperations(collections.MutableMapping):
             self.pop(key)
         log and log.debug('%s complete.' % info)
     
-    def _info(self, key):
-        return ' '.join(str(x) for x in (self.info, key) if x is not None)
-    
-class Waiting(object):
-    def __init__(self, info):
-        self._waiting = []
-        self._deferred = defer.Deferred()
-        self._info = info
-    
-    @property
-    def called(self):
-        return self._deferred.called
-    
-    def callback(self, result):
-        self._deferred.callback(None)
-        for waiting in self._waiting:
-            if not waiting.called:
-                waiting.callback(result)
-    
-    def errback(self, fail=None):
-        self._deferred.callback(None)
-        for waiting in self._waiting:
-            if not waiting.called:
-                waiting.errback(fail)
-    
-    def cancel(self):
-        self._deferred.callback(None)
-        for waiting in self._waiting:
-            if not waiting.called:
-                waiting.cancel()
-    
-    def wait(self, timeout=None):
-        if self.called:
-            self._deferred.callback(None)
-        waiting = defer.Deferred()
-        self._waiting.append(waiting)
-        return wait(waiting, timeout, StompCancelledError('Waited too long for %s to complete. [timeout=%s]' % (self._info, timeout)))
+    def info(self, key):
+        return ' '.join(map(str, filter(None, (self._info, key))))
 
 @defer.inlineCallbacks
 def wait(deferred, timeout, fail=None):
