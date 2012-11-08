@@ -23,7 +23,17 @@ import socket
 from stompest.error import StompConnectTimeout
 
 class StompConfig(object):
-    def __init__(self, uri=None, login='', passcode='', version=None, check=True):
+    """This configuration object contains those parameters which are common to both clients (sync and async) and are needed to establish a STOMP connection.
+
+    :param uri: A failover URI as it is accepted by :class:`StompFailoverUri`.
+    :param login: The login for the STOMP broker.
+    :param passcode: The passcode for the STOMP broker.
+    :param version: The highest STOMP protocol version this client may use. If :obj:`None`, **version** defaults to :attr:`StompSpec.DEFAULT_VERSION` (currently ``'1.0'``, but this may change in upcoming stompest releases) 
+    :param check: Decides whether the `StompSession` object which is used to represent the STOMP sesion should be strict about the session's state (e.g., connected vs. disconnected).
+    
+    .. seealso :: :class:`StompFailoverProtocol`
+    """
+    def __init__(self, uri, login='', passcode='', version=None, check=True):
         self.uri = uri
         self.login = login
         self.passcode = passcode
@@ -103,10 +113,8 @@ class StompFailoverUri(object):
         #, 'updateURIsSupported': _configurationOption(_bool, True), # determines whether the client should accept updates to its list of known URIs from the connected broker
     }
     
-    def __init__(self, uri, login='', passcode=''):
+    def __init__(self, uri):
         self._parse(uri)
-        self.login = login
-        self.passcode = passcode
     
     def __repr__(self):
         return "StompFailoverUri('%s')" % self.uri

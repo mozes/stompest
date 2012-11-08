@@ -317,7 +317,7 @@ class Stomp(object):
         :param receipt: See :meth:`disconnect`.
         :param ack: Check this option if you wish the client to automatically ack MESSAGE frames when the were handled (successfully or not).
         :param errorDestination: If a frame was not handled successfully, forward a copy of the offending frame to this destination. Example: ``errorDestination='/queue/back-to-square-one'``
-        :param onMessageFailed: You can specify a custom error handler :obj:`f(self, failure, frame, errorDestination)`. Note that a non-trivial choice of this error handler overrides the default behavior (forward frame to error destination and ack it).
+        :param onMessageFailed: You can specify a custom error handler which must be a callable with signature :obj:`f(self, failure, frame, errorDestination)`. Note that a non-trivial choice of this error handler overrides the default behavior (forward frame to error destination and ack it).
         
         .. note :: As opposed to the behavior of stompest 1.x, the client will not disconnect when a message could not be handled. Rather, a disconnect will only be triggered in a "panic" situation when also the error handler failed. The automatic disconnect was partly a substitute for the missing NACK command in STOMP 1.0. If you wish to automatically disconnect, you have to implement the **onMessageFailed** hook.
         """

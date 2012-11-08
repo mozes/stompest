@@ -73,7 +73,7 @@ class InFlightOperations(collections.MutableMapping):
         return ' '.join(map(str, filter(None, (self._info, key))))
 
 @defer.inlineCallbacks
-def wait(deferred, timeout, fail=None):
+def wait(deferred, timeout=None, fail=None):
     if timeout is not None:
         timeout = reactor.callLater(timeout, deferred.errback, fail) #@UndefinedVariable
     try:
