@@ -23,9 +23,12 @@ import itertools
 import uuid
 
 class StompSession(object):
+    """This object implements an abstract representation of a STOMP protocol session. It builds upon the low-level commands API in :mod:`protocol.command`. You can use the stateful API provided by :class:`StompSession` independently of the stompest clients to roll your own STOMP client.
+    """
     CONNECTING = 'connecting'
     CONNECTED = 'connected'
     DISCONNECTED = 'disconnected'
+    DISCONNECTING = 'disconnecting'
     
     def __init__(self, version=None, check=False):
         self.version = version
@@ -63,6 +66,8 @@ class StompSession(object):
     # STOMP commands
     
     def connect(self, login=None, passcode=None, headers=None, versions=None, host=None):
+        """Create a *CONNECT* frame and set the session state to CONNECTING.
+        """
         self.__check('connect', [self.DISCONNECTED])
         self._versions = versions
         frame = commands.connect(login, passcode, headers, self._versions, host)
@@ -73,6 +78,7 @@ class StompSession(object):
         self.__check('disconnect', [self.CONNECTED])
         frame = commands.disconnect(receipt)
         self._receipt(receipt)
+        self._state = self.DISCONNECTING
         return frame
     
     def close(self, flush=True):
@@ -177,7 +183,7 @@ class StompSession(object):
         return token
     
     def receipt(self, frame):
-        self.__check('receipt', [self.CONNECTED])
+        self.__check('receipt', [self.CONNECTED, self.DISCONNECTING])
         receipt = commands.receipt(frame, self.version)
         try:
             self._receipts.remove(receipt)

@@ -194,7 +194,7 @@ class StompSessionTest(unittest.TestCase):
         session.subscribe('bla', headers)
         frame = session.disconnect(receipt='4711')
         self.assertEquals(frame, commands.disconnect(receipt='4711'))
-        self.assertEquals(session.state, session.CONNECTED)
+        self.assertEquals(session.state, session.DISCONNECTING)
         session.close(flush=False)
         self.assertEquals(session.state, session.DISCONNECTED)
         self.assertEquals(list(session.replay()), [('bla', headers, None, None)])

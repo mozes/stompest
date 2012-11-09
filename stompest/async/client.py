@@ -325,7 +325,7 @@ class Stomp(object):
             raise
         self.sendFrame(frame)
         yield self._waitForReceipt(receipt)
-            
+        
     #
     # callbacks for received STOMP frames
     #
