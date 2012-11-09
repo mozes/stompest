@@ -18,6 +18,7 @@ Copyright 2012 Mozes, Inc.
 from .spec import StompSpec
 
 class StompFrame(object):
+    """This object represents a STOMP frame which consists of a STOMP :attr:`command`, :attr:`headers`, and a message :attr:`body`. Its string representation (via :meth:`__str__`) renders the wire-level STOMP frame."""
     INFO_LENGTH = 20
     
     def __init__(self, command='', headers=None, body=''):
@@ -39,6 +40,7 @@ class StompFrame(object):
         return all(getattr(self, key) == getattr(other, key) for key in ('command', 'headers', 'body'))
     
     def info(self):
+        """Produce a log-friendly representation of the frame (show only non-trivial content, and truncate the message to INFO_LENGTH characters.)"""
         headers = self.headers and 'headers=%s' % self.headers
         body = self.body[:self.INFO_LENGTH]
         if body not in self.body:
