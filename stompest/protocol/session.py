@@ -121,6 +121,10 @@ class StompSession(object):
         return str(transaction or uuid.uuid4())
     
     def begin(self, transaction=None, receipt=None):
+        """Create a *BEGIN* frame and begin an abstract STOMP transaction.
+        
+        .. note :: If you try and begin a pending transaction twice, this will result in a :class:`StompProtocolError`.
+        """
         self.__check('begin', [self.CONNECTED])
         frame = commands.begin(transaction, receipt)
         if transaction in self._transactions:
@@ -128,20 +132,28 @@ class StompSession(object):
         self._transactions.add(transaction)
         self._receipt(receipt)
         return frame
+    
+    def abort(self, transaction, receipt=None):
+        """Create an *ABORT* frame to abort a STOMP transaction.
         
-    def commit(self, transaction, receipt=None):
-        self.__check('commit', [self.CONNECTED])
-        frame = commands.commit(transaction, receipt)
+        .. note :: If you try and abort a transaction which is not pending, this will result in a :class:`StompProtocolError`.
+        """
+        self.__check('abort', [self.CONNECTED])
+        frame = commands.abort(transaction, receipt)
         try:
             self._transactions.remove(transaction)
         except KeyError:
             raise StompProtocolError('Transaction unknown: %s' % transaction)
         self._receipt(receipt)
         return frame
-    
-    def abort(self, transaction, receipt=None):
-        self.__check('abort', [self.CONNECTED])
-        frame = commands.abort(transaction, receipt)
+            
+    def commit(self, transaction, receipt=None):
+        """Send a *COMMIT* command to commit a STOMP transaction.
+        
+        .. note :: If you try and commit a transaction which is not pending, this will result in a :class:`StompProtocolError`.
+        """
+        self.__check('commit', [self.CONNECTED])
+        frame = commands.commit(transaction, receipt)
         try:
             self._transactions.remove(transaction)
         except KeyError:

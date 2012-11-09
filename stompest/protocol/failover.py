@@ -23,7 +23,7 @@ import socket
 from stompest.error import StompConnectTimeout
 
 class StompConfig(object):
-    """This configuration object contains those parameters which are common to both clients (sync and async) and are needed to establish a STOMP connection.
+    """This configuration object contains those parameters which are common to both clients (sync and async) and are needed to establish a STOMP connection. All parameters are available as attributes with the same name of this object.
 
     :param uri: A failover URI as it is accepted by :class:`StompFailoverUri`.
     :param login: The login for the STOMP brokers.
