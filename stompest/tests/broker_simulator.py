@@ -95,7 +95,7 @@ class ErrorOnSendStompServer(BlackHoleStompServer):
         if StompSpec.ACCEPT_VERSION_HEADER not in frame.headers:
             headers[StompSpec.SESSION_HEADER] = 'YMCA'
         else:
-            headers = {'%s:1.1' % StompSpec.VERSION_HEADER}
+            headers = {StompSpec.VERSION_HEADER: '1.1'}
         self.transport.write(self.getFrame(StompSpec.CONNECTED, headers, ''))
 
     def handleDisconnect(self, frame):

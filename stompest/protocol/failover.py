@@ -26,12 +26,14 @@ class StompConfig(object):
     """This configuration object contains those parameters which are common to both clients (sync and async) and are needed to establish a STOMP connection.
 
     :param uri: A failover URI as it is accepted by :class:`StompFailoverUri`.
-    :param login: The login for the STOMP broker.
-    :param passcode: The passcode for the STOMP broker.
-    :param version: The highest STOMP protocol version this client may use. If :obj:`None`, **version** defaults to :attr:`StompSpec.DEFAULT_VERSION` (currently ``'1.0'``, but this may change in upcoming stompest releases) 
-    :param check: Decides whether the `StompSession` object which is used to represent the STOMP sesion should be strict about the session's state (e.g., connected vs. disconnected).
+    :param login: The login for the STOMP brokers.
+    :param passcode: The passcode for the STOMP brokers.
+    :param version: The highest STOMP protocol version this client may use. If :obj:`None`, **version** defaults to :attr:`StompSpec.DEFAULT_VERSION` (currently :obj:`'1.0'`, but this may change in upcoming stompest releases) 
+    :param check: Decides whether the :class:`StompSession` object which is used to represent the STOMP sesion should be strict about the session's state: (e.g., whether to allow calling :meth:`StompSession.send` when disconnected).
     
-    .. seealso :: :class:`StompFailoverProtocol`
+    .. note :: Login and passcode have to be the same for all brokers becuse they are not part of the failover URI scheme.
+    
+    .. seealso :: :class:`StompFailoverProtocol`, :class:`StompFailoverUri`
     """
     def __init__(self, uri, login='', passcode='', version=None, check=True):
         self.uri = uri
@@ -41,6 +43,37 @@ class StompConfig(object):
         self.check = check
 
 class StompFailoverProtocol(object):
+    """This object is a parser for the failover URI scheme used in stompest. Looping over this object, you can produce a series of tuples (broker, delay in s). When the URI does not allow further failover, a :class:`StompConnectTimeout` error is raised.
+    
+    :param uri: A failover URI.
+    
+    **Example:**
+    
+    >>> from stompest.protocol import StompFailoverProtocol
+    >>> from stompest.error import StompConnectTimeout
+    >>> failover = StompFailoverProtocol('failover:(tcp://remote1:61615,tcp://localhost:61616)?randomize=false,startupMaxReconnectAttempts=3,initialReconnectDelay=7,maxReconnectDelay=8,maxReconnectAttempts=0')
+    >>> try:
+    ...     for (broker, delay) in failover:
+    ...         print 'broker: %s, delay: %f' % (broker, delay)                                                                       
+    ... except StompConnectTimeout as e:
+    ...     print 'timeout: %s' % e
+    ... 
+    broker: {'host': 'remote1', 'protocol': 'tcp', 'port': 61615}, delay: 0.000000
+    broker: {'host': 'localhost', 'protocol': 'tcp', 'port': 61616}, delay: 0.007000
+    broker: {'host': 'remote1', 'protocol': 'tcp', 'port': 61615}, delay: 0.008000
+    broker: {'host': 'localhost', 'protocol': 'tcp', 'port': 61616}, delay: 0.008000
+    timeout: Reconnect timeout: 3 attempts
+    >>> try:
+    ...     for (broker, delay) in failover:
+    ...         print 'broker: %s, delay: %f' % (broker, delay)
+    ... except StompConnectTimeout as e:
+    ...     print 'timeout: %s' % e
+    ... 
+    broker: {'host': 'remote1', 'protocol': 'tcp', 'port': 61615}, delay: 0.000000
+    timeout: Reconnect timeout: 0 attempts
+    
+    .. seealso :: :class:`StompFailoverUri`
+    """
     def __init__(self, uri):
         self._failoverUri = StompFailoverUri(uri)
         self._maxReconnectAttempts = None
@@ -82,6 +115,45 @@ class StompFailoverProtocol(object):
         self._reconnectAttempts = -1
         
 class StompFailoverUri(object):
+    """This object is a parser for the failover URI scheme used in stompest. The parsed parameters are available in the attributes :attr:`brokers` and :attr:`options`. The Failover transport syntax is very close to the one used in ActiveMQ. Its basic form is::
+    
+    'failover:(uri1,...,uriN)?transportOptions'
+    
+    or::
+    
+    'failover:uri1,...,uriN'
+    
+    :param uri: A failover URI.
+    
+    **Example:**
+    
+    >>> from stompest.protocol import StompFailoverUri    
+    >>> uri = StompFailoverUri('failover:(tcp://remote1:61615,tcp://localhost:61616)?randomize=false,startupMaxReconnectAttempts=3,initialReconnectDelay=7,maxReconnectDelay=8,maxReconnectAttempts=0')
+    >>> print uri.brokers
+    [{'host': 'remote1', 'protocol': 'tcp', 'port': 61615}, {'host': 'localhost', 'protocol': 'tcp', 'port': 61616}]
+    >>> print uri.options
+    {'initialReconnectDelay': 7, 'maxReconnectDelay': 8, 'backOffMultiplier': 2.0, 'startupMaxReconnectAttempts': 3, 'priorityBackup': False, 'maxReconnectAttempts': 0, 'reconnectDelayJitter': 0, 'useExponentialBackOff': True, 'randomize': False}
+    
+    **Supported Options:**
+    
+    =============================  ========= ============= ================================================================
+    option                         type      default       description
+    =============================  ========= ============= ================================================================
+    *initialReconnectDelay*        int       :obj:`10`     how long to wait before the first reconnect attempt (in ms)
+    *maxReconnectDelay*            int       :obj:`30000`  the maximum amount of time we ever wait between reconnect attempts (in ms)
+    *useExponentialBackOff*        bool      :obj:`True`   should an exponential backoff be used between reconnect attempts
+    *backOffMultiplier*            float     :obj:`2.0`    the exponent used in the exponential backoff attempts
+    *maxReconnectAttempts*         int       :obj:`-1`     :obj:`-1` means retry forever
+                                                           :obj:`0` means don't retry (only try connection once but no retry)
+                                                           :obj:`> 0` means the maximum number of reconnect attempts before an error is sent back to the client
+    *startupMaxReconnectAttempts*  int       :obj:`0`      if not :obj:`0`, then this is the maximum number of reconnect attempts before an error is sent back to the client on the first attempt by the client to start a connection, once connected the *maxReconnectAttempts* option takes precedence
+    *reconnectDelayJitter*         int       :obj:`0`      jitter in ms by which reconnect delay is blurred in order to avoid stampeding
+    *randomize*                    bool      :obj:`True`   use a random algorithm to choose the the URI to use for reconnect from the list provided
+    *priorityBackup*               bool      :obj:`False`  if set, prefer local connections to remote connections
+    =============================  ========= ============= ================================================================
+    
+    .. seealso :: :class:`StompFailoverProtocol`, `failover transport <http://activemq.apache.org/failover-transport-reference.html>`_ of ActiveMQ.
+    """
     LOCAL_HOST_NAMES = set([
         'localhost',
         '127.0.0.1',
@@ -96,16 +168,16 @@ class StompFailoverUri(object):
     _FAILOVER_PREFIX = 'failover:'
     _REGEX_URI = re.compile('^(?P<protocol>tcp)://(?P<host>[^:]+):(?P<port>\d+)$')
     _REGEX_BRACKETS =  re.compile('^\((?P<uri>.+)\)$')
-    _SUPPORTED_OPTIONS = { # cf. http://activemq.apache.org/failover-transport-reference.html
-        'initialReconnectDelay': _configurationOption(int, 10) # how long to wait before the first reconnect attempt (in ms)
-        , 'maxReconnectDelay': _configurationOption(int, 30000) # the maximum amount of time we ever wait between reconnect attempts (in ms)
-        , 'useExponentialBackOff': _configurationOption(_bool, True) # should an exponential backoff be used between reconnect attempts
-        , 'backOffMultiplier': _configurationOption(float, 2.0) # the exponent used in the exponential backoff attempts
-        , 'maxReconnectAttempts': _configurationOption(int, -1) # -1 is default and means retry forever, 0 means don't retry (only try connection once but no retry), >0 means the maximum number of reconnect attempts before an error is sent back to the client
-        , 'startupMaxReconnectAttempts': _configurationOption(int, 0) # if not 0, then this is the maximum number of reconnect attempts before an error is sent back to the client on the first attempt by the client to start a connection, once connected the maxReconnectAttempts option takes precedence
-        , 'reconnectDelayJitter': _configurationOption(int, 0) # jitter in ms by which reconnect delay is blurred in order to avoid stampeding
-        , 'randomize': _configurationOption(_bool, True) # use a random algorithm to choose the the URI to use for reconnect from the list provided
-        , 'priorityBackup': _configurationOption(_bool, False) # if set, prefer local connections to remote connections
+    _SUPPORTED_OPTIONS = {
+        'initialReconnectDelay': _configurationOption(int, 10)
+        , 'maxReconnectDelay': _configurationOption(int, 30000)
+        , 'useExponentialBackOff': _configurationOption(_bool, True)
+        , 'backOffMultiplier': _configurationOption(float, 2.0)
+        , 'maxReconnectAttempts': _configurationOption(int, -1)
+        , 'startupMaxReconnectAttempts': _configurationOption(int, 0)
+        , 'reconnectDelayJitter': _configurationOption(int, 0)
+        , 'randomize': _configurationOption(_bool, True)
+        , 'priorityBackup': _configurationOption(_bool, False)
         #, 'backup': _configurationOption(_bool, False), # initialize and hold a second transport connection - to enable fast failover
         #, 'timeout': _configurationOption(int, -1), # enables timeout on send operations (in miliseconds) without interruption of reconnection process
         #, 'trackMessages': _configurationOption(_bool, False), # keep a cache of in-flight messages that will flushed to a broker on reconnect
