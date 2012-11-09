@@ -64,6 +64,8 @@ class Stomp(object):
     :param config: A :class:`StompConfig` object.
     :param receiptTimeout: When a STOMP frame was sent to the broker and a *RECEIPT* frame was requested, this is the time (in seconds) to wait for the *RECEIPT* frame to arrive. If :obj:`None`, we will wait indefinitely.
     
+    .. note :: All API methods which may request a *RECEIPT* frame from the broker -- which is indicated by the *receipt* parameter -- will wait for the *RECEIPT* response until this client's *receiptTimeout*. Here, "wait" is to be understood in the asynchronous sense that the method's :class:`twisted.internet.defer.Deferred` result will only call back then. If *receipt* is :obj:`None`, no such header is sent, and the callback will be triggered earlier.
+    
     .. seealso :: :mod:`protocol.failover.StompConfig`, the modules :mod:`protocol.session` and :mod:`protocol.commands` for all API options which are documented here.
     """
     DEFAULT_ACK_MODE = 'auto'
@@ -117,7 +119,7 @@ class Stomp(object):
         
         Establish a connection to a STOMP broker. If a network connect fails, attempt a failover according to the settings in the client's :class:`StompConfig` object. If there are active subscriptions in the session, replay them when the STOMP session is established. This method returns a :class:`twisted.internet.defer.Deferred` object which calls back with :obj:`self` when the STOMP connection has been established and all subscriptions (if any) were replayed. In case of an error, it will err back with the reason of the failure.
         
-        :param versions: The STOMP versions we wish to support. The default behavior (:obj:`None`) is the same as for :func:`commands.connect`, but the highest supported version will be the one you specified in the :class:`StompConfig` object. The version which is valid for the conenction about to be initiated is stored in the client's :class:`StompSession` object (attribute :attr:`session`).
+        :param versions: The STOMP protocol versions we wish to support. The default behavior (:obj:`None`) is the same as for :func:`commands.connect`, but the highest supported version will be the one you specified in the :class:`StompConfig` object. The version which is valid for the connection about to be initiated will be stored in the client's :class:`StompSession` object (attribute :attr:`session`).
         :param connectTimeout: This is the time (in seconds) to wait for the wire-level connection to be established. If :obj:`None`, we will wait indefinitely.
         :param connectedTimeout: This is the time (in seconds) to wait for the STOMP connection to be established (that is, the broker's *CONNECTED* frame to arrive). If :obj:`None`, we will wait indefinitely.
         
@@ -243,8 +245,6 @@ class Stomp(object):
         
         Send a *BEGIN* frame to begin a STOMP transaction. This method returns a :class:`twisted.internet.defer.Deferred` object which will fire when a possibly requested *RECEIPT* frame has arrived.
         
-        :param receipt: See :meth:`disconnect`.
-        
         .. note :: If you try and begin a pending transaction twice, this will result in a :class:`StompProtocolError`.
         """
         frame, token = self.session.begin(transaction, receipt)
@@ -259,8 +259,6 @@ class Stomp(object):
         
         Send an *ABORT* frame to abort a STOMP transaction. This method returns a :class:`twisted.internet.defer.Deferred` object which will fire when a possibly requested *RECEIPT* frame has arrived.
         
-        :param receipt: See :meth:`disconnect`.
-        
         .. note :: If you try and abort a transaction which is not pending, this will result in a :class:`StompProtocolError`.
         """
         frame, token = self.session.abort(transaction, receipt)
@@ -274,8 +272,6 @@ class Stomp(object):
         """commit(transaction=None, receipt=None)
         
         Send a *COMMIT* frame to commit a STOMP transaction. This method returns a :class:`twisted.internet.defer.Deferred` object which will fire when a possibly requested *RECEIPT* frame has arrived.
-        
-        :param receipt: See :meth:`disconnect`.
         
         .. note :: If you try and commit a transaction which is not pending, this will result in a :class:`StompProtocolError`.
         """
@@ -315,7 +311,6 @@ class Stomp(object):
         Send an *UNSUBSCRIBE* frame to terminate an existing subscription. This method returns a :class:`twisted.internet.defer.Deferred` object which will fire when a possibly requested *RECEIPT* frame has arrived.
         
         :param token: The result of the :meth:`subscribe` command which initiated the subscription in question.
-        :param receipt: See :meth:`disconnect`.
         """
         frame = self.session.unsubscribe(token, receipt)
         try:

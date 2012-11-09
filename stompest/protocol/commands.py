@@ -85,7 +85,7 @@ def send(destination, body='', headers=None, receipt=None):
     return frame
     
 def subscribe(destination, headers, receipt=None, version=None):
-    """Create a pair (frame, token) of a *SUBSCRIBE* frame and a token which you have to keep if you wish to match incoming *MESSAGE* frames to this subscription or to :func:`unsubscribe` later.
+    """Create a pair (frame, token) of a *SUBSCRIBE* frame and a token which you have to keep if you wish to match incoming *MESSAGE* frames to this subscription  with :func:`message` or to :func:`unsubscribe` later.
     
     :param destination: Destination for the subscription. Example: ``destination='/topic/news'``
     :param headers: Additional STOMP headers. Example: ``headers={'activemq.prefetchSize': '100'}``
