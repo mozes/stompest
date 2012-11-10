@@ -51,7 +51,7 @@ class Stomp(object):
 
     :param config: A :class:`~.failover.StompConfig` object
     
-    .. seealso :: :mod:`stompest.protocol.failover`, :mod:`stompest.protocol.session` for the details of subscription replay and failover transport.
+    .. seealso :: :mod:`~.failover`, :mod:`~.session` for the details of subscription replay and failover transport.
     """
     factory = StompFrameTransport
     
@@ -213,7 +213,7 @@ class Stomp(object):
         
         :param frame: a *MESSAGE* frame.
         
-        .. note :: If the client is not aware of the subscription, or if we are not connected, this method will raise a :class:`~.failover.StompProtocolError`.
+        .. note :: If the client is not aware of the subscription, or if we are not connected, this method will raise a :class:`~.stompest.error.StompProtocolError`.
         """
         return self.session.message(frame)
     
@@ -222,7 +222,7 @@ class Stomp(object):
         
         :param frame: A *MESSAGE* frame (a :class:`~.protocol.frame.StompFrame` object).
         
-        .. note :: If the client is not aware of the outstanding receipt, this method will raise a :class:`~.StompProtocolError`.
+        .. note :: If the client is not aware of the outstanding receipt, this method will raise a :class:`~.stompest.error.StompProtocolError`.
         """
         return self.session.receipt(frame)
     
@@ -246,7 +246,7 @@ class Stomp(object):
 
         :param timeout: This is the time (in seconds) to wait for a frame to become available. If :obj:`None`, we will wait indefinitely.
         
-        .. note :: If the wire-level connection is not available, this method will raise a :class:`~.StompConnectionError`!
+        .. note :: If the wire-level connection is not available, this method will raise a :class:`~.stompest.error.StompConnectionError`!
         """
         return self._transport.canRead(timeout)
         
@@ -255,7 +255,7 @@ class Stomp(object):
         
         :param frame: Any STOMP frame (represented as a :class:`~.frame.StompFrame` object).
 
-        .. note :: If we are not connected, this method, and all other API commands for sending STOMP frames except :meth:`connect`, will raise a :class:`~.StompConnectionError`. Use this command only if you have to bypass the :class:`~.session.StompSession` logic and you know what you're doing!
+        .. note :: If we are not connected, this method, and all other API commands for sending STOMP frames except :meth:`connect`, will raise a :class:`~.stompest.error.StompConnectionError`. Use this command only if you have to bypass the :class:`~.session.StompSession` logic and you know what you're doing!
         """
         if self.log.isEnabledFor(logging.DEBUG):
             self.log.debug('Sending %s' % frame.info())

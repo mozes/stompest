@@ -82,6 +82,10 @@ class StompParserTest(unittest.TestCase):
         parser = StompParser()
         
         self.assertRaises(StompFrameError, lambda: parser.add('HELLO\n'))
+        self.assertFalse(parser.canRead())
+        parser.add('DISCONNECT\n\n\x00')
+        self.assertEquals(StompFrame('DISCONNECT'), parser.get())
+        self.assertFalse(parser.canRead())
 
     def test_processLine_throws_FrameError_on_header_line_missing_separator(self):
         parser = StompParser()

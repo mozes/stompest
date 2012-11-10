@@ -1,4 +1,28 @@
-"""
+"""The :class:`StompSession` object implements an abstract STOMP protocol session, where "abstract" means that it is entirely client or transport agnostic. The session API builds upon the low-level and stateless API of the :mod:`~.stompest.protocol.commands` module, but it also keeps track of the session state (e.g., STOMP protocol version negotiation, active subscriptions). You can use the API provided by :class:`StompSession` independently of the stompest clients to roll your own STOMP client.
+
+.. note :: Being stateful implies that the session keeps track of subscriptions, receipts, and transactions, so keep track of them yourself, too! -- Unless you like to be surprised by a spurious :class:`~.stompest.error.StompProtocolError` ...
+
+.. seealso :: The stateless API in the module :mod:`~.stompest.protocol.commands` for all API command parameters which are not documented here.
+    
+Example:
+
+>>> from stompest.protocol import StompFrame, StompSession
+>>> session = StompSession('1.1')
+>>> session.connect(login='', passcode='')
+StompFrame(command='CONNECT', headers={'passcode': '', 'login': '', 'host': 'macbook-jan.fritz.box', 'accept-version': '1.0,1.1'}, body='')
+>>> print session.version, session.state
+1.1 connecting
+>>> session.connected(StompFrame('CONNECTED', {'session': 'tete-a-tete'})) # The broker only understands STOMP 1.0.
+>>> print session.version, session.state
+1.0 connected
+>>> session.disconnect()
+StompFrame(command='DISCONNECT', headers={}, body='')
+>>> print session.version, session.state
+1.0 disconnecting
+>>> session.close()
+>>> print session.version, session.state
+1.1 disconnected
+
 """
 """
 Copyright 2012 Mozes, Inc.
@@ -23,18 +47,18 @@ import itertools
 import uuid
 
 class StompSession(object):
-    """This object implements an abstract representation of a STOMP protocol session. It builds upon the low-level commands API in :mod:`protocol.command`. You can use the stateful API provided by :class:`StompSession` independently of the stompest clients to roll your own STOMP client.
+    """This object implements an abstract STOMP protocol session.
     
-    .. note :: Being stateful implies that the session keeps track of subscriptions, receipts, and transactions, so keep track of them yourself, too! -- Unless you like to be surprised by a spurious :class:`StompProtocolError` ...
+    :param version: The highest (and at the same time default) STOMP protocol version.
+    :param check: This flag decides whether the session should accept commands only in the proper session states (:obj:`True`) or in any session state (:obj:`False`).
     
-    .. seealso :: The commands API in :mod:`protocol.command` for all API command parameters which are not documented here.
     """
     CONNECTING = 'connecting'
     CONNECTED = 'connected'
     DISCONNECTING = 'disconnecting'
     DISCONNECTED = 'disconnected'
     
-    def __init__(self, version=None, check=False):
+    def __init__(self, version=None, check=True):
         self.version = version
         self._check = check
         self._nextSubscription = itertools.count().next
@@ -49,7 +73,9 @@ class StompSession(object):
     @version.setter
     def version(self, version):
         version = commands.version(version)
-        if not hasattr(self, '__version'):
+        try:
+            self.__version
+        except AttributeError:
             self.__version = version
             version = None
         self._version = version
@@ -152,7 +178,7 @@ class StompSession(object):
         
         :param transaction: See :meth:`transaction`.
         
-        .. note :: If you try and begin a pending transaction twice, this will result in a :class:`StompProtocolError`.
+        .. note :: If you try and begin a pending transaction twice, this will result in a :class:`~.stompest.error.StompProtocolError`.
         """
         self.__check('begin', [self.CONNECTED])
         frame = commands.begin(transaction, receipt)
@@ -167,7 +193,7 @@ class StompSession(object):
         
         :param transaction: See :meth:`transaction`.
         
-        .. note :: If you try and abort a transaction which is not pending, this will result in a :class:`StompProtocolError`.
+        .. note :: If you try and abort a transaction which is not pending, this will result in a :class:`~.stompest.error.StompProtocolError`.
         """
         self.__check('abort', [self.CONNECTED])
         frame = commands.abort(transaction, receipt)
@@ -183,7 +209,7 @@ class StompSession(object):
         
         :param transaction: See :meth:`transaction`.
         
-        .. note :: If you try and commit a transaction which is not pending, this will result in a :class:`StompProtocolError`.
+        .. note :: If you try and commit a transaction which is not pending, this will result in a :class:`~.stompest.error.StompProtocolError`.
         """
         self.__check('commit', [self.CONNECTED])
         frame = commands.commit(transaction, receipt)
@@ -206,7 +232,7 @@ class StompSession(object):
     def message(self, frame):
         """Handle a *MESSAGE* frame. Returns a token which you can use to match this message to its subscription.
         
-        .. seealso :: :meth:`subscribe`.
+        .. seealso :: The :meth:`subscribe` method.
         """
         self.__check('message', [self.CONNECTED])
         token = commands.message(frame, self.version)
@@ -268,6 +294,7 @@ class StompSession(object):
         self._id = None
         self._server = None
         self._state = self.DISCONNECTED
+        self.version = self.__version
         self._versions = None
         
     def __check(self, command, states):

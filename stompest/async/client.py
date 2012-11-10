@@ -105,7 +105,7 @@ class Stomp(object):
     def sendFrame(self, frame):
         """Send a raw STOMP frame.
         
-        .. note :: If we are not connected, this method, and all other API commands for sending STOMP frames except :meth:`connect`, will raise a :class:`StompConnectionError`. Use this command only if you have to bypass the :class:`~.failover.StompSession` logic and you know what you're doing!
+        .. note :: If we are not connected, this method, and all other API commands for sending STOMP frames except :meth:`connect`, will raise a :class:`~.stompest.error.StompConnectionError`. Use this command only if you have to bypass the :class:`~.failover.StompSession` logic and you know what you're doing!
         """
         self._protocol.send(frame)
     
@@ -123,9 +123,9 @@ class Stomp(object):
         :param connectTimeout: This is the time (in seconds) to wait for the wire-level connection to be established. If :obj:`None`, we will wait indefinitely.
         :param connectedTimeout: This is the time (in seconds) to wait for the STOMP connection to be established (that is, the broker's *CONNECTED* frame to arrive). If :obj:`None`, we will wait indefinitely.
         
-        .. note :: Only one connect attempt may be pending at a time. Any other attempt will result in a :class:`StompAlreadyRunningError`.
+        .. note :: Only one connect attempt may be pending at a time. Any other attempt will result in a :class:`~.stompest.error.StompAlreadyRunningError`.
 
-        .. seealso :: :mod:`stompest.protocol.failover`, :mod:`stompest.protocol.session` for the details of subscription replay and failover transport.
+        .. seealso :: :mod:`~.failover`, :mod:`~.session` for the details of subscription replay and failover transport.
         """
         frame = self.session.connect(self._config.login, self._config.passcode, headers, versions, host)
         
@@ -168,7 +168,7 @@ class Stomp(object):
         :param failure: A disconnect reason (a :class:`Exception`) to err back. Example: ``versions=['1.0', '1.1']``
         :param timeout: This is the time (in seconds) to wait for a graceful disconnect, thas is, for pending message handlers to complete. If receipt is :obj:`None`, we will wait indefinitely.
         
-        .. note :: The session's active subscriptions will be cleared if no failure has been passed to this method. This allows you to replay the subscriptions upon reconnect. If you do not wish to do so, you have to clear the subscriptions yourself by calling the :meth:`~.session.StompSession.close` method of the :attr:`session` attribute. Only one disconnect attempt may be pending at a time. Any other attempt will result in a :class:`StompAlreadyRunningError`. The result of any (user-requested or not) disconnect event is available via the :attr:`disconnected` property.
+        .. note :: The session's active subscriptions will be cleared if no failure has been passed to this method. This allows you to replay the subscriptions upon reconnect. If you do not wish to do so, you have to clear the subscriptions yourself by calling the :meth:`~.session.StompSession.close` method of the :attr:`session` attribute. Only one disconnect attempt may be pending at a time. Any other attempt will result in a :class:`~.stompest.error.StompAlreadyRunningError`. The result of any (user-requested or not) disconnect event is available via the :attr:`disconnected` property.
         """
         if failure:
             self._disconnectReason = failure

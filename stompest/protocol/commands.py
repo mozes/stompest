@@ -1,6 +1,30 @@
+# -*- coding: iso-8859-1 -*-
 """This module implements a low-level and stateless API for all commands of the STOMP protocol version supported by stompest. All STOMP command frames are represented as :class:`StompFrame` objects. It forms the basis for :class:`StompSession` which represents the full state of an abstract STOMP protocol session and (via :class:`StompSession`) of both high-level STOMP clients. You can use the commands API independently of other stompest modules to roll your own STOMP related functionality.
 
 .. note :: Whenever you have to pass a *version* parameter to a command, this is because the behavior of that command depends on the STOMP protocol version of your current session. The default version is the value of :attr:`StompSpec.DEFAULT_VERSION`, which is currently :obj:`'1.0'` but may change in upcoming versions of stompest (and by you, if you wish to override it). Any command which does not conform to the STOMP protocol version in question will result in a :class:`StompProtocolError`.
+
+Examples:
+
+>>> from stompest.protocol import commands
+>>> versions = list(commands.versions('1.1'))
+>>> print versions
+['1.0', '1.1']
+>>> print repr(commands.connect(versions=versions))
+StompFrame(command='CONNECT', headers={'host': 'earth.solar-system', 'accept-version': '1.0,1.1'}, body='')
+>>> frame, token = commands.subscribe('/queue/test', {'ack': 'client-individual', 'activemq.prefetchSize': '100'})
+>>> print repr(frame)
+StompFrame(command='SUBSCRIBE', headers={'ack': 'client-individual', 'destination': '/queue/test', 'activemq.prefetchSize': '100'}, body='')
+>>> frame = StompFrame('MESSAGE', {'destination': '/queue/test', 'message-id': '007'}, '¿qué tal estás?')
+>>> print repr(frame)
+StompFrame(command='MESSAGE', headers={'destination': '/queue/test', 'message-id': '007'}, body='\\xc2\\xbfqu\\xc3\\xa9 tal est\\xc3\\xa1s?')
+>>> commands.message(frame, version='1.0') == token # This message matches your subscription.
+True
+>>> commands.message(frame, version='1.1')
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+stompest.error.StompProtocolError: Invalid MESSAGE frame (subscription header mandatory in version 1.1) [headers={'destination': '/queue/test', 'message-id': '007'}]
+>>> print repr(commands.disconnect(receipt='message-12345'))
+StompFrame(command='DISCONNECT', headers={'receipt': 'message-12345'}, body='')
 
 .. seealso :: Specification of STOMP protocols `1.0 <http://stomp.github.com//stomp-specification-1.0.html>`_ and `1.1 <http://stomp.github.com//stomp-specification-1.1.html>`_, your favorite broker's documentation for additional STOMP headers.
 """

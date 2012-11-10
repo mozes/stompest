@@ -22,25 +22,25 @@ from stompest.protocol.frame import StompFrame
    
 class StompSessionTest(unittest.TestCase):
     def test_session_init(self):
-        session = StompSession()
+        session = StompSession(check=False)
         self.assertEquals(session.version, StompSpec.DEFAULT_VERSION)
         session.send('', '', {})
         session.subscribe('bla1', {'bla2': 'bla3'})
         session.unsubscribe((StompSpec.DESTINATION_HEADER, 'bla1'))
 
-        session = StompSession(check=True)
+        session = StompSession()
         self.assertRaises(StompProtocolError, lambda: session.send('', '', {}))
         self.assertRaises(StompProtocolError, lambda: session.subscribe('bla1', {'bla2': 'bla3'}))
         self.assertRaises(StompProtocolError, lambda: session.unsubscribe((StompSpec.DESTINATION_HEADER, 'bla1')))
         
-        session = StompSession('1.1', check=True)
+        session = StompSession('1.1')
         self.assertEquals(session.version, '1.1')
         
         self.assertRaises(StompProtocolError, lambda: StompSession(version='1.2'))
         self.assertRaises(StompProtocolError, lambda: session.send('', '', {}))
     
     def test_session_connect(self):
-        session = StompSession(StompSpec.VERSION_1_0)
+        session = StompSession(StompSpec.VERSION_1_0, check=False)
         self.assertEquals(session.version, '1.0')
         self.assertEquals(session.server, None)
         self.assertEquals(session.id, None)
@@ -61,7 +61,7 @@ class StompSessionTest(unittest.TestCase):
         self.assertEquals(session.state, StompSession.DISCONNECTED)
         self.assertRaises(StompProtocolError, session.connect, login='', passcode='', versions=['1.1'])
 
-        session = StompSession(version='1.1')
+        session = StompSession(version='1.1', check=False)
         self.assertEquals(session.version, '1.1')
         frame = session.connect(login='', passcode='')
         self.assertEquals(frame, commands.connect('', '', {}, ['1.0', '1.1']))
@@ -78,7 +78,7 @@ class StompSessionTest(unittest.TestCase):
         self.assertEquals(session.server, None)
         self.assertEquals(session.id, None)
         self.assertEquals(session.state, StompSession.DISCONNECTED)
-
+        
         session.connect(login='', passcode='', versions=['1.0', '1.1'])
         session.connected(StompFrame(StompSpec.CONNECTED, {StompSpec.SESSION_HEADER: '4711'}))
         self.assertEquals(session.state, StompSession.CONNECTED)
@@ -92,8 +92,9 @@ class StompSessionTest(unittest.TestCase):
         self.assertEquals(session.server, None)
         self.assertEquals(session.id, None)
         self.assertEquals(session.state, StompSession.DISCONNECTED)
+        self.assertEquals(session.version, '1.1')
         
-        session = StompSession(version='1.1')
+        session = StompSession(version='1.1', check=False)
         frame = session.connect(login='', passcode='', versions=['1.1'])
         self.assertEquals(frame, commands.connect('', '', {}, ['1.1']))
         self.assertEquals(session._versions, ['1.1'])
@@ -106,8 +107,10 @@ class StompSessionTest(unittest.TestCase):
         session.close()
         self.assertEquals(session.state, StompSession.DISCONNECTED)
         
+        
+        
     def test_session_subscribe(self):
-        session = StompSession()
+        session = StompSession(check=False)
         headers = {'bla2': 'bla3'}
         frame, token = session.subscribe('bla1', headers, receipt='4711')
         self.assertEquals((frame, token), commands.subscribe('bla1', headers, '4711', version='1.0'))
@@ -155,7 +158,7 @@ class StompSessionTest(unittest.TestCase):
         
         session.disconnect()
 
-        session = StompSession()
+        session = StompSession(check=False)
         session.connect(login='', passcode='')
         session.connected(StompFrame(StompSpec.CONNECTED, {StompSpec.SESSION_HEADER: 'hi'}))
 
@@ -168,7 +171,7 @@ class StompSessionTest(unittest.TestCase):
         session.unsubscribe(token)
         self.assertRaises(StompProtocolError, lambda: session.unsubscribe(token))
         
-        session = StompSession(version='1.1')
+        session = StompSession(version='1.1', check=False)
         session.connect(login='', passcode='')
         session.connected(StompFrame(StompSpec.CONNECTED, {StompSpec.SERVER_HEADER: 'moon', StompSpec.SESSION_HEADER: '4711', StompSpec.VERSION_HEADER: StompSpec.VERSION_1_1}))
         
@@ -187,7 +190,7 @@ class StompSessionTest(unittest.TestCase):
         self.assertEquals(list(session.replay()), [])        
         
     def test_session_disconnect(self):
-        session = StompSession('1.1', check=True)
+        session = StompSession('1.1')
         session.connect(login='', passcode='')
         session.connected(StompFrame(StompSpec.CONNECTED, {StompSpec.SESSION_HEADER: 'hi'}))
         headers = {StompSpec.ID_HEADER: 4711}
@@ -203,7 +206,7 @@ class StompSessionTest(unittest.TestCase):
         self.assertRaises(StompProtocolError, session.disconnect)
         
     def test_session_nack(self):
-        session = StompSession(version='1.1')
+        session = StompSession(version='1.1', check=False)
         frame_ = lambda h: StompFrame(StompSpec.MESSAGE, h)
         for headers in [
             {StompSpec.MESSAGE_ID_HEADER: '4711', StompSpec.SUBSCRIPTION_HEADER: 'bla'},
@@ -218,11 +221,11 @@ class StompSessionTest(unittest.TestCase):
         self.assertRaises(StompProtocolError, session.nack, frame_({StompSpec.MESSAGE_ID_HEADER: '4711'}))
         self.assertRaises(StompProtocolError, session.nack, frame_({StompSpec.SUBSCRIPTION_HEADER: 'bla'}))
         
-        session = StompSession(version='1.1', check=True)
+        session = StompSession(version='1.1')
         self.assertRaises(StompProtocolError, lambda: session.nack(frame_({StompSpec.MESSAGE_ID_HEADER: '4711', StompSpec.SUBSCRIPTION_HEADER: 'bla'})))
         
     def test_session_transaction(self):
-        session = StompSession()
+        session = StompSession(check=False)
         
         transaction = session.transaction()
         headers = {StompSpec.TRANSACTION_HEADER: transaction, StompSpec.RECEIPT_HEADER: 'bla'}
@@ -248,7 +251,7 @@ class StompSessionTest(unittest.TestCase):
         self.assertRaises(StompProtocolError, session.commit, transaction)
         self.assertRaises(StompProtocolError, session.abort, transaction)
         
-        session = StompSession(check=True)
+        session = StompSession()
         self.assertRaises(StompProtocolError, session.begin, 4711)
         self.assertRaises(StompProtocolError, session.abort, None)
         self.assertRaises(StompProtocolError, session.commit, None)
