@@ -47,11 +47,11 @@ LOG_CATEGORY = __name__
 connected = checkattr('_transport')
 
 class Stomp(object):
-    """A synchronous STOMP client. This is the successor of the :class:`simple.Stomp` client in stompest 1.x, but the API is not backward compatible.
+    """A synchronous STOMP client. This is the successor of the simple STOMP client in stompest 1.x, but the API is not backward compatible.
 
-    :param config: A :class:`StompConfig` object
+    :param config: A :class:`~.failover.StompConfig` object
     
-    .. seealso :: The modules :mod:`protocol.session` and :mod:`protocol.commands` for all API options which are not documented here.
+    .. seealso :: :mod:`stompest.protocol.failover`, :mod:`stompest.protocol.session` for the details of subscription replay and failover transport.
     """
     factory = StompFrameTransport
     
@@ -65,9 +65,9 @@ class Stomp(object):
     def connect(self, headers=None, versions=None, host=None, connectTimeout=None, connectedTimeout=None):
         """connect(headers=None, versions=None, host=None, connectTimeout=None, connectedTimeout=None)
         
-        Establish a connection to a STOMP broker. If the wire-level connect fails, attempt a failover according to the settings in the client's :class:`StompConfig` object. If there are active subscriptions in the session, replay them when the STOMP session is established. The negotiated version which is applicable to the established STOMP session is stored in the client's :class:`StompSession` attribute :attr:`session`.
+        Establish a connection to a STOMP broker. If the wire-level connect fails, attempt a failover according to the settings in the client's :class:`~.failover.StompConfig` object. If there are active subscriptions in the session, replay them when the STOMP session is established. The negotiated version which is applicable to the established STOMP session is stored in the client's :class:`~.session.StompSession` attribute :attr:`session`.
         
-        :param versions: The STOMP protocol versions we wish to support. The default behavior (:obj:`None`) is the same as for :func:`commands.connect`, but the highest supported version will be the one you specified in the :class:`StompConfig` object. The version which is valid for the connection about to be initiated will be stored in the client's :class:`StompSession` object (attribute :attr:`session`).
+        :param versions: The STOMP protocol versions we wish to support. The default behavior (:obj:`None`) is the same as for the :func:`~.commands.connect` function of the commands API, but the highest supported version will be the one you specified in the :class:`~.failover.StompConfig` object. The version which is valid for the connection about to be initiated will be stored in the client's :class:`~.session.StompSession` object (attribute :attr:`session`).
         :param connectTimeout: This is the time (in seconds) to wait for the wire-level connection to be established. If :obj:`None`, we will wait indefinitely.
         :param connectedTimeout: This is the time (in seconds) to wait for the STOMP connection to be established (that is, the broker's *CONNECTED* frame to arrive). If :obj:`None`, we will wait indefinitely.
         
@@ -213,23 +213,23 @@ class Stomp(object):
         
         :param frame: a *MESSAGE* frame.
         
-        .. note :: If the client is not aware of the subscription, or if we are not connected, this method will raise a :class:`StompProcolError`.
+        .. note :: If the client is not aware of the subscription, or if we are not connected, this method will raise a :class:`~.failover.StompProtocolError`.
         """
         return self.session.message(frame)
     
     def receipt(self, frame):
         """If you received a *RECEIPT* frame, this method will extract the receipt id which you employed to request that receipt.
         
-        :param frame: A *MESSAGE* frame (a :class:`StompFrame` object).
+        :param frame: A *MESSAGE* frame (a :class:`~.protocol.frame.StompFrame` object).
         
-        .. note :: If the client is not aware of the outstanding receipt, this method will raise a :class:`StompProcolError`.
+        .. note :: If the client is not aware of the outstanding receipt, this method will raise a :class:`~.StompProtocolError`.
         """
         return self.session.receipt(frame)
     
     # frame transport
     
     def close(self, flush=True):
-        """Close both the client's :attr:`session` (a :class:`StompSession` object) and its transport (that is, the wire-level connection with the broker).
+        """Close both the client's :attr:`session` (a :class:`~.session.StompSession` object) and its transport (that is, the wire-level connection with the broker).
         
         :param flush: Decides whether the client's :attr:`session` should forget its active subscriptions or not.
         
@@ -246,16 +246,16 @@ class Stomp(object):
 
         :param timeout: This is the time (in seconds) to wait for a frame to become available. If :obj:`None`, we will wait indefinitely.
         
-        .. note :: If the wire-level connection is not available, this method will raise a :class:`StompConnectionError`!
+        .. note :: If the wire-level connection is not available, this method will raise a :class:`~.StompConnectionError`!
         """
         return self._transport.canRead(timeout)
         
     def sendFrame(self, frame):
         """Send a raw STOMP frame.
         
-        :param frame: Any STOMP frame (represented as a :class:`StompFrame` object).
+        :param frame: Any STOMP frame (represented as a :class:`~.frame.StompFrame` object).
 
-        .. note :: If we are not connected, this method, and all other API commands for sending STOMP frames except :meth:`connect`, will raise a :class:`StompConnectionError`. Use this command only if you have to bypass the :class:`StompSession` logic and you know what you're doing!
+        .. note :: If we are not connected, this method, and all other API commands for sending STOMP frames except :meth:`connect`, will raise a :class:`~.StompConnectionError`. Use this command only if you have to bypass the :class:`~.session.StompSession` logic and you know what you're doing!
         """
         if self.log.isEnabledFor(logging.DEBUG):
             self.log.debug('Sending %s' % frame.info())
@@ -264,7 +264,7 @@ class Stomp(object):
     def receiveFrame(self):
         """Fetch the next available frame.
         
-        .. note :: If we are not connected, this method will raise a :class:`StompConnectionError`. Keep in mind that this method will block forever if there are no frames incoming on the wire. Be sure to use peek with ``self.canRead(timeout)`` before!
+        .. note :: If we are not connected, this method will raise a :class:`~.StompConnectionError`. Keep in mind that this method will block forever if there are no frames incoming on the wire. Be sure to use peek with ``self.canRead(timeout)`` before!
         """
         frame = self._transport.receive()
         if frame and self.log.isEnabledFor(logging.DEBUG):

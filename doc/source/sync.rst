@@ -1,3 +1,5 @@
+.. _sync:
+
 Synchronous Client
 ==================
 

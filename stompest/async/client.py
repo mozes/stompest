@@ -61,12 +61,12 @@ connected = checkattr('_protocol')
 class Stomp(object):
     """An asynchronous STOMP client for the Twisted framework.
 
-    :param config: A :class:`StompConfig` object.
+    :param config: A :class:`~.failover.StompConfig` object.
     :param receiptTimeout: When a STOMP frame was sent to the broker and a *RECEIPT* frame was requested, this is the time (in seconds) to wait for the *RECEIPT* frame to arrive. If :obj:`None`, we will wait indefinitely.
     
     .. note :: All API methods which may request a *RECEIPT* frame from the broker -- which is indicated by the *receipt* parameter -- will wait for the *RECEIPT* response until this client's *receiptTimeout*. Here, "wait" is to be understood in the asynchronous sense that the method's :class:`twisted.internet.defer.Deferred` result will only call back then. If *receipt* is :obj:`None`, no such header is sent, and the callback will be triggered earlier.
     
-    .. seealso :: :mod:`protocol.failover.StompConfig`, the modules :mod:`protocol.session` and :mod:`protocol.commands` for all API options which are documented here.
+    .. seealso :: :class:`~.failover.StompConfig` for how to set session configuration options, :class:`~.session.StompSession` for session state, :mod:`stompest.protocol.commands` for all API options which are documented here.
     """
     DEFAULT_ACK_MODE = 'auto'
     MESSAGE_FAILED_HEADER = 'message-failed'
@@ -105,7 +105,7 @@ class Stomp(object):
     def sendFrame(self, frame):
         """Send a raw STOMP frame.
         
-        .. note :: If we are not connected, this method, and all other API commands for sending STOMP frames except :meth:`connect`, will raise a :class:`StompConnectionError`. Use this command only if you have to bypass the :class:`StompSession` logic and you know what you're doing!
+        .. note :: If we are not connected, this method, and all other API commands for sending STOMP frames except :meth:`connect`, will raise a :class:`StompConnectionError`. Use this command only if you have to bypass the :class:`~.failover.StompSession` logic and you know what you're doing!
         """
         self._protocol.send(frame)
     
@@ -117,15 +117,15 @@ class Stomp(object):
     def connect(self, headers=None, versions=None, host=None, connectTimeout=None, connectedTimeout=None):
         """connect(headers=None, versions=None, host=None, connectTimeout=None, connectedTimeout=None)
         
-        Establish a connection to a STOMP broker. If a network connect fails, attempt a failover according to the settings in the client's :class:`StompConfig` object. If there are active subscriptions in the session, replay them when the STOMP session is established. This method returns a :class:`twisted.internet.defer.Deferred` object which calls back with :obj:`self` when the STOMP connection has been established and all subscriptions (if any) were replayed. In case of an error, it will err back with the reason of the failure.
+        Establish a connection to a STOMP broker. If a network connect fails, attempt a failover according to the settings in the client's :class:`~.failover.StompConfig` object. If there are active subscriptions in the session, replay them when the STOMP session is established. This method returns a :class:`twisted.internet.defer.Deferred` object which calls back with :obj:`self` when the STOMP connection has been established and all subscriptions (if any) were replayed. In case of an error, it will err back with the reason of the failure.
         
-        :param versions: The STOMP protocol versions we wish to support. The default behavior (:obj:`None`) is the same as for :func:`commands.connect`, but the highest supported version will be the one you specified in the :class:`StompConfig` object. The version which is valid for the connection about to be initiated will be stored in the client's :class:`StompSession` object (attribute :attr:`session`).
+        :param versions: The STOMP protocol versions we wish to support. The default behavior (:obj:`None`) is the same as for the :func:`~.commands.connect` function of the commands API, but the highest supported version will be the one you specified in the :class:`~.failover.StompConfig` object. The version which is valid for the connection about to be initiated will be stored in the client's :class`~.session.StompSession` object (attribute :attr:`session`).
         :param connectTimeout: This is the time (in seconds) to wait for the wire-level connection to be established. If :obj:`None`, we will wait indefinitely.
         :param connectedTimeout: This is the time (in seconds) to wait for the STOMP connection to be established (that is, the broker's *CONNECTED* frame to arrive). If :obj:`None`, we will wait indefinitely.
         
         .. note :: Only one connect attempt may be pending at a time. Any other attempt will result in a :class:`StompAlreadyRunningError`.
 
-        .. seealso :: :mod:`protocol.failover`, :mod:`protocol.session` for the details of subscription replay and failover transport.
+        .. seealso :: :mod:`stompest.protocol.failover`, :mod:`stompest.protocol.session` for the details of subscription replay and failover transport.
         """
         frame = self.session.connect(self._config.login, self._config.passcode, headers, versions, host)
         
@@ -168,7 +168,7 @@ class Stomp(object):
         :param failure: A disconnect reason (a :class:`Exception`) to err back. Example: ``versions=['1.0', '1.1']``
         :param timeout: This is the time (in seconds) to wait for a graceful disconnect, thas is, for pending message handlers to complete. If receipt is :obj:`None`, we will wait indefinitely.
         
-        .. note :: The session's active subscriptions will be cleared if no failure has been passed to this method. This allows you to replay the subscriptions upon reconnect. If you do not wish to do so, you have to clear the subscriptions yourself by calling ``self.session.close()``. Only one disconnect attempt may be pending at a time. Any other attempt will result in a :class:`StompAlreadyRunningError`. The result of any (user-requested or not) disconnect event is available via the :attr:`disconnected` property.
+        .. note :: The session's active subscriptions will be cleared if no failure has been passed to this method. This allows you to replay the subscriptions upon reconnect. If you do not wish to do so, you have to clear the subscriptions yourself by calling the :meth:`~.session.StompSession.close` method of the :attr:`session` attribute. Only one disconnect attempt may be pending at a time. Any other attempt will result in a :class:`StompAlreadyRunningError`. The result of any (user-requested or not) disconnect event is available via the :attr:`disconnected` property.
         """
         if failure:
             self._disconnectReason = failure
@@ -244,8 +244,6 @@ class Stomp(object):
         """begin(transaction=None, receipt=None)
         
         Send a *BEGIN* frame to begin a STOMP transaction. This method returns a :class:`twisted.internet.defer.Deferred` object which will fire when a possibly requested *RECEIPT* frame has arrived.
-        
-        .. note :: If you try and begin a pending transaction twice, this will result in a :class:`StompProtocolError`.
         """
         frame, token = self.session.begin(transaction, receipt)
         self.sendFrame(frame)
@@ -258,8 +256,6 @@ class Stomp(object):
         """abort(transaction=None, receipt=None)
         
         Send an *ABORT* frame to abort a STOMP transaction. This method returns a :class:`twisted.internet.defer.Deferred` object which will fire when a possibly requested *RECEIPT* frame has arrived.
-        
-        .. note :: If you try and abort a transaction which is not pending, this will result in a :class:`StompProtocolError`.
         """
         frame, token = self.session.abort(transaction, receipt)
         self.sendFrame(frame)
@@ -272,8 +268,6 @@ class Stomp(object):
         """commit(transaction=None, receipt=None)
         
         Send a *COMMIT* frame to commit a STOMP transaction. This method returns a :class:`twisted.internet.defer.Deferred` object which will fire when a possibly requested *RECEIPT* frame has arrived.
-        
-        .. note :: If you try and commit a transaction which is not pending, this will result in a :class:`StompProtocolError`.
         """
         frame, token = self.session.commit(transaction, receipt)
         self.sendFrame(frame)
@@ -287,7 +281,7 @@ class Stomp(object):
         
         Send a *SUBSCRIBE* frame to subscribe to a STOMP destination. This method returns a :class:`twisted.internet.defer.Deferred` object which will fire with a token when a possibly requested *RECEIPT* frame has arrived. This token is used internally to match incoming *MESSAGE* frames and must be kept if you wish to :meth:`unsubscribe` later.
         
-        :param handler: A callable :obj:`f(client, frame)` which accepts this client and the received :class:`StompFrame`.
+        :param handler: A callable :obj:`f(client, frame)` which accepts this client and the received :class:`~.frame.StompFrame`.
         :param ack: Check this option if you wish the client to automatically ack MESSAGE frames when the were handled (successfully or not).
         :param errorDestination: If a frame was not handled successfully, forward a copy of the offending frame to this destination. Example: ``errorDestination='/queue/back-to-square-one'``
         :param onMessageFailed: You can specify a custom error handler which must be a callable with signature :obj:`f(self, failure, frame, errorDestination)`. Note that a non-trivial choice of this error handler overrides the default behavior (forward frame to error destination and ack it).
