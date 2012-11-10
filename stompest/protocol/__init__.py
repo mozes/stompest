@@ -1,5 +1,6 @@
+"""This package is a collection of generic components each of which you can use independently for your own STOMP related functionality:
+"""
 # TODO: STOMP 1.1 - deal with repeated headers -> http://stomp.github.com/stomp-specification-1.1.html#Repeated_Header_Entries
-# TODO: UTF-8 encoding of STOMP frames
 
 from failover import StompConfig, StompFailoverProtocol, StompFailoverUri
 from frame import StompFrame

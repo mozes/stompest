@@ -66,7 +66,7 @@ class StompParser(object):
         return bool(self._frames)
     
     def get(self):
-        """Return the next frame as a :class:`StompFrame` object (if any), or :obj:`None` (otherwise).
+        """Return the next frame as a :class:`~.frame.StompFrame` object (if any), or :obj:`None` (otherwise).
         """
         if self.canRead():
             return self._frames.popleft()

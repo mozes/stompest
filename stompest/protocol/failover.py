@@ -31,9 +31,9 @@ class StompConfig(object):
     :param version: The highest STOMP protocol version this client may use. If :obj:`None`, **version** defaults to :attr:`StompSpec.DEFAULT_VERSION` (currently :obj:`'1.0'`, but this may change in upcoming stompest releases) 
     :param check: Decides whether the :class:`StompSession` object which is used to represent the STOMP sesion should be strict about the session's state: (e.g., whether to allow calling :meth:`StompSession.send` when disconnected).
     
-    .. note :: Login and passcode have to be the same for all brokers becuse they are not part of the failover URI scheme.
+    .. note :: Login and passcode have to be the same for all brokers because they are not part of the failover URI scheme.
     
-    .. seealso :: :class:`StompFailoverProtocol`, :class:`StompFailoverUri`
+    .. seealso :: The :class:`StompFailoverProtocol` class which tells you which broker to use and how long you should wait to connect to it, the :class:`StompFailoverUri` which parses failover transport URIs.
     """
     def __init__(self, uri, login='', passcode='', version=None, check=True):
         self.uri = uri
@@ -72,7 +72,7 @@ class StompFailoverProtocol(object):
     broker: {'host': 'remote1', 'protocol': 'tcp', 'port': 61615}, delay: 0.000000
     timeout: Reconnect timeout: 0 attempts
     
-    .. seealso :: :class:`StompFailoverUri`
+    .. seealso :: The :class:`StompFailoverUri` which parses failover transport URIs.
     """
     def __init__(self, uri):
         self._failoverUri = StompFailoverUri(uri)

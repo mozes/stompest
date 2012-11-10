@@ -3,7 +3,7 @@
 .. note :: Being stateful implies that the session keeps track of subscriptions, receipts, and transactions, so keep track of them yourself, too! -- Unless you like to be surprised by a spurious :class:`~.stompest.error.StompProtocolError` ...
 
 .. seealso :: The stateless API in the module :mod:`~.stompest.protocol.commands` for all API command parameters which are not documented here.
-    
+
 Example:
 
 >>> from stompest.protocol import StompFrame, StompSession
@@ -97,7 +97,7 @@ class StompSession(object):
     # STOMP commands
     
     def connect(self, login=None, passcode=None, headers=None, versions=None, host=None):
-        """Create a *CONNECT* frame and set the session state to CONNECTING."""
+        """Create a **CONNECT** frame and set the session state to :attr:`CONNECTING`."""
         self.__check('connect', [self.DISCONNECTED])
         self._versions = versions
         frame = commands.connect(login, passcode, headers, self._versions, host)
@@ -105,7 +105,7 @@ class StompSession(object):
         return frame
     
     def disconnect(self, receipt=None):
-        """Create a *DISCONNECT* frame and set the session state to DISCONNECTING."""
+        """Create a **DISCONNECT** frame and set the session state to :attr:`DISCONNECTING`."""
         self.__check('disconnect', [self.CONNECTED])
         frame = commands.disconnect(receipt)
         self._receipt(receipt)
@@ -113,7 +113,7 @@ class StompSession(object):
         return frame
     
     def close(self, flush=True):
-        """Clean up the session: Set the state to DISCONNECTING, remove all information related to an eventual broker connection, clear all pending transactions and receipts.
+        """Clean up the session: Set the state to :attr:`DISCONNECTED`, remove all information related to an eventual broker connection, clear all pending transactions and receipts.
         
         :param flush: Clear all active subscriptions. This flag controls whether the next :meth:`connect` will replay the currently active subscriptions or will wipe the slate clean.
         """
@@ -122,14 +122,14 @@ class StompSession(object):
             self._flush()
         
     def send(self, destination, body='', headers=None, receipt=None):
-        """Create a *SEND* frame."""
+        """Create a **SEND** frame."""
         self.__check('send', [self.CONNECTED])
         frame = commands.send(destination, body, headers, receipt)
         self._receipt(receipt)
         return frame
         
     def subscribe(self, destination, headers=None, receipt=None, context=None):
-        """Create a *SUBSCRIBE* frame and keep track of the subscription assiocated to it. This method returns a token which you have to keep if you wish to match incoming *MESSAGE* frames to this subscription with :meth:`message` or to :meth:`unsubscribe` later.
+        """Create a **SUBSCRIBE** frame and keep track of the subscription assiocated to it. This method returns a token which you have to keep if you wish to match incoming **MESSAGE** frames to this subscription with :meth:`message` or to :meth:`unsubscribe` later.
         
         :param context: An arbitrary context object which you can use to store any information related to the subscription at hand.
         """
@@ -142,7 +142,7 @@ class StompSession(object):
         return frame, token
     
     def unsubscribe(self, token, receipt=None):
-        """Create an *UNSUBSCRIBE* frame and lose track of the subscription assiocated to it."""
+        """Create an **UNSUBSCRIBE** frame and lose track of the subscription assiocated to it."""
         self.__check('unsubscribe', [self.CONNECTED])
         frame = commands.unsubscribe(token, receipt, self.version)
         try:
@@ -153,14 +153,14 @@ class StompSession(object):
         return frame
     
     def ack(self, frame, receipt=None):
-        """Create an *ACK* frame for a received *MESSAGE* frame."""
+        """Create an **ACK** frame for a received **MESSAGE** frame."""
         self.__check('ack', [self.CONNECTED])
         frame = commands.ack(frame, receipt, self.version)
         self._receipt(receipt)
         return frame
     
     def nack(self, frame, receipt=None):
-        """Create a *NACK* frame for a received *MESSAGE* frame."""
+        """Create a **NACK** frame for a received **MESSAGE** frame."""
         self.__check('nack', [self.CONNECTED])
         frame = commands.nack(frame, receipt, self.version)
         self._receipt(receipt)
@@ -174,7 +174,7 @@ class StompSession(object):
         return str(transaction or uuid.uuid4())
     
     def begin(self, transaction=None, receipt=None):
-        """Create a *BEGIN* frame and begin an abstract STOMP transaction.
+        """Create a **BEGIN** frame and begin an abstract STOMP transaction.
         
         :param transaction: See :meth:`transaction`.
         
@@ -189,7 +189,7 @@ class StompSession(object):
         return frame
     
     def abort(self, transaction, receipt=None):
-        """Create an *ABORT* frame to abort a STOMP transaction.
+        """Create an **ABORT** frame to abort a STOMP transaction.
         
         :param transaction: See :meth:`transaction`.
         
@@ -205,7 +205,7 @@ class StompSession(object):
         return frame
             
     def commit(self, transaction, receipt=None):
-        """Send a *COMMIT* command to commit a STOMP transaction.
+        """Send a **COMMIT** command to commit a STOMP transaction.
         
         :param transaction: See :meth:`transaction`.
         
@@ -221,7 +221,7 @@ class StompSession(object):
         return frame
     
     def connected(self, frame):
-        """Handle a *CONNECTED* frame and set the session state to CONENCTED."""
+        """Handle a **CONNECTED** frame and set the session state to :attr:`CONNECTED`."""
         self.__check('connected', [self.CONNECTING])
         try:
             self.version, self._server, self._id = commands.connected(frame, versions=self._versions)
@@ -230,7 +230,7 @@ class StompSession(object):
         self._state = self.CONNECTED
         
     def message(self, frame):
-        """Handle a *MESSAGE* frame. Returns a token which you can use to match this message to its subscription.
+        """Handle a **MESSAGE** frame. Returns a token which you can use to match this message to its subscription.
         
         .. seealso :: The :meth:`subscribe` method.
         """
@@ -241,7 +241,7 @@ class StompSession(object):
         return token
     
     def receipt(self, frame):
-        """Handle a *RECEIPT* frame. Returns the receipt id which you can use to match this receipt to the command that requested it."""
+        """Handle a **RECEIPT** frame. Returns the receipt id which you can use to match this receipt to the command that requested it."""
         self.__check('receipt', [self.CONNECTED, self.DISCONNECTING])
         receipt = commands.receipt(frame, self.version)
         try:
@@ -270,7 +270,7 @@ class StompSession(object):
     #subscription replay
     
     def replay(self):
-        """Flush all active subscriptions and return an iterator over the :meth:`subscribe` parameters (*destinations*, *header*, *receipt*, *context*) which you can consume to replay the subscriptions upon the next :meth:`connect`."""
+        """Flush all active subscriptions and return an iterator over the :meth:`subscribe` parameters (**destinations**, **header**, **receipt**, **context**) which you can consume to replay the subscriptions upon the next :meth:`connect`."""
         subscriptions = self._subscriptions
         self._flush()
         for (_, destination, headers, receipt, context) in sorted(subscriptions.itervalues()):

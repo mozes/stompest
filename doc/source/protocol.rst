@@ -3,6 +3,9 @@
 Protocol Layer
 ==============
 
+.. automodule:: stompest.protocol
+   :members:
+
 .. _config:
 
 Configuration and Failover URI Scheme

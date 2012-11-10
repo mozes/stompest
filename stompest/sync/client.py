@@ -3,6 +3,10 @@
 Examples
 --------
 
+If you use ActiveMQ to run these examples, make sure you enable the STOMP connector in the config file, activemq.xml (see `here <http://activemq.apache.org/stomp.html>`_ for details):
+
+    ``<transportConnector name="stomp"  uri="stomp://0.0.0.0:61613"/>``
+
 Producer
 ^^^^^^^^
 
@@ -51,7 +55,7 @@ class Stomp(object):
 
     :param config: A :class:`~.failover.StompConfig` object
     
-    .. seealso :: :mod:`~.failover`, :mod:`~.session` for the details of subscription replay and failover transport.
+    .. seealso :: :class:`~.failover.StompConfig` for how to set session configuration options, :class:`~.session.StompSession` for session state, :mod:`~.commands` for all API options which are documented here.
     """
     factory = StompFrameTransport
     
@@ -69,9 +73,9 @@ class Stomp(object):
         
         :param versions: The STOMP protocol versions we wish to support. The default behavior (:obj:`None`) is the same as for the :func:`~.commands.connect` function of the commands API, but the highest supported version will be the one you specified in the :class:`~.failover.StompConfig` object. The version which is valid for the connection about to be initiated will be stored in the client's :class:`~.session.StompSession` object (attribute :attr:`session`).
         :param connectTimeout: This is the time (in seconds) to wait for the wire-level connection to be established. If :obj:`None`, we will wait indefinitely.
-        :param connectedTimeout: This is the time (in seconds) to wait for the STOMP connection to be established (that is, the broker's *CONNECTED* frame to arrive). If :obj:`None`, we will wait indefinitely.
+        :param connectedTimeout: This is the time (in seconds) to wait for the STOMP connection to be established (that is, the broker's **CONNECTED** frame to arrive). If :obj:`None`, we will wait indefinitely.
         
-        .. seealso :: :mod:`protocol.failover`, :mod:`protocol.session` for the details of subscription replay and failover transport.
+        .. seealso :: The :mod:`~.failover` and :mod:`~.session` modules for the details of subscription replay and failover transport.
         """
         try: # preserve existing connection
             self._transport
@@ -117,9 +121,9 @@ class Stomp(object):
     def disconnect(self, receipt=None):
         """disconnect(receipt=None)
         
-        Send a STOMP *DISCONNECT* command and terminate the STOMP connection.
+        Send a STOMP **DISCONNECT** command and terminate the STOMP connection.
         
-        .. note :: Calling this method will clear the session's active subscriptions unless you request a *RECEIPT* response from the broker. In the latter case, you have to disconnect the wire-level connection and flush the subscriptions yourself by calling ``self.close(flush=True)``.
+        .. note :: Calling this method will clear the session's active subscriptions unless you request a **RECEIPT** response from the broker. In the latter case, you have to disconnect the wire-level connection and flush the subscriptions yourself by calling ``self.close(flush=True)``.
         """
         self.sendFrame(self.session.disconnect(receipt))
         if not receipt:
@@ -131,7 +135,7 @@ class Stomp(object):
     def send(self, destination, body='', headers=None, receipt=None):
         """send(destination, body='', headers=None, receipt=None)
         
-        Send a *SEND* frame.
+        Send a **SEND** frame.
         """
         self.sendFrame(commands.send(destination, body, headers, receipt))
         
@@ -139,7 +143,7 @@ class Stomp(object):
     def subscribe(self, destination, headers, receipt=None):
         """subscribe(destination, handler, headers=None, receipt=None)
         
-        Send a *SUBSCRIBE* frame to subscribe to a STOMP destination. This method returns a token which you have to keep if you wish to match incoming *MESSAGE* frames to this subscription or to :meth:`unsubscribe` later.
+        Send a **SUBSCRIBE** frame to subscribe to a STOMP destination. This method returns a token which you have to keep if you wish to match incoming **MESSAGE** frames to this subscription or to :meth:`unsubscribe` later.
         """
         frame, token = self.session.subscribe(destination, headers, receipt)
         self.sendFrame(frame)
@@ -149,7 +153,7 @@ class Stomp(object):
     def unsubscribe(self, token, receipt=None):
         """unsubscribe(token, receipt=None)
         
-        Send an *UNSUBSCRIBE* frame to terminate an existing subscription.
+        Send an **UNSUBSCRIBE** frame to terminate an existing subscription.
         """
         self.sendFrame(self.session.unsubscribe(token, receipt))
         
@@ -157,7 +161,7 @@ class Stomp(object):
     def ack(self, frame, receipt=None):
         """ack(frame, receipt=None)
         
-        Send an *ACK* frame for a received *MESSAGE* frame.
+        Send an **ACK** frame for a received **MESSAGE** frame.
         """
         self.sendFrame(self.session.ack(frame, receipt))
     
@@ -165,7 +169,7 @@ class Stomp(object):
     def nack(self, headers, receipt=None):
         """nack(frame, receipt=None)
         
-        Send a *NACK* frame for a received *MESSAGE* frame.
+        Send a **NACK** frame for a received **MESSAGE** frame.
         """
         self.sendFrame(self.session.nack(headers, receipt))
     
@@ -173,7 +177,7 @@ class Stomp(object):
     def begin(self, transaction, receipt=None):
         """begin(transaction=None, receipt=None)
         
-        Send a *BEGIN* frame to begin a STOMP transaction.
+        Send a **BEGIN** frame to begin a STOMP transaction.
         """
         self.sendFrame(self.session.begin(transaction, receipt))
         
@@ -181,7 +185,7 @@ class Stomp(object):
     def abort(self, transaction, receipt=None):
         """abort(transaction=None, receipt=None)
         
-        Send an *ABORT* frame to abort a STOMP transaction.
+        Send an **ABORT** frame to abort a STOMP transaction.
         """
         self.sendFrame(self.session.abort(transaction, receipt))
         
@@ -189,7 +193,7 @@ class Stomp(object):
     def commit(self, transaction, receipt=None):
         """commit(transaction=None, receipt=None)
         
-        Send a *COMMIT* frame to commit a STOMP transaction.
+        Send a **COMMIT** frame to commit a STOMP transaction.
         """
         self.sendFrame(self.session.commit(transaction, receipt))
     
@@ -209,18 +213,18 @@ class Stomp(object):
             self.abort(transaction, receipt)
     
     def message(self, frame):
-        """If you received a *MESSAGE* frame, this method will produce a token which allows you to match it against its subscription.
+        """If you received a **MESSAGE** frame, this method will produce a token which allows you to match it against its subscription.
         
-        :param frame: a *MESSAGE* frame.
+        :param frame: a **MESSAGE** frame.
         
         .. note :: If the client is not aware of the subscription, or if we are not connected, this method will raise a :class:`~.stompest.error.StompProtocolError`.
         """
         return self.session.message(frame)
     
     def receipt(self, frame):
-        """If you received a *RECEIPT* frame, this method will extract the receipt id which you employed to request that receipt.
+        """If you received a **RECEIPT** frame, this method will extract the receipt id which you employed to request that receipt.
         
-        :param frame: A *MESSAGE* frame (a :class:`~.protocol.frame.StompFrame` object).
+        :param frame: A **MESSAGE** frame (a :class:`~.protocol.frame.StompFrame` object).
         
         .. note :: If the client is not aware of the outstanding receipt, this method will raise a :class:`~.stompest.error.StompProtocolError`.
         """
