@@ -26,7 +26,7 @@ from .spec import StompSpec
 class StompParser(object):
     """This is a parser for a wire-level byte-stream of STOMP frames.
     
-    :param version: A valid STOMP protocol version, or :obj:`None` (equivalent to :attr:`StompSPEC.DEFAULT_VERSION`).
+    :param version: A valid STOMP protocol version, or :obj:`None` (equivalent to the :attr:`DEFAULT_VERSION` attribute of the :class:`~.StompSpec` class).
     
     Example: 
 
