@@ -61,14 +61,14 @@ class Stomp(object):
     
     .. seealso :: :class:`~.StompConfig` for how to set session configuration options, :class:`~.StompSession` for session state, :mod:`~.commands` for all API options which are documented here.
     """
-    failoverFactory = StompFailoverTransport
-    transportFactory = StompFrameTransport
+    _failoverFactory = StompFailoverTransport
+    _transportFactory = StompFrameTransport
     
     def __init__(self, config):
         self.log = logging.getLogger(LOG_CATEGORY)
         self._config = config
-        self.session = StompSession(self._config.version, self._config.check)
-        self._failover = self.failoverFactory(config.uri)
+        self._session = StompSession(self._config.version, self._config.check)
+        self._failover = self._failoverFactory(config.uri)
         self._transport = None
     
     def connect(self, headers=None, versions=None, host=None, connectTimeout=None, connectedTimeout=None):
@@ -91,7 +91,7 @@ class Stomp(object):
         
         try:
             for (broker, connectDelay) in self._failover:
-                transport = self.transportFactory(broker['host'], broker['port'], self.session.version)
+                transport = self._transportFactory(broker['host'], broker['port'], self.session.version)
                 if connectDelay:
                     self.log.debug('Delaying connect attempt for %d ms' % int(connectDelay * 1000))
                     time.sleep(connectDelay)
@@ -148,7 +148,7 @@ class Stomp(object):
     def subscribe(self, destination, headers, receipt=None):
         """subscribe(destination, handler, headers=None, receipt=None)
         
-        Send a **SUBSCRIBE** frame to subscribe to a STOMP destination. This method returns a token which you have to keep if you wish to match incoming **MESSAGE** frames to this subscription or to :meth:`~.sync.client.Stomp.client.Stomp.unsubscribe` later.
+        Send a **SUBSCRIBE** frame to subscribe to a STOMP destination. This method returns a token which you have to keep if you wish to match incoming **MESSAGE** frames to this subscription or to :meth:`~.sync.client.Stomp.unsubscribe` later.
         """
         frame, token = self.session.subscribe(destination, headers, receipt)
         self.sendFrame(frame)
@@ -308,6 +308,12 @@ class Stomp(object):
         if frame and self.log.isEnabledFor(logging.DEBUG):
             self.log.debug('Received %s' % frame.info())
         return frame
+    
+    @property
+    def session(self):
+        """The :class:`~.StompSession` associated to this client.
+        """
+        return self._session
     
     @property
     def _transport(self):

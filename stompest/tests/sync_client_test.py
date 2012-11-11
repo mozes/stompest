@@ -41,8 +41,8 @@ class SimpleStompTest(unittest.TestCase):
     
     def _get_connect_mock(self, receive=None, config=None):
         stomp = Stomp(config or CONFIG)
-        stomp.transportFactory = Mock()
-        transport = stomp.transportFactory.return_value = Mock()
+        stomp._transportFactory = Mock()
+        transport = stomp._transportFactory.return_value = Mock()
         transport.host = 'mock'
         transport.port = 0
         if receive:

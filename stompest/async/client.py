@@ -66,6 +66,8 @@ class Stomp(object):
     
     .. seealso :: :class:`~.StompConfig` for how to set session configuration options, :class:`~.StompSession` for session state, :mod:`~.commands` for all API options which are documented here.
     """
+    _protocolCreatorFactory = StompProtocolCreator
+    
     DEFAULT_ACK_MODE = 'client-individual'
     MESSAGE_FAILED_HEADER = 'message-failed'
     
@@ -73,9 +75,9 @@ class Stomp(object):
         self._config = config
         self._receiptTimeout = receiptTimeout
         
-        self.session = StompSession(self._config.version, self._config.check)
+        self._session = StompSession(self._config.version, self._config.check)
         self._protocol = None
-        self._protocolCreator = StompProtocolCreator(self._config.uri)
+        self._protocolCreator = self._protocolCreatorFactory(self._config.uri)
         
         self.log = logging.getLogger(LOG_CATEGORY)
         
@@ -99,6 +101,12 @@ class Stomp(object):
         """This :class:`twisted.internet.defer.Deferred` calls back when the connection to the broker was lost. It will err back when the connection loss was unexpected or caused by another error.
         """
         return self._disconnected
+    
+    @property
+    def session(self):
+        """The :class:`~.StompSession` associated to this client.
+        """
+        return self._session
     
     def sendFrame(self, frame):
         """Send a raw STOMP frame.
@@ -400,7 +408,7 @@ class Stomp(object):
         self.ack(frame)
         
     #
-    # properties
+    # private properties
     #
     @property
     def _protocol(self):
