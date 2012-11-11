@@ -4,7 +4,7 @@ import logging
 from twisted.internet import reactor, defer
 
 from stompest.async import Stomp
-from stompest.protocol import StompConfig
+from stompest.config import StompConfig
 
 class IncrementTransformer(object):    
     IN_QUEUE = '/queue/testIn'

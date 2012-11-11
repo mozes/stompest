@@ -18,11 +18,10 @@ import logging
 import time
 import unittest
 
+from stompest.config import StompConfig
 from stompest.error import StompConnectionError
-from stompest.protocol.failover import StompConfig
-from stompest.protocol.spec import StompSpec
+from stompest.protocol.frame import StompFrame, StompSpec
 from stompest.sync import Stomp
-from stompest.protocol.frame import StompFrame
 
 logging.basicConfig(level=logging.DEBUG)
 

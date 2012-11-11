@@ -28,5 +28,6 @@ Contents
 	
     sync
     async
+    config
     protocol
     error

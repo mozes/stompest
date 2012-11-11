@@ -1,4 +1,4 @@
-from stompest.protocol import StompConfig
+from stompest.config import StompConfig
 from stompest.sync import Stomp
 
 CONFIG = StompConfig('tcp://localhost:61613')

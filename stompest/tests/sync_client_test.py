@@ -19,8 +19,9 @@ import unittest
 
 from mock import Mock
 
+from stompest.config import StompConfig
 from stompest.error import StompConnectionError, StompProtocolError
-from stompest.protocol import StompConfig, StompFrame, StompSpec, commands
+from stompest.protocol import StompFrame, StompSpec, commands
 from stompest.sync import Stomp
 
 logging.basicConfig(level=logging.DEBUG)

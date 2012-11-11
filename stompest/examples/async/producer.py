@@ -4,7 +4,7 @@ import logging
 from twisted.internet import defer, reactor
 
 from stompest.async import Stomp
-from stompest.protocol import StompConfig
+from stompest.config import StompConfig
 
 class Producer(object):
     QUEUE = '/queue/testIn'

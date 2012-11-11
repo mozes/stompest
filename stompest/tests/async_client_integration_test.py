@@ -21,8 +21,9 @@ from twisted.trial import unittest
 
 from stompest import async, sync
 from stompest.async.util import sendToErrorDestinationAndRaise
-from stompest.protocol import StompConfig, StompSpec
+from stompest.config import StompConfig
 from stompest.error import StompConnectionError
+from stompest.protocol import StompSpec
 
 logging.basicConfig(level=logging.DEBUG)
 

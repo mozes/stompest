@@ -2,7 +2,7 @@
 """
 # TODO: STOMP 1.1 - deal with repeated headers -> http://stomp.github.com/stomp-specification-1.1.html#Repeated_Header_Entries
 
-from failover import StompConfig, StompFailoverProtocol, StompFailoverUri
+from failover import StompFailoverProtocol, StompFailoverUri
 from frame import StompFrame
 from parser import StompParser
 from spec import StompSpec

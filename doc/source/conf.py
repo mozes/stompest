@@ -15,11 +15,12 @@ import os, sys
 sys.path.insert(0, '../..')
 
 import stompest
-import stompest.examples.async
+import stompest.sync
 import stompest.examples.sync
 import stompest.async
+import stompest.examples.async
+import stompest.config
 import stompest.protocol
-import stompest.sync
 import stompest.error
 
 # If extensions (or modules to document with autodoc) are in another directory,
