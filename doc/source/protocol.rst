@@ -6,8 +6,8 @@ Protocol Layer
 .. automodule:: stompest.protocol
    :members:
 
-Failover URI Scheme
--------------------
+Failover Transport
+------------------
 
 .. automodule:: stompest.protocol.failover
    :members:

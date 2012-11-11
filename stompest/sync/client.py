@@ -1,11 +1,26 @@
 """The synchronous client is dead simple. It does not assume anything about your concurrency model (thread vs process) or force you to use it any particular way. It gets out of your way and lets you do what you want.
 
+Examples
+--------
+
 .. automodule:: stompest.examples
     :members:
 
-.. automodule:: stompest.examples.sync
-    :members:
-    
+Producer
+^^^^^^^^
+
+.. literalinclude:: ../../stompest/examples/async/producer.py
+
+Transformer
+^^^^^^^^^^^
+
+.. literalinclude:: ../../stompest/examples/async/transformer.py
+
+Consumer
+^^^^^^^^
+
+.. literalinclude:: ../../stompest/examples/async/consumer.py
+
 API
 ---
 """
@@ -29,7 +44,7 @@ import logging
 import time
 
 from stompest.error import StompConnectionError, StompProtocolError
-from stompest.protocol import StompFailoverProtocol, StompSession
+from stompest.protocol import StompFailoverTransport, StompSession
 from stompest.util import checkattr
 
 from .transport import StompFrameTransport
@@ -46,7 +61,7 @@ class Stomp(object):
     
     .. seealso :: :class:`~.StompConfig` for how to set session configuration options, :class:`~.StompSession` for session state, :mod:`~.commands` for all API options which are documented here.
     """
-    failoverFactory = StompFailoverProtocol
+    failoverFactory = StompFailoverTransport
     transportFactory = StompFrameTransport
     
     def __init__(self, config):

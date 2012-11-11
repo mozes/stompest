@@ -2,11 +2,21 @@
 
 .. seealso:: `STOMP protocol specification <http://stomp.github.com/>`_, `Twisted API documentation <http://twistedmatrix.com/documents/current/api/>`_, `Apache ActiveMQ - Stomp <http://activemq.apache.org/stomp.html>`_
 
+Examples
+--------
+
 .. automodule:: stompest.examples
     :members:
 
-.. automodule:: stompest.examples.async
-    :members:
+Producer
+^^^^^^^^
+
+.. literalinclude:: ../../stompest/examples/sync/producer.py
+
+Consumer
+^^^^^^^^
+
+.. literalinclude:: ../../stompest/examples/sync/consumer.py
 
 API
 ---
@@ -105,7 +115,7 @@ class Stomp(object):
     def connect(self, headers=None, versions=None, host=None, connectTimeout=None, connectedTimeout=None):
         """connect(headers=None, versions=None, host=None, connectTimeout=None, connectedTimeout=None)
         
-        Establish a connection to a STOMP broker. If a network connect fails, attempt a failover according to the settings in the client's :class:`~.StompConfig` object. If there are active subscriptions in the session, replay them when the STOMP session is established. This method returns a :class:`twisted.internet.defer.Deferred` object which calls back with :obj:`self` when the STOMP connection has been established and all subscriptions (if any) were replayed. In case of an error, it will err back with the reason of the failure.
+        Establish a connection to a STOMP broker. If the wire-level connect fails, attempt a failover according to the settings in the client's :class:`~.StompConfig` object. If there are active subscriptions in the session, replay them when the STOMP session is established. This method returns a :class:`twisted.internet.defer.Deferred` object which calls back with :obj:`self` when the STOMP connection has been established and all subscriptions (if any) were replayed. In case of an error, it will err back with the reason of the failure.
         
         :param versions: The STOMP protocol versions we wish to support. The default behavior (:obj:`None`) is the same as for the :func:`~.commands.connect` function of the commands API, but the highest supported version will be the one you specified in the :class:`~.StompConfig` object. The version which is valid for the connection about to be initiated will be stored in the client's :class:`~.StompSession` object (attribute :attr:`session`).
         :param connectTimeout: This is the time (in seconds) to wait for the wire-level connection to be established. If :obj:`None`, we will wait indefinitely.
@@ -201,7 +211,7 @@ class Stomp(object):
     def send(self, destination, body='', headers=None, receipt=None):
         """send(destination, body='', headers=None, receipt=None)
         
-        Send a **SEND** frame. This method returns a :class:`twisted.internet.defer.Deferred` object which will fire when a possibly requested **RECEIPT** frame has arrived.
+        Send a **SEND** frame.
         """
         self.sendFrame(self.session.send(destination, body, headers, receipt))
         yield self._waitForReceipt(receipt)
@@ -211,7 +221,7 @@ class Stomp(object):
     def ack(self, frame, receipt=None):
         """ack(frame, receipt=None)
         
-        Send an **ACK** frame for a received **MESSAGE** frame. This method returns a :class:`twisted.internet.defer.Deferred` object which will fire when a possibly requested **RECEIPT** frame has arrived. 
+        Send an **ACK** frame for a received **MESSAGE** frame.
         """
         self.sendFrame(self.session.ack(frame, receipt))
         yield self._waitForReceipt(receipt)
@@ -221,7 +231,7 @@ class Stomp(object):
     def nack(self, frame, receipt=None):
         """nack(frame, receipt=None)
         
-        Send a **NACK** frame for a received **MESSAGE** frame. This method returns a :class:`twisted.internet.defer.Deferred` object which will fire when a possibly requested **RECEIPT** frame has arrived.
+        Send a **NACK** frame for a received **MESSAGE** frame.
         """
         self.sendFrame(self.session.nack(frame, receipt))
         yield self._waitForReceipt(receipt)
@@ -231,7 +241,7 @@ class Stomp(object):
     def begin(self, transaction=None, receipt=None):
         """begin(transaction=None, receipt=None)
         
-        Send a **BEGIN** frame to begin a STOMP transaction. This method returns a :class:`twisted.internet.defer.Deferred` object which will fire when a possibly requested **RECEIPT** frame has arrived.
+        Send a **BEGIN** frame to begin a STOMP transaction.
         """
         frame, token = self.session.begin(transaction, receipt)
         self.sendFrame(frame)
@@ -243,7 +253,7 @@ class Stomp(object):
     def abort(self, transaction=None, receipt=None):
         """abort(transaction=None, receipt=None)
         
-        Send an **ABORT** frame to abort a STOMP transaction. This method returns a :class:`twisted.internet.defer.Deferred` object which will fire when a possibly requested **RECEIPT** frame has arrived.
+        Send an **ABORT** frame to abort a STOMP transaction.
         """
         frame, token = self.session.abort(transaction, receipt)
         self.sendFrame(frame)
@@ -255,7 +265,7 @@ class Stomp(object):
     def commit(self, transaction=None, receipt=None):
         """commit(transaction=None, receipt=None)
         
-        Send a **COMMIT** frame to commit a STOMP transaction. This method returns a :class:`twisted.internet.defer.Deferred` object which will fire when a possibly requested **RECEIPT** frame has arrived.
+        Send a **COMMIT** frame to commit a STOMP transaction.
         """
         frame, token = self.session.commit(transaction, receipt)
         self.sendFrame(frame)
@@ -267,7 +277,7 @@ class Stomp(object):
     def subscribe(self, destination, handler, headers=None, receipt=None, ack=True, errorDestination=None, onMessageFailed=None):
         """subscribe(destination, handler, headers=None, receipt=None, ack=True, errorDestination=None, onMessageFailed=None)
         
-        Send a **SUBSCRIBE** frame to subscribe to a STOMP destination. This method returns a :class:`twisted.internet.defer.Deferred` object which will fire with a token when a possibly requested **RECEIPT** frame has arrived. This token is used internally to match incoming **MESSAGE** frames and must be kept if you wish to :meth:`~.async.client.Stomp.unsubscribe` later.
+        Send a **SUBSCRIBE** frame to subscribe to a STOMP destination. This method returns a :class:`twisted.internet.defer.Deferred` object which will fire with a token when a possibly requested **RECEIPT** frame has arrived. The callback value is a token which is used internally to match incoming **MESSAGE** frames and must be kept if you wish to :meth:`~.async.client.Stomp.unsubscribe` later.
         
         :param handler: A callable :obj:`f(client, frame)` which accepts this client and the received :class:`~.StompFrame`.
         :param ack: Check this option if you wish the client to automatically ack MESSAGE frames when the were handled (successfully or not).
@@ -290,7 +300,7 @@ class Stomp(object):
     def unsubscribe(self, token, receipt=None):
         """unsubscribe(token, receipt=None)
         
-        Send an **UNSUBSCRIBE** frame to terminate an existing subscription. This method returns a :class:`twisted.internet.defer.Deferred` object which will fire when a possibly requested **RECEIPT** frame has arrived.
+        Send an **UNSUBSCRIBE** frame to terminate an existing subscription.
         
         :param token: The result of the :meth:`~.async.client.Stomp.subscribe` command which initiated the subscription in question.
         """

@@ -18,7 +18,7 @@ import itertools
 import unittest
 
 from stompest.error import StompConnectTimeout
-from stompest.protocol.failover import StompFailoverUri, StompFailoverProtocol
+from stompest.protocol.failover import StompFailoverUri, StompFailoverTransport
 
 class StompFailoverUriTest(unittest.TestCase):
     def test_configuration(self):
@@ -58,7 +58,7 @@ class StompFailoverUriTest(unittest.TestCase):
 class StompFailoverTest(unittest.TestCase):
     def test_time_scales_and_reconnect_attempts(self):
         uri = 'failover:tcp://remote1:61615,tcp://localhost:61616,tcp://remote2:61617?randomize=false,startupMaxReconnectAttempts=3,initialReconnectDelay=7,backOffMultiplier=3.0,maxReconnectAttempts=1'
-        protocol = StompFailoverProtocol(uri)
+        protocol = StompFailoverTransport(uri)
         expectedDelaysAndBrokers = [
             (0, {'host': 'remote1', 'protocol': 'tcp', 'port': 61615}),
             (0.007, {'host': 'localhost', 'protocol': 'tcp', 'port': 61616}),
@@ -74,7 +74,7 @@ class StompFailoverTest(unittest.TestCase):
         self._test_failover(iter(protocol), expectedDelaysAndBrokers)
         
         uri = 'failover:(tcp://remote1:61615,tcp://localhost:61616)?randomize=false,startupMaxReconnectAttempts=3,initialReconnectDelay=7,maxReconnectDelay=8,maxReconnectAttempts=0'
-        protocol = StompFailoverProtocol(uri)
+        protocol = StompFailoverTransport(uri)
         
         expectedDelaysAndBrokers = [
             (0, {'host': 'remote1', 'protocol': 'tcp', 'port': 61615}),
@@ -90,7 +90,7 @@ class StompFailoverTest(unittest.TestCase):
         self._test_failover(iter(protocol), expectedDelaysAndBrokers)
         
         uri = 'failover:(tcp://remote1:61615,tcp://localhost:61616)?randomize=false,startupMaxReconnectAttempts=2,initialReconnectDelay=3,useExponentialBackOff=false'
-        protocol = StompFailoverProtocol(uri)
+        protocol = StompFailoverTransport(uri)
         
         expectedDelaysAndBrokers = [
             (0, {'host': 'remote1', 'protocol': 'tcp', 'port': 61615}),
@@ -101,7 +101,7 @@ class StompFailoverTest(unittest.TestCase):
     
     def test_priority_backup(self):
         uri = 'failover:tcp://remote1:61616,tcp://localhost:61616,tcp://127.0.0.1:61615,tcp://remote2:61616?startupMaxReconnectAttempts=3,priorityBackup=true,randomize=false'
-        protocol = StompFailoverProtocol(uri)
+        protocol = StompFailoverTransport(uri)
         self._test_failover(iter(protocol), [
             (0, {'host': 'localhost', 'protocol': 'tcp', 'port': 61616}),
             (0.01, {'host': '127.0.0.1', 'protocol': 'tcp', 'port': 61615}),
@@ -111,12 +111,12 @@ class StompFailoverTest(unittest.TestCase):
     
     def test_randomize(self):
         uri = 'failover:tcp://remote1:61616,tcp://localhost:61616,tcp://127.0.0.1:61615,tcp://remote2:61616?priorityBackup=true,randomize=true,startupMaxReconnectAttempts=3'
-        protocol = StompFailoverProtocol(uri)
+        protocol = StompFailoverTransport(uri)
         localShuffled = remoteShuffled = 0
         localHosts = ['localhost', '127.0.0.1']
         remoteHosts = ['remote1', 'remote2']
         while (localShuffled * remoteShuffled) == 0:
-            protocol = StompFailoverProtocol(uri)
+            protocol = StompFailoverTransport(uri)
             hosts = [broker['host'] for (broker, _) in itertools.islice(protocol, 4)]
             self.assertEquals(set(hosts[:2]), set(localHosts))
             if (hosts[:2] != localHosts):
@@ -128,7 +128,7 @@ class StompFailoverTest(unittest.TestCase):
     def test_jitter(self):
         uri = 'failover:tcp://remote1:61616?useExponentialBackOff=false,startupMaxReconnectAttempts=1,reconnectDelayJitter=4'
         for j in itertools.count():
-            protocol = iter(StompFailoverProtocol(uri))
+            protocol = iter(StompFailoverTransport(uri))
             protocol.next()
             _, delay = protocol.next()
             self.assertAlmostEqual(delay, 0.01, delta=0.004)

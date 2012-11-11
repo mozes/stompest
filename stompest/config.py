@@ -26,7 +26,7 @@ class StompConfig(object):
     
     .. note :: Login and passcode have to be the same for all brokers because they are not part of the failover URI scheme.
     
-    .. seealso :: The :class:`~.StompFailoverProtocol` class which tells you which broker to use and how long you should wait to connect to it, the :class:`~.StompFailoverUri` which parses failover transport URIs.
+    .. seealso :: The :class:`~.StompFailoverTransport` class which tells you which broker to use and how long you should wait to connect to it, the :class:`~.StompFailoverUri` which parses failover transport URIs.
     """
     def __init__(self, uri, login='', passcode='', version=None, check=True):
         self.uri = uri

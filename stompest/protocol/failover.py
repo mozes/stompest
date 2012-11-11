@@ -22,16 +22,16 @@ import socket
 
 from stompest.error import StompConnectTimeout
 
-class StompFailoverProtocol(object):
+class StompFailoverTransport(object):
     """Looping over this object, you can produce a series of tuples (broker, delay in s). When the failover scheme does not allow further failover, a :class:`~.error.StompConnectTimeout` error is raised.
     
     :param uri: A failover URI.
     
     **Example:**
     
-    >>> from stompest.protocol import StompFailoverProtocol
+    >>> from stompest.protocol import StompFailoverTransport
     >>> from stompest.error import StompConnectTimeout
-    >>> failover = StompFailoverProtocol('failover:(tcp://remote1:61615,tcp://localhost:61616)?randomize=false,startupMaxReconnectAttempts=3,initialReconnectDelay=7,maxReconnectDelay=8,maxReconnectAttempts=0')
+    >>> failover = StompFailoverTransport('failover:(tcp://remote1:61615,tcp://localhost:61616)?randomize=false,startupMaxReconnectAttempts=3,initialReconnectDelay=7,maxReconnectDelay=8,maxReconnectAttempts=0')
     >>> try:
     ...     for (broker, delay) in failover:
     ...         print 'broker: %s, delay: %f' % (broker, delay)                                                                       
@@ -132,7 +132,7 @@ class StompFailoverUri(object):
     *priorityBackup*               bool      :obj:`False`  if set, prefer local connections to remote connections
     =============================  ========= ============= ================================================================
     
-    .. seealso :: :class:`StompFailoverProtocol`, `failover transport <http://activemq.apache.org/failover-transport-reference.html>`_ of ActiveMQ.
+    .. seealso :: :class:`StompFailoverTransport`, `failover transport <http://activemq.apache.org/failover-transport-reference.html>`_ of ActiveMQ.
     """
     LOCAL_HOST_NAMES = set([
         'localhost',
