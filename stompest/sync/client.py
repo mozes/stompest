@@ -9,17 +9,12 @@ Examples
 Producer
 ^^^^^^^^
 
-.. literalinclude:: ../../stompest/examples/async/producer.py
-
-Transformer
-^^^^^^^^^^^
-
-.. literalinclude:: ../../stompest/examples/async/transformer.py
+.. literalinclude:: ../../stompest/examples/sync/producer.py
 
 Consumer
 ^^^^^^^^
 
-.. literalinclude:: ../../stompest/examples/async/consumer.py
+.. literalinclude:: ../../stompest/examples/sync/consumer.py
 
 API
 ---
@@ -59,7 +54,7 @@ class Stomp(object):
 
     :param config: A :class:`~.StompConfig` object
     
-    .. seealso :: :class:`~.StompConfig` for how to set session configuration options, :class:`~.StompSession` for session state, :mod:`~.commands` for all API options which are documented here.
+    .. seealso :: :class:`~.StompConfig` for how to set session configuration options, :class:`~.StompSession` for session state, :mod:`.protocol.commands` for all API options which are documented here.
     """
     _failoverFactory = StompFailoverTransport
     _transportFactory = StompFrameTransport
@@ -74,13 +69,13 @@ class Stomp(object):
     def connect(self, headers=None, versions=None, host=None, connectTimeout=None, connectedTimeout=None):
         """connect(headers=None, versions=None, host=None, connectTimeout=None, connectedTimeout=None)
         
-        Establish a connection to a STOMP broker. If the wire-level connect fails, attempt a failover according to the settings in the client's :class:`~.StompConfig` object. If there are active subscriptions in the session, replay them when the STOMP session is established. The negotiated version which is applicable to the established STOMP session is stored in the client's :class:`~.StompSession` attribute :attr:`session`.
+        Establish a connection to a STOMP broker. If the wire-level connect fails, attempt a failover according to the settings in the client's :class:`~.StompConfig` object. If there are active subscriptions in the :attr:`~.sync.client.Stomp.session`, replay them when the STOMP connection is established.
         
-        :param versions: The STOMP protocol versions we wish to support. The default behavior (:obj:`None`) is the same as for the :func:`~.commands.connect` function of the commands API, but the highest supported version will be the one you specified in the :class:`~.StompConfig` object. The version which is valid for the connection about to be initiated will be stored in the client's :class:`~.StompSession` object (attribute :attr:`session`).
+        :param versions: The STOMP protocol versions we wish to support. The default behavior (:obj:`None`) is the same as for the :func:`~.commands.connect` function of the commands API, but the highest supported version will be the one you specified in the :class:`~.StompConfig` object. The version which is valid for the connection about to be initiated will be stored in the :attr:`~.sync.client.Stomp.session`.
         :param connectTimeout: This is the time (in seconds) to wait for the wire-level connection to be established. If :obj:`None`, we will wait indefinitely.
         :param connectedTimeout: This is the time (in seconds) to wait for the STOMP connection to be established (that is, the broker's **CONNECTED** frame to arrive). If :obj:`None`, we will wait indefinitely.
         
-        .. seealso :: The :mod:`~.failover` and :mod:`~.session` modules for the details of subscription replay and failover transport.
+        .. seealso :: The :mod:`.protocol.failover` and :mod:`.protocol.session` modules for the details of subscription replay and failover transport.
         """
         try: # preserve existing connection
             self._transport
@@ -267,9 +262,9 @@ class Stomp(object):
     # frame transport
     
     def close(self, flush=True):
-        """Close both the client's :attr:`session` (a :class:`~.StompSession` object) and its transport (that is, the wire-level connection with the broker).
+        """Close both the client's :attr:`~.sync.client.Stomp.session` and transport (that is, the wire-level connection with the broker).
         
-        :param flush: Decides whether the client's :attr:`session` should forget its active subscriptions or not.
+        :param flush: Decides whether the :attr:`~.sync.client.Stomp.session` should forget its active subscriptions or not.
         
         .. note :: If you do not flush the subscriptions, they will be replayed upon this client's next :meth:`~.sync.client.Stomp.connect`!
         """

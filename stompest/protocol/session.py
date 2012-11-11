@@ -1,8 +1,8 @@
-"""The :class:`StompSession` object implements an abstract STOMP protocol session, where "abstract" means that it is entirely client or transport agnostic. The session API builds upon the low-level and stateless API of the :mod:`~.stompest.protocol.commands` module, but it also keeps track of the session state (e.g., STOMP protocol version negotiation, active subscriptions). You can use the API provided by :class:`StompSession` independently of the stompest clients to roll your own STOMP client.
+"""The :class:`StompSession` object implements an abstract STOMP protocol session, where "abstract" means that it is entirely client or transport agnostic. The session API builds upon the low-level and stateless API of the :mod:`.protocol.commands` module, but it also keeps track of the session state (e.g., STOMP protocol version negotiation, active subscriptions). You can use the API provided by :class:`StompSession` independently of the stompest clients to roll your own STOMP client.
 
 .. note :: Being stateful implies that the session keeps track of subscriptions, receipts, and transactions, so keep track of them yourself, too! -- Unless you like to be surprised by a spurious :class:`~.stompest.error.StompProtocolError` ...
 
-.. seealso :: The stateless API in the module :mod:`~.stompest.protocol.commands` for all API command parameters which are not documented here.
+.. seealso :: The stateless API in the module :mod:`.protocol.commands` for all API command parameters which are not documented here.
 
 Example:
 

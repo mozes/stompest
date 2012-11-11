@@ -18,11 +18,11 @@ stomp, stomper, stompest!
 * The synchronous :class:`~.sync.client.Stomp` client is dead simple. It does not assume anything about your concurrency model (thread vs process) or force you to use it any particular way. It gets out of your way and lets you do what you want.
 * The asynchronous :class:`~.async.client.Stomp` client is based on `Twisted <http://twistedmatrix.com/>`_, a very mature and powerful asynchronous programming framework. It supports destination specific message and error handlers (with default "poison pill" error handling), concurrent message processing, graceful shutdown, and connect, receipt, and disconnect timeouts.
 
-Both clients make use of a generic set of components in the :mod:`~.stompest.protocol` module each of which can be used independently to roll your own STOMP client:
+Both clients make use of a generic set of components in the :mod:`.protocol` module each of which can be used independently to roll your own STOMP client:
 
 * a wire-level STOMP frame parser :class:`~.StompParser` and compiler :class:`~.StompFrame`,
 
-* a faithful implementation of the syntax of the STOMP 1.0 and 1.1 protocols with a simple stateless function API in the :mod:`~.stompest.protocol.commands` module,
+* a faithful implementation of the syntax of the STOMP 1.0 and 1.1 protocols with a simple stateless function API in the :mod:`.protocol.commands` module,
 
 * a generic implementation of the STOMP 1.0 and 1.1 session state semantics in :class:`~.StompSession`, such as protocol version negotiation at connect time, transaction and subscription handling (including a generic subscription replay scheme which may be used to reconstruct the session's subscription state after a forced disconnect),
 
