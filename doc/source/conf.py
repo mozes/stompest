@@ -11,7 +11,7 @@
 # All configuration values have a default; values that are commented out
 # serve to show the default.
 
-import sys, os
+import os, sys
 sys.path.insert(0, '../..')
 
 import stompest
@@ -237,7 +237,7 @@ man_pages = [
 #  dir menu entry, description, category)
 texinfo_documents = [
   ('index', 'stompest', u'stompest Documentation',
-   u'Roger Hoover, Jan Müller', 'stompest', 'STOMP bindings for Python 2.6+',
+   u'Roger Hoover, Jan Müller', 'stompest', 'STOMP bindings for Python 2.6 and higher',
    'Messaging'),
 ]
 

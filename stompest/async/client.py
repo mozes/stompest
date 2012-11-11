@@ -2,27 +2,11 @@
 
 .. seealso:: `STOMP protocol specification <http://stomp.github.com/>`_, `Twisted API documentation <http://twistedmatrix.com/documents/current/api/>`_, `Apache ActiveMQ - Stomp <http://activemq.apache.org/stomp.html>`_
 
-Examples
---------
+.. automodule:: stompest.examples
+    :members:
 
-If you use ActiveMQ to run these examples, make sure you enable the STOMP connector in the config file, activemq.xml (see `here <http://activemq.apache.org/stomp.html>`_ for details):
-   
-    ``<transportConnector name="stomp"  uri="stomp://0.0.0.0:61613"/>``
-
-Producer
-^^^^^^^^
-
-.. literalinclude:: ../../stompest/examples/async/producer.py
-
-Transformer
-^^^^^^^^^^^
-
-.. literalinclude:: ../../stompest/examples/async/transformer.py
-
-Consumer
-^^^^^^^^
-
-.. literalinclude:: ../../stompest/examples/async/consumer.py
+.. automodule:: stompest.examples.async
+    :members:
 
 API
 ---
@@ -72,7 +56,7 @@ class Stomp(object):
     
     .. seealso :: :class:`~.failover.StompConfig` for how to set session configuration options, :class:`~.session.StompSession` for session state, :mod:`~.commands` for all API options which are documented here.
     """
-    DEFAULT_ACK_MODE = 'auto'
+    DEFAULT_ACK_MODE = 'client-individual'
     MESSAGE_FAILED_HEADER = 'message-failed'
     
     def __init__(self, config, receiptTimeout=None):

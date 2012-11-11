@@ -23,7 +23,7 @@ import socket
 from stompest.error import StompConnectTimeout
 
 class StompConfig(object):
-    """This configuration object contains those parameters which are common to both clients (sync and async) and are needed to establish a STOMP connection. All parameters are available as attributes with the same name of this object.
+    """This is a container for those configuration options which are common to both clients (sync and async) and are needed to establish a STOMP connection. All parameters are available as attributes with the same name of this object.
 
     :param uri: A failover URI as it is accepted by :class:`StompFailoverUri`.
     :param login: The login for the STOMP brokers.
@@ -43,7 +43,7 @@ class StompConfig(object):
         self.check = check
 
 class StompFailoverProtocol(object):
-    """This object is a parser for the failover URI scheme used in stompest. Looping over this object, you can produce a series of tuples (broker, delay in s). When the URI does not allow further failover, a :class:`StompConnectTimeout` error is raised.
+    """Looping over this object, you can produce a series of tuples (broker, delay in s). When the failover scheme does not allow further failover, a :class:`~.error.StompConnectTimeout` error is raised.
     
     :param uri: A failover URI.
     
@@ -115,15 +115,15 @@ class StompFailoverProtocol(object):
         self._reconnectAttempts = -1
         
 class StompFailoverUri(object):
-    """This object is a parser for the failover URI scheme used in stompest. The parsed parameters are available in the attributes :attr:`brokers` and :attr:`options`. The Failover transport syntax is very close to the one used in ActiveMQ. Its basic form is::
+    """This is a parser for the failover URI scheme used in stompest. The parsed parameters are available in the attributes :attr:`brokers` and :attr:`options`. The Failover transport syntax is very close to the one used in ActiveMQ.
     
-    'failover:(uri1,...,uriN)?transportOptions'
-    
-    or::
-    
-    'failover:uri1,...,uriN'
-    
-    :param uri: A failover URI.
+    :param uri: A failover URI. Its basic form is::
+        
+        'failover:(uri1,...,uriN)?transportOptions'
+        
+        or::
+        
+        'failover:uri1,...,uriN'
     
     **Example:**
     

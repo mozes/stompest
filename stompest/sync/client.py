@@ -1,22 +1,11 @@
 """The synchronous client is dead simple. It does not assume anything about your concurrency model (thread vs process) or force you to use it any particular way. It gets out of your way and lets you do what you want.
 
-Examples
---------
+.. automodule:: stompest.examples
+    :members:
 
-If you use ActiveMQ to run these examples, make sure you enable the STOMP connector in the config file, activemq.xml (see `here <http://activemq.apache.org/stomp.html>`_ for details):
-
-    ``<transportConnector name="stomp"  uri="stomp://0.0.0.0:61613"/>``
-
-Producer
-^^^^^^^^
-
-.. literalinclude:: ../../stompest/examples/sync/producer.py
-
-Consumer
-^^^^^^^^
-
-.. literalinclude:: ../../stompest/examples/sync/consumer.py
-
+.. automodule:: stompest.examples.sync
+    :members:
+    
 API
 ---
 """
@@ -57,13 +46,14 @@ class Stomp(object):
     
     .. seealso :: :class:`~.failover.StompConfig` for how to set session configuration options, :class:`~.session.StompSession` for session state, :mod:`~.commands` for all API options which are documented here.
     """
-    factory = StompFrameTransport
+    failoverFactory = StompFailoverProtocol
+    transportFactory = StompFrameTransport
     
     def __init__(self, config):
         self.log = logging.getLogger(LOG_CATEGORY)
         self._config = config
         self.session = StompSession(self._config.version, self._config.check)
-        self._failover = StompFailoverProtocol(config.uri)
+        self._failover = self.failoverFactory(config.uri)
         self._transport = None
     
     def connect(self, headers=None, versions=None, host=None, connectTimeout=None, connectedTimeout=None):
@@ -86,7 +76,7 @@ class Stomp(object):
         
         try:
             for (broker, connectDelay) in self._failover:
-                transport = self.factory(broker['host'], broker['port'], self.session.version)
+                transport = self.transportFactory(broker['host'], broker['port'], self.session.version)
                 if connectDelay:
                     self.log.debug('Delaying connect attempt for %d ms' % int(connectDelay * 1000))
                     time.sleep(connectDelay)
@@ -203,14 +193,42 @@ class Stomp(object):
         """transaction(transaction=None, receipt=None)
         
         A context manager for STOMP transactions. Upon entering the :obj:`with` block, a transaction will be begun and upon exiting, that transaction will be committed or (if an error occurred) aborted.
+        
+        **Example:**
+        
+        >>> client = Stomp(StompConfig('tcp://localhost:61613'))
+        >>> client.connect()
+        >>> client.subscribe('/queue/test', {'ack': 'client-individual'})
+        ('destination', '/queue/test')
+        >>> client.canRead(0) # Check that queue is empty.
+        False
+        >>> with client.transaction(receipt='important') as transaction:
+        ...     client.send('/queue/test', 'message with transaction header', {'transaction': transaction})
+        ...     client.send('/queue/test', 'message without transaction header')
+        ...     raise RuntimeError('poof')
+        ... 
+        Traceback (most recent call last):
+          File "<stdin>", line 4, in <module>
+        RuntimeError: poof
+        >>> client.receiveFrame()
+        StompFrame(command='RECEIPT', headers={'receipt-id': 'important-begin'}, body='')
+        >>> client.receiveFrame()
+        StompFrame(command='RECEIPT', headers={'receipt-id': 'important-abort'}, body='')
+        >>> frame = client.receiveFrame()
+        >>> frame.command, frame.body
+        ('MESSAGE', 'message without transaction header')
+        >>> client.canRead(0) # frame with transaction header was dropped by the broker
+        False
+        >>> client.disconnect()
         """
         transaction = self.session.transaction(transaction)
-        self.begin(transaction, receipt)
+        self.begin(transaction, receipt and ('%s-begin' % receipt))
         try:
             yield transaction
-            self.commit(transaction, receipt)
+            self.commit(transaction, receipt and ('%s-commit' % receipt))
         except:
-            self.abort(transaction, receipt)
+            self.abort(transaction, receipt and ('%s-abort' % receipt))
+            raise
     
     def message(self, frame):
         """If you received a **MESSAGE** frame, this method will produce a token which allows you to match it against its subscription.

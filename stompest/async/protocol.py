@@ -85,13 +85,14 @@ class StompFactory(Factory):
 
 class StompProtocolCreator(object):
     protocolFactory = StompFactory
+    failoverFactory = StompFailoverProtocol
     
     @classmethod
     def endpointFactory(cls, broker, timeout=None):
         return endpointFactory(broker, timeout)
     
     def __init__(self, uri):
-        self._failover = StompFailoverProtocol(uri)
+        self._failover = self.failoverFactory(uri)
         self.log = logging.getLogger(LOG_CATEGORY)
 
     @defer.inlineCallbacks

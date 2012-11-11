@@ -9,7 +9,7 @@ Example:
 >>> from stompest.protocol import StompFrame, StompSession
 >>> session = StompSession('1.1')
 >>> session.connect(login='', passcode='')
-StompFrame(command='CONNECT', headers={'passcode': '', 'login': '', 'host': 'macbook-jan.fritz.box', 'accept-version': '1.0,1.1'}, body='')
+StompFrame(command='CONNECT', headers={'passcode': '', 'login': '', 'host': 'earth.solar-system', 'accept-version': '1.0,1.1'}, body='')
 >>> print session.version, session.state
 1.1 connecting
 >>> session.connected(StompFrame('CONNECTED', {'session': 'tete-a-tete'})) # The broker only understands STOMP 1.0.

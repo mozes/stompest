@@ -30,12 +30,12 @@ class SimpleStompIntegrationTest(unittest.TestCase):
     DESTINATION = '/queue/stompUnitTest'
     TIMEOUT = 0.25
     
-    def test_0_cleanup(self):
+    def setUp(self):
         config = StompConfig(uri='tcp://localhost:61613')
         stomp = Stomp(config)
         stomp.connect()
-        stomp.subscribe(self.DESTINATION, {StompSpec.ACK_HEADER: 'client'})
-        stomp.subscribe(self.DESTINATION, {StompSpec.ID_HEADER: 'bla', StompSpec.ACK_HEADER: 'client'})
+        stomp.subscribe(self.DESTINATION, {StompSpec.ACK_HEADER: 'client-individual'})
+        stomp.subscribe(self.DESTINATION, {StompSpec.ID_HEADER: 'bla', StompSpec.ACK_HEADER: 'client-individual'})
         while stomp.canRead(self.TIMEOUT):
             stomp.ack(stomp.receiveFrame())
         stomp.disconnect()
@@ -55,33 +55,46 @@ class SimpleStompIntegrationTest(unittest.TestCase):
         stomp.ack(stomp.receiveFrame())
         self.assertFalse(stomp.canRead(self.TIMEOUT))
         
-    def _test_2_transaction(self):
+    def test_2_transaction(self):
         config = StompConfig(uri='tcp://localhost:61613')
         stomp = Stomp(config)
         stomp.connect()
+        stomp.subscribe(self.DESTINATION, {StompSpec.ACK_HEADER: 'client-individual'})
+        self.assertFalse(stomp.canRead(self.TIMEOUT))
         
         with stomp.transaction(4711) as transaction:
             self.assertEquals(transaction, '4711')
-            stomp.send(self.DESTINATION, 'test message 1')
-            self.assertFalse(stomp.canRead(self.TIMEOUT))
-        self.assertTrue(stomp.canRead(2 * self.TIMEOUT))
-        stomp.ack(stomp.receiveFrame())
+            stomp.send(self.DESTINATION, 'test message', {StompSpec.TRANSACTION_HEADER: transaction})
+            self.assertFalse(stomp.canRead(0))
+        self.assertTrue(stomp.canRead(self.TIMEOUT))
+        frame = stomp.receiveFrame()
+        self.assertEquals(frame.body, 'test message')
+        stomp.ack(frame)
         
         with stomp.transaction(4711, receipt='4712') as transaction:
             self.assertEquals(transaction, '4711')
-            self.assertEquals(stomp.receiveFrame(), StompFrame(StompSpec.RECEIPT, {'receipt-id': '4712'}))
-            stomp.send(self.DESTINATION, 'test message 1')
-            self.assertFalse(stomp.canRead(self.TIMEOUT))
-        self.assertEquals(stomp.receiveFrame(), StompFrame(StompSpec.RECEIPT, {'receipt-id': '4712'}))
-        stomp.ack(stomp.receiveFrame())
+            stomp.send(self.DESTINATION, 'test message', {StompSpec.TRANSACTION_HEADER: transaction})
+            self.assertEquals(stomp.receiveFrame(), StompFrame(StompSpec.RECEIPT, {'receipt-id': '4712-begin'}))
+            stomp.send(self.DESTINATION, 'test message without transaction')
+            self.assertTrue(stomp.canRead(self.TIMEOUT))
+            frame = stomp.receiveFrame()
+            self.assertEquals(frame.body, 'test message without transaction')
+            stomp.ack(frame)
+            self.assertFalse(stomp.canRead(0))
+        self.assertEquals(stomp.receiveFrame(), StompFrame(StompSpec.RECEIPT, {'receipt-id': '4712-commit'}))
+        frame = stomp.receiveFrame()
+        self.assertEquals(frame.body, 'test message')
+        stomp.ack(frame)
         
         try:
             with stomp.transaction(4711) as transaction:
                 self.assertEquals(transaction, '4711')
-                stomp.send(self.DESTINATION, 'test message 1')
-                raise
-        except:
-            pass
+                stomp.send(self.DESTINATION, 'test message', {StompSpec.TRANSACTION_HEADER: transaction})
+                raise RuntimeError('poof')
+        except RuntimeError as e:
+            self.assertEquals(str(e), 'poof')
+        else:
+            raise
         self.assertFalse(stomp.canRead(self.TIMEOUT))
         
         stomp.disconnect()
