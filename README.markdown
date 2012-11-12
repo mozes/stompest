@@ -1,3 +1,10 @@
+NOTE: Stompest has [a new home](https://github.com/nikipore/stompest)
+========
+Thanks to Dr. Jan Muller, stompest has been upgraded to support both STOMP 1.0 and 1.1, along with transactions, receipt handling, and more.  Version 1.x will no longer be maintained.
+
+Version 1.x docs
+========
+
 stomp, stomper, stompest!
 
 Stompest is a no-nonsense [STOMP 1.0](http://stomp.github.com/) implementation for Python including both synchronous and [Twisted](http://twistedmatrix.com/) clients.
