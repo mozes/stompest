@@ -1,4 +1,3 @@
-# -*- coding: iso-8859-1 -*-
 import os
 import sys
 
@@ -14,7 +13,7 @@ if sys.version_info[:2] < (2, 6):
 setup(
     name = 'stompest',
     version = '2.0a1',
-    author = 'Jan MŸüller',
+    author = 'Jan Mueller',
     author_email = 'nikipore@gmail.com',
     description = 'STOMP client library for Python including both synchronous and Twisted clients.',
     license = 'Apache License 2.0',
@@ -24,9 +23,9 @@ setup(
     url = 'https://github.com/nikipore/stompest',
     py_modules = ['stompest'],
     include_package_data = True,
-    zip_safe = True,   
+    zip_safe = True,
     install_requires = [
-        'twisted'
+        'twisted>=10.1.0' # Endpoints API
     ],
     tests_require = ['mock'],
     test_suite = 'stompest.tests',

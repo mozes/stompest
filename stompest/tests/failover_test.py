@@ -44,7 +44,7 @@ class StompFailoverUriTest(unittest.TestCase):
             {'host': 'primary', 'protocol': 'tcp', 'port': 61616},
             {'host': 'secondary', 'protocol': 'tcp', 'port': 61616}
         ])
-    
+
     def test_configuration_invalid_uris(self):
         for uri in [
             'ssl://localhost:61613', 'tcp://:61613', 'tcp://61613', 'tcp:localhost:61613', 'tcp:/localhost',
@@ -66,39 +66,39 @@ class StompFailoverTest(unittest.TestCase):
             (0.063, {'host': 'remote1', 'protocol': 'tcp', 'port': 61615})
         ]
         self._test_failover(iter(protocol), expectedDelaysAndBrokers)
-        
+
         expectedDelaysAndBrokers = [
             (0, {'host': 'remote1', 'protocol': 'tcp', 'port': 61615}),
             (0.007, {'host': 'localhost', 'protocol': 'tcp', 'port': 61616})
         ]
         self._test_failover(iter(protocol), expectedDelaysAndBrokers)
-        
+
         uri = 'failover:(tcp://remote1:61615,tcp://localhost:61616)?randomize=false,startupMaxReconnectAttempts=3,initialReconnectDelay=7,maxReconnectDelay=8,maxReconnectAttempts=0'
         protocol = StompFailoverTransport(uri)
-        
+
         expectedDelaysAndBrokers = [
             (0, {'host': 'remote1', 'protocol': 'tcp', 'port': 61615}),
             (0.007, {'host': 'localhost', 'protocol': 'tcp', 'port': 61616}),
             (0.008, {'host': 'remote1', 'protocol': 'tcp', 'port': 61615}),
             (0.008, {'host': 'localhost', 'protocol': 'tcp', 'port': 61616})
-        ]   
+        ]
         self._test_failover(iter(protocol), expectedDelaysAndBrokers)
-        
+
         expectedDelaysAndBrokers = [
             (0, {'host': 'remote1', 'protocol': 'tcp', 'port': 61615})
-        ]   
+        ]
         self._test_failover(iter(protocol), expectedDelaysAndBrokers)
-        
+
         uri = 'failover:(tcp://remote1:61615,tcp://localhost:61616)?randomize=false,startupMaxReconnectAttempts=2,initialReconnectDelay=3,useExponentialBackOff=false'
         protocol = StompFailoverTransport(uri)
-        
+
         expectedDelaysAndBrokers = [
             (0, {'host': 'remote1', 'protocol': 'tcp', 'port': 61615}),
             (0.003, {'host': 'localhost', 'protocol': 'tcp', 'port': 61616}),
             (0.003, {'host': 'remote1', 'protocol': 'tcp', 'port': 61615})
-        ]   
+        ]
         self._test_failover(iter(protocol), expectedDelaysAndBrokers)
-    
+
     def test_priority_backup(self):
         uri = 'failover:tcp://remote1:61616,tcp://localhost:61616,tcp://127.0.0.1:61615,tcp://remote2:61616?startupMaxReconnectAttempts=3,priorityBackup=true,randomize=false'
         protocol = StompFailoverTransport(uri)
@@ -108,7 +108,7 @@ class StompFailoverTest(unittest.TestCase):
             (0.02, {'host': 'remote1', 'protocol': 'tcp', 'port': 61616}),
             (0.04, {'host': 'remote2', 'protocol': 'tcp', 'port': 61616})
         ])
-    
+
     def test_randomize(self):
         uri = 'failover:tcp://remote1:61616,tcp://localhost:61616,tcp://127.0.0.1:61615,tcp://remote2:61616?priorityBackup=true,randomize=true,startupMaxReconnectAttempts=3'
         protocol = StompFailoverTransport(uri)
@@ -124,24 +124,24 @@ class StompFailoverTest(unittest.TestCase):
             self.assertEquals(set(hosts[2:]), set(remoteHosts))
             if (hosts[2:] != remoteHosts):
                 remoteShuffled += 1
-    
+
     def test_jitter(self):
         uri = 'failover:tcp://remote1:61616?useExponentialBackOff=false,startupMaxReconnectAttempts=1,reconnectDelayJitter=4'
         for j in itertools.count():
             protocol = iter(StompFailoverTransport(uri))
             protocol.next()
             _, delay = protocol.next()
-            self.assertAlmostEqual(delay, 0.01, delta=0.004)
+            self.assertTrue(abs(delay - 0.01) < 0.004)
             if (j > 10) and (abs(delay - 0.01) > 0.003):
                 break
-    
+
     def _test_failover(self, brokersAndDelays, expectedDelaysAndBrokers):
         for (expectedDelay, expectedBroker) in expectedDelaysAndBrokers:
             broker, delay = brokersAndDelays.next()
             self.assertEquals(delay, expectedDelay)
             self.assertEquals(broker, expectedBroker)
-            
+
         self.assertRaises(StompConnectTimeout, brokersAndDelays.next)
-    
+
 if __name__ == '__main__':
     unittest.main()
