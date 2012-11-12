@@ -20,7 +20,7 @@ import logging
 from twisted.internet import defer, reactor, task
 from twisted.internet.protocol import Factory, Protocol
 
-from stompest.protocol import StompFailoverProtocol, StompParser
+from stompest.protocol import StompFailoverTransport, StompParser
 
 from .util import endpointFactory
 
@@ -85,13 +85,14 @@ class StompFactory(Factory):
 
 class StompProtocolCreator(object):
     protocolFactory = StompFactory
+    failoverFactory = StompFailoverTransport
     
     @classmethod
     def endpointFactory(cls, broker, timeout=None):
         return endpointFactory(broker, timeout)
     
     def __init__(self, uri):
-        self._failover = StompFailoverProtocol(uri)
+        self._failover = self.failoverFactory(uri)
         self.log = logging.getLogger(LOG_CATEGORY)
 
     @defer.inlineCallbacks

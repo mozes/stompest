@@ -17,11 +17,11 @@ Copyright 2012 Mozes, Inc.
 import logging
 
 from twisted.internet import defer, reactor, task
+from twisted.internet.defer import CancelledError
 from twisted.trial import unittest
 
-from stompest.async.util import exclusive, InFlightOperations, Waiting
-from stompest.error import StompCancelledError, StompAlreadyRunningError
-from twisted.internet.defer import CancelledError, AlreadyCalledError
+from stompest.async.util import exclusive, InFlightOperations, wait
+from stompest.error import StompAlreadyRunningError, StompCancelledError
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -79,11 +79,11 @@ class InFlightOperationsTest(unittest.TestCase):
         self.assertRaises(KeyError, op.pop, 1)
         self.assertIdentical(op.get(1), None)
         self.assertIdentical(op.get(1, 2), 2)
-        op[1] = w = Waiting('hi')
+        op[1] = w = defer.Deferred()
         self.assertEquals(list(op), [1])
         self.assertIdentical(op[1], w)
         self.assertIdentical(op.get(1), w)
-        self.assertRaises(KeyError, op.__setitem__, 1, Waiting('bye'))
+        self.assertRaises(KeyError, op.__setitem__, 1, defer.Deferred())
         self.assertIdentical(op.pop(1), w)
         self.assertRaises(KeyError, op.pop, 1)
         op[1] = w
@@ -97,21 +97,21 @@ class InFlightOperationsTest(unittest.TestCase):
         op = InFlightOperations('test')
         with op(1) as w:
             self.assertEquals(list(op), [1])
-            self.assertIsInstance(w, Waiting)
+            self.assertIsInstance(w, defer.Deferred)
             self.assertIdentical(w, op[1])
             self.assertIdentical(op.get(1), op[1])
         self.assertEquals(list(op), [])
         
         with op(key=2, log=logging.getLogger(LOG_CATEGORY)):
             self.assertEquals(list(op), [2])
-            self.assertIsInstance(op.get(2), Waiting)
+            self.assertIsInstance(op.get(2), defer.Deferred)
             self.assertIdentical(op.get(2), op[2])
         self.assertEquals(list(op), [])
         
         try:
             with op(None, logging.getLogger(LOG_CATEGORY)) as w:
                 reactor.callLater(0, w.cancel) #@UndefinedVariable
-                yield w.wait(timeout=None)
+                yield wait(w, timeout=None, fail=None)
         except CancelledError:
             pass
         else:
@@ -121,7 +121,7 @@ class InFlightOperationsTest(unittest.TestCase):
         try:
             with op(None, logging.getLogger(LOG_CATEGORY)) as w:
                 reactor.callLater(0, w.errback, StompCancelledError('4711')) #@UndefinedVariable
-                yield w.wait(timeout=None)
+                yield wait(w)
         except StompCancelledError as e:
             self.assertEquals(str(e), '4711')
         else:
@@ -130,20 +130,26 @@ class InFlightOperationsTest(unittest.TestCase):
         
         with op(None, logging.getLogger(LOG_CATEGORY)) as w:
             reactor.callLater(0, w.callback, 4711) #@UndefinedVariable
-            result = yield w.wait(timeout=None)
+            result = yield wait(w)
             self.assertEquals(result, 4711)
         self.assertEquals(list(op), [])
         
         try:
-            with op(None):
+            with op(None) as w:
                 raise RuntimeError('hi')
         except RuntimeError:
             pass
         self.assertEquals(list(op), [])
+        try:
+            yield w
+        except RuntimeError as e:
+            self.assertEquals(str(e), 'hi')
+        else:
+            raise
         
         try:
             with op(None) as w:
-                d = w.wait()
+                d = wait(w)
                 raise RuntimeError('hi')
         except RuntimeError:
             pass
@@ -154,88 +160,20 @@ class InFlightOperationsTest(unittest.TestCase):
             self.assertEquals(str(e), 'hi')
         else:
             pass
-                
-    @defer.inlineCallbacks
-    def test_context_multi(self):
-        op = InFlightOperations('test')
-        with op(None, log=logging.getLogger(LOG_CATEGORY)) as w:
-            d1 = w.wait()
-            d2 = w.wait()
-            reactor.callLater(0, w.cancel) #@UndefinedVariable
-            for d in (d1, d2):
-                try:
-                    yield d
-                except CancelledError:
-                    pass
-                else:
-                    raise
-                self.assertEquals(list(op), [None])
-        self.assertEquals(list(op), [])
-        
-        with op(None, log=logging.getLogger(LOG_CATEGORY)) as w:
-            d1 = w.wait()
-            d2 = w.wait()
-            reactor.callLater(0, w.errback, StompCancelledError('4711')) #@UndefinedVariable
-            for d in (d1, d2):
-                try:
-                    yield d
-                except StompCancelledError as e:
-                    self.assertEquals(str(e), '4711')
-                else:
-                    raise
-            self.assertEquals(list(op), [None])
-        self.assertEquals(list(op), [])
-        
-        with op(None, log=logging.getLogger(LOG_CATEGORY)) as w:
-            d1 = w.wait()
-            d2 = w.wait()
-            reactor.callLater(0, w.callback, 4711) #@UndefinedVariable
-            for d in (d1, d2):
-                result = yield d
-                self.assertEquals(result, 4711)
-        self.assertEquals(list(op), [])
-        
-        with op(None, log=logging.getLogger(LOG_CATEGORY)) as w:
-            d1 = w.wait()
-            d2 = w.wait()
-            w.callback(4711)
-            for d in (d1, d2):
-                self.assertTrue(d.called)
-                result = yield d
-                self.assertEquals(result, 4711)
-        self.assertEquals(list(op), [])
-            
-        with op(None, log=logging.getLogger(LOG_CATEGORY)) as w:
-            d1 = w.wait()
-            d2 = w.wait()
-            cb = task.deferLater(reactor, 0, w.callback, 4711)
-        self.assertEquals(list(op), [])
-        try:
-            yield cb
-        except AlreadyCalledError:
-            pass
-        else:
-            raise
-        
-        for d in (d1, d2):
-            self.assertTrue(d.called)
-            result = yield d
-            self.assertEquals(result, None)
-
+    
     @defer.inlineCallbacks
     def test_timeout(self):
         op = InFlightOperations('test')
         with op(None) as w:
-            for _ in xrange(5):
-                try:
-                    yield w.wait(timeout=0)
-                except StompCancelledError:
-                    pass
-                else:
-                    raise
+            try:
+                yield wait(w, timeout=0, fail=RuntimeError('hi'))
+            except RuntimeError as e:
+                self.assertEquals(str(e), 'hi')
+            else:
+                raise
             self.assertEquals(list(op), [None])
         self.assertEquals(list(op), [])
-        
+ 
 if __name__ == '__main__':
     import sys
     from twisted.scripts import trial

@@ -16,37 +16,28 @@ Copyright 2011, 2012 Mozes, Inc.
    limitations under the License.
 """
 class StompError(Exception):
-    """Base class for STOMP errors
-    """
+    """Base class for STOMP errors."""
 
 class StompFrameError(StompError):
-    """Raised for error parsing STOMP frames
-    """
+    """Raised for error parsing STOMP frames."""
 
 class StompProtocolError(StompError):
-    """Raised for STOMP protocol errors
-    """
+    """Raised for STOMP protocol errors."""
     
 class StompConnectionError(StompError):
-    """Raised for nonexistent connection
-    """
+    """Raised for nonexistent connection."""
 
 class StompConnectTimeout(StompConnectionError):
-    """Raised for timeout waiting for connect response from broker
-    """
+    """Raised for timeout waiting for connect response from broker."""
 
 class StompExclusiveOperationError(StompError):
-    """Raised for in-flight exclusive operation errors
-    """
+    """Raised for in-flight exclusive operation errors."""
     
 class StompAlreadyRunningError(StompExclusiveOperationError, KeyError):
-    """Raised when an in-flight exclusive operation is called more than once
-    """
+    """Raised when an in-flight exclusive operation is called more than once."""
 
 class StompNotRunningError(StompExclusiveOperationError, KeyError):
-    """Raised when a non-running exclusive operation is accessed
-    """
+    """Raised when a non-running exclusive operation is accessed."""
 
 class StompCancelledError(StompExclusiveOperationError):
-    """Raised when an in-flight exclusive operation was cancelled
-    """
+    """Raised when an in-flight exclusive operation was cancelled."""

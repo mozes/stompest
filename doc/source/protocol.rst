@@ -1,38 +1,53 @@
-``protocol``
-============
+.. _protocol: 
 
-``protocol.commands``
----------------------
+Protocol Layer
+==============
 
-.. automodule:: stompest.protocol.commands
+.. automodule:: stompest.protocol
    :members:
 
-``protocol.failover``
----------------------
+Failover Transport
+------------------
 
 .. automodule:: stompest.protocol.failover
    :members:
 
-``protocol.frame``
-------------------
+.. _session:
 
-.. automodule:: stompest.protocol.frame
-   :members:
-
-``protocol.parser``
--------------------
-
-.. automodule:: stompest.protocol.parser
-   :members:
-
-``protocol.session``
---------------------
+Session State
+-------------
 
 .. automodule:: stompest.protocol.session
    :members:
 
-``protocol.spec``
------------------
+.. _frame:
+
+STOMP Frame Representation
+--------------------------
+
+.. automodule:: stompest.protocol.frame
+   :members:
+
+.. _commands:
+
+Commands
+--------
+
+.. automodule:: stompest.protocol.commands
+   :members:
+
+.. _spec:
+
+STOMP Protocol Specification
+----------------------------
 
 .. automodule:: stompest.protocol.spec
+   :members:
+
+.. _parser:
+
+Wire-Level Parser
+-----------------
+
+.. automodule:: stompest.protocol.parser
    :members:

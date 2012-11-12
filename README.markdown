@@ -1,7 +1,7 @@
 stomp, stomper, stompest!
 =========================
 
-stompest is a full-featured [STOMP](http://stomp.github.com/) [1.0](http://stomp.github.com//stomp-specification-1.0.html) and [1.1](http://stomp.github.com//stomp-specification-1.1.html) implementation for Python including both synchronous and [Twisted](http://twistedmatrix.com/) clients:
+stompest is a full-featured [STOMP](http://stomp.github.com/) [1.0](http://stomp.github.com//stomp-specification-1.0.html) and [1.1](http://stomp.github.com//stomp-specification-1.1.html) implementation for Python including both synchronous and asynchronous clients:
 
 * The `sync.Stomp` client is dead simple. It does not assume anything about your concurrency model (thread vs process) or force you to use it any particular way. It gets out of your way and lets you do what you want.
 * The `async.Stomp` client is based on [Twisted](http://twistedmatrix.com/), a very mature and powerful asynchronous programming framework. It supports destination specific message and error handlers (with default "poison pill" error handling), concurrent message processing, graceful shutdown, and connect and disconnect timeouts.
@@ -14,184 +14,14 @@ Both clients make use of a generic set of components in the `protocol` module ea
 
 * a generic implementation of the STOMP 1.0 and 1.1 session state semantics in `protocol.StompSession`, such as protocol version negotiation at connect time, transaction and subscription handling (including a generic subscription replay scheme which may be used to reconstruct the session's subscription state after a forced disconnect),
 
-* and `protocol.StompFailoverProtocol`, a [failover transport](http://activemq.apache.org/failover-transport-reference.html) URI scheme akin to the one used in ActiveMQ.
+* and `protocol.StompFailoverTransport`, a [failover transport](http://activemq.apache.org/failover-transport-reference.html) URI scheme akin to the one used in ActiveMQ.
 
 This module is thoroughly unit tested and production hardened for the functionality used by [Mozes](http://www.mozes.com/): persistent queueing on ActiveMQ. Other users also use it in serious production environments. Minor enhancements may be required to use this STOMP adapter with other brokers.
 
-Documentation
-=============
-The stompest API is documented [here](http://nikipore.github.com/stompest/).
+Documentation & Code Examples
+=============================
+The stompest API is fully documented [here](http://nikipore.github.com/stompest/).
 
-Examples
-======== 
-
-`sync` producer
-----------------
-
-    from stompest.protocol import StompConfig
-    from stompest.sync import Stomp
-    
-    CONFIG = StompConfig('tcp://localhost:61613')
-    QUEUE = '/queue/test'
-        
-    if __name__ == '__main__':
-        client = Stomp(CONFIG)
-        client.connect()
-        client.send(QUEUE, 'test message 1')
-        client.send(QUEUE, 'test message 2')
-        client.disconnect()
-        
-`sync` consumer
-----------------
-
-    from stompest.protocol import StompConfig
-    from stompest.sync import Stomp
-    
-    CONFIG = StompConfig('tcp://localhost:61613')
-    QUEUE = '/queue/test'
-    
-    if __name__ == '__main__':
-        client = Stomp(CONFIG)
-        client.connect()
-        client.subscribe(QUEUE, {'ack': 'client'})
-    
-        while True:
-            frame = client.receiveFrame()
-            print 'Got %s' % frame.info()
-            client.ack(frame)
-        
-        client.disconnect()
-    
-`async` producer
-----------------
-
-    import logging
-    import json
-    
-    from twisted.internet import defer, reactor
-    
-    from stompest.async import Stomp
-    from stompest.protocol import StompConfig
-    
-    class Producer(object):
-        QUEUE = '/queue/testIn'
-    
-        def __init__(self, config=None):
-            if config is None:
-                config = StompConfig('tcp://localhost:61613')
-            self.config = config
-            
-        @defer.inlineCallbacks
-        def run(self):
-            stomp = yield Stomp(self.config).connect()
-            for j in range(10):
-                stomp.send(self.QUEUE, json.dumps({'count': j}), receipt='message-%d' % j)
-            yield stomp.disconnect() # graceful disconnect: waits until all receipts have arrived
-            reactor.stop()
-        
-    if __name__ == '__main__':
-        logging.basicConfig(level=logging.DEBUG)
-        Producer().run()
-        reactor.run()
-                         
-`async` transformer
--------------------
-
-    import logging
-    import json
-    
-    from twisted.internet import reactor, defer
-    
-    from stompest.async import Stomp
-    from stompest.protocol import StompConfig
-    
-    class IncrementTransformer(object):    
-        IN_QUEUE = '/queue/testIn'
-        OUT_QUEUE = '/queue/testOut'
-        ERROR_QUEUE = '/queue/testTransformerError'
-    
-        def __init__(self, config=None):
-            if config is None:
-                config = StompConfig('tcp://localhost:61613')
-            self.config = config
-            
-        @defer.inlineCallbacks
-        def run(self):
-            # establish connection
-            client = yield Stomp(self.config).connect()
-            # subscribe to inbound queue
-            headers = {
-                # client-individual mode is only supported in AMQ >= 5.2 but necessary for concurrent processing
-                'ack': 'client-individual',
-                # this is the maximal number of messages the broker will let you work on at the same time
-                'activemq.prefetchSize': 100, 
-            }
-            client.subscribe(self.IN_QUEUE, self.addOne, headers, errorDestination=self.ERROR_QUEUE)
-        
-        def addOne(self, client, frame):
-            """
-            NOTE: you can return a Deferred here
-            """
-            data = json.loads(frame.body)
-            data['count'] += 1
-            client.send(self.OUT_QUEUE, json.dumps(data))
-        
-    if __name__ == '__main__':
-        logging.basicConfig(level=logging.DEBUG)
-        IncrementTransformer().run()
-        reactor.run()
-        
-`async` consumer
-----------------
-
-    import logging
-    import json
-    
-    from twisted.internet import reactor, defer
-    
-    from stompest.async import Stomp
-    from stompest.protocol import StompConfig
-    
-    class Consumer(object):
-        QUEUE = '/queue/testOut'
-        ERROR_QUEUE = '/queue/testConsumerError'
-    
-        def __init__(self, config=None):
-            if config is None:
-                config = StompConfig('tcp://localhost:61613')
-            self.config = config
-            
-        @defer.inlineCallbacks
-        def run(self):
-            # establish connection
-            stomp = yield Stomp(self.config).connect()
-            # subscribe to inbound queue
-            headers = {
-                # client-individual mode is only supported in AMQ >= 5.2 but necessary for concurrent processing
-                'ack': 'client-individual',
-                # this is the maximal number of messages the broker will let you work on at the same time
-                'activemq.prefetchSize': 100, 
-            }
-            stomp.subscribe(self.QUEUE, self.consume, headers, errorDestination=self.ERROR_QUEUE)
-        
-        def consume(self, client, frame):
-            """
-            NOTE: you can return a Deferred here
-            """
-            data = json.loads(frame.body)
-            print 'Received frame with count %d' % data['count']
-        
-    if __name__ == '__main__':
-        logging.basicConfig(level=logging.DEBUG)
-        Consumer().run()
-        reactor.run()
-
-Note
-----
-If you use ActiveMQ to run these examples, make sure you enable the Stomp connector in the config file, activemq.xml (see http://activemq.apache.org/stomp.html for details):
-   
-    <transportConnector name="stomp"  uri="stomp://0.0.0.0:61613"/>
-         
 Features
 ========
 
@@ -242,12 +72,10 @@ Caveats
 =======
 * Requires Python 2.6 or higher
 * Tested with ActiveMQ versions 5.5 and 5.6. Mileage may vary with other STOMP implementations.
-* stompest 2 is probably even better tested than stompest 1.x and is about to be used in production by one of the authors, but it has gained heavily on functionality. In the thorough redesign, the authors valued consistency, simplicity and symmetry over full backward compatibility to stompest 1.x. The migration is nevertheless very simple and straightforward, and will make your code simpler and more Pythonic.
-* It is planned to add more features in the near future. Thus, the API should not be considered stable, which is why stompest 2 is still marked as Alpha software.
+* stompest 2 is fully documented and probably even better tested than stompest 1: it is about to be used in production by one of the authors. In the thorough redesign, stompest has gained heavily on functionality, and the authors valued consistency, simplicity and symmetry over full backward compatibility to stompest 1. It is planned to add more features in the near future. Thus, the API should not be considered stable, which is why stompest 2 is still marked as (mature) alpha software.
 
 To Do
 =====
-* Python doc style documentation of the API.
 * `async` client only: heartbeating.
 * The URI scheme supports only TCP, no SSL (the authors don't need it because the client is run in "safe" production environments). For the `async` client, however, it should be straightforward to enhance the URI scheme by means of the [Endpoint API](http://twistedmatrix.com/documents/current/api/twisted.internet.endpoints.html). Contributions are welcome!
 * [STOMP 1.2 protocol](http://stomp.github.com/stomp-specification-1.2.html) (not before there is a reference broker implementation available).

@@ -15,151 +15,160 @@ Copyright 2012 Mozes, Inc.
    limitations under the License.
 """
 import logging
-import time
 import unittest
 
+from stompest.config import StompConfig
 from stompest.error import StompConnectionError
-from stompest.protocol.failover import StompConfig
-from stompest.protocol.spec import StompSpec
+from stompest.protocol.frame import StompFrame, StompSpec
 from stompest.sync import Stomp
-from stompest.protocol.frame import StompFrame
 
 logging.basicConfig(level=logging.DEBUG)
+LOG_CATEGORY = __name__
 
 class SimpleStompIntegrationTest(unittest.TestCase):
     DESTINATION = '/queue/stompUnitTest'
-    TIMEOUT = 0.25
-    
-    def test_0_cleanup(self):
+    TIMEOUT = 0.1
+    log = logging.getLogger(LOG_CATEGORY)
+
+    def setUp(self):
         config = StompConfig(uri='tcp://localhost:61613')
-        stomp = Stomp(config)
-        stomp.connect()
-        stomp.subscribe(self.DESTINATION, {StompSpec.ACK_HEADER: 'client'})
-        stomp.subscribe(self.DESTINATION, {StompSpec.ID_HEADER: 'bla', StompSpec.ACK_HEADER: 'client'})
-        while stomp.canRead(self.TIMEOUT):
-            stomp.ack(stomp.receiveFrame())
-        stomp.disconnect()
+        client = Stomp(config)
+        client.connect()
+        client.subscribe(self.DESTINATION, {StompSpec.ACK_HEADER: 'auto'})
+        client.subscribe(self.DESTINATION, {StompSpec.ID_HEADER: 'bla', StompSpec.ACK_HEADER: 'auto'})
+        while client.canRead(self.TIMEOUT):
+            frame = client.receiveFrame()
+            self.log.debug('Dequeued old %s' % frame.info())
+        client.disconnect()
 
     def test_1_integration(self):
         config = StompConfig(uri='tcp://localhost:61613')
-        stomp = Stomp(config)
-        stomp.connect()
-        
-        stomp.send(self.DESTINATION, 'test message 1')
-        stomp.send(self.DESTINATION, 'test message 2')
-        self.assertFalse(stomp.canRead(self.TIMEOUT))
-        stomp.subscribe(self.DESTINATION, {StompSpec.ACK_HEADER: 'client-individual'})
-        self.assertTrue(stomp.canRead(self.TIMEOUT))
-        stomp.ack(stomp.receiveFrame())
-        self.assertTrue(stomp.canRead(self.TIMEOUT))
-        stomp.ack(stomp.receiveFrame())
-        self.assertFalse(stomp.canRead(self.TIMEOUT))
-        
-    def _test_2_transaction(self):
+        client = Stomp(config)
+        client.connect()
+
+        client.send(self.DESTINATION, 'test message 1')
+        client.send(self.DESTINATION, 'test message 2')
+        self.assertFalse(client.canRead(self.TIMEOUT))
+        client.subscribe(self.DESTINATION, {StompSpec.ACK_HEADER: 'client-individual'})
+        self.assertTrue(client.canRead(self.TIMEOUT))
+        client.ack(client.receiveFrame())
+        self.assertTrue(client.canRead(self.TIMEOUT))
+        client.ack(client.receiveFrame())
+        self.assertFalse(client.canRead(self.TIMEOUT))
+
+    def test_2_transaction(self):
         config = StompConfig(uri='tcp://localhost:61613')
-        stomp = Stomp(config)
-        stomp.connect()
-        
-        with stomp.transaction(4711) as transaction:
+        client = Stomp(config)
+        client.connect()
+        client.subscribe(self.DESTINATION, {StompSpec.ACK_HEADER: 'client-individual'})
+        self.assertFalse(client.canRead(self.TIMEOUT))
+
+        with client.transaction(4711) as transaction:
             self.assertEquals(transaction, '4711')
-            stomp.send(self.DESTINATION, 'test message 1')
-            self.assertFalse(stomp.canRead(self.TIMEOUT))
-        self.assertTrue(stomp.canRead(2 * self.TIMEOUT))
-        stomp.ack(stomp.receiveFrame())
-        
-        with stomp.transaction(4711, receipt='4712') as transaction:
+            client.send(self.DESTINATION, 'test message', {StompSpec.TRANSACTION_HEADER: transaction})
+            self.assertFalse(client.canRead(0))
+        self.assertTrue(client.canRead(self.TIMEOUT))
+        frame = client.receiveFrame()
+        self.assertEquals(frame.body, 'test message')
+        client.ack(frame)
+
+        with client.transaction(4711, receipt='4712') as transaction:
             self.assertEquals(transaction, '4711')
-            self.assertEquals(stomp.receiveFrame(), StompFrame(StompSpec.RECEIPT, {'receipt-id': '4712'}))
-            stomp.send(self.DESTINATION, 'test message 1')
-            self.assertFalse(stomp.canRead(self.TIMEOUT))
-        self.assertEquals(stomp.receiveFrame(), StompFrame(StompSpec.RECEIPT, {'receipt-id': '4712'}))
-        stomp.ack(stomp.receiveFrame())
-        
+            client.send(self.DESTINATION, 'test message', {StompSpec.TRANSACTION_HEADER: transaction})
+            self.assertEquals(client.receiveFrame(), StompFrame(StompSpec.RECEIPT, {'receipt-id': '4712-begin'}))
+            client.send(self.DESTINATION, 'test message without transaction')
+            self.assertTrue(client.canRead(self.TIMEOUT))
+            frame = client.receiveFrame()
+            self.assertEquals(frame.body, 'test message without transaction')
+            client.ack(frame)
+            self.assertFalse(client.canRead(0))
+        self.assertEquals(client.receiveFrame(), StompFrame(StompSpec.RECEIPT, {'receipt-id': '4712-commit'}))
+        frame = client.receiveFrame()
+        self.assertEquals(frame.body, 'test message')
+        client.ack(frame)
+
         try:
-            with stomp.transaction(4711) as transaction:
+            with client.transaction(4711) as transaction:
                 self.assertEquals(transaction, '4711')
-                stomp.send(self.DESTINATION, 'test message 1')
-                raise
-        except:
-            pass
-        self.assertFalse(stomp.canRead(self.TIMEOUT))
-        
-        stomp.disconnect()
+                client.send(self.DESTINATION, 'test message', {StompSpec.TRANSACTION_HEADER: transaction})
+                raise RuntimeError('poof')
+        except RuntimeError as e:
+            self.assertEquals(str(e), 'poof')
+        else:
+            raise
+        self.assertFalse(client.canRead(self.TIMEOUT))
+
+        client.disconnect()
 
     def test_3_timeout(self):
-        tolerance = .01
-        
-        stomp = Stomp(StompConfig(uri='failover:(tcp://localhost:61614,tcp://localhost:61615)?startupMaxReconnectAttempts=2,backOffMultiplier=3'))
-        expectedTimeout = time.time() + 40 / 1000.0 # 40 ms = 10 ms + 3 * 10 ms
-        self.assertRaises(StompConnectionError, stomp.connect)
-        self.assertTrue(abs(time.time() - expectedTimeout) < tolerance)
-        
-        stomp = Stomp(StompConfig(uri='failover:(tcp://localhost:61614,tcp://localhost:61613)?randomize=false')) # default is startupMaxReconnectAttempts = 0
-        expectedTimeout = time.time() + 0
-        self.assertRaises(StompConnectionError, stomp.connect)
-        self.assertTrue(abs(time.time() - expectedTimeout) < tolerance)
+        timeout = 0.2
+        client = Stomp(StompConfig(uri='failover:(tcp://localhost:61614,tcp://localhost:61613)?startupMaxReconnectAttempts=1,randomize=false'))
+        client.connect(connectTimeout=timeout)
+        client.disconnect()
 
-        stomp = Stomp(StompConfig(uri='failover:(tcp://localhost:61614,tcp://localhost:61613)?startupMaxReconnectAttempts=1,randomize=false'))
-        stomp.connect()
-        stomp.disconnect()
-        
+        client = Stomp(StompConfig(uri='failover:(tcp://localhost:61614,tcp://localhost:61615)?startupMaxReconnectAttempts=1,backOffMultiplier=3'))
+        self.assertRaises(StompConnectionError, client.connect, connectTimeout=timeout)
+
+        client = Stomp(StompConfig(uri='failover:(tcp://localhost:61614,tcp://localhost:61613)?randomize=false')) # default is startupMaxReconnectAttempts = 0
+        self.assertRaises(StompConnectionError, client.connect, connectTimeout=timeout)
+
     def test_3_socket_failure_and_replay(self):
-        stomp = Stomp(StompConfig(uri='tcp://localhost:61613', version='1.0'))
-        stomp.connect()
-        stomp.send(self.DESTINATION, 'test message 1')
+        client = Stomp(StompConfig(uri='tcp://localhost:61613', version='1.0'))
+        client.connect()
         headers = {StompSpec.ACK_HEADER: 'client-individual'}
-        token = stomp.subscribe(self.DESTINATION, headers)
-        stomp.sendFrame(StompFrame('DISCONNECT')) # DISCONNECT frame is out-of-band, as far as the session is concerned -> unexpected disconnect
-        self.assertRaises(StompConnectionError, stomp.receiveFrame)
-        stomp.connect()
-        stomp.ack(stomp.receiveFrame())
-        stomp.unsubscribe(token)
-        stomp.send(self.DESTINATION, 'test message 2')
+        token = client.subscribe(self.DESTINATION, headers)
+        client.sendFrame(StompFrame('DISCONNECT')) # DISCONNECT frame is out-of-band, as far as the session is concerned -> unexpected disconnect
+        self.assertRaises(StompConnectionError, client.receiveFrame)
+        client.connect()
+        client.send(self.DESTINATION, 'test message 1')
+        client.ack(client.receiveFrame())
+        client.unsubscribe(token)
         headers = {'id': 'bla', StompSpec.ACK_HEADER: 'client-individual'}
-        stomp.subscribe(self.DESTINATION, headers)
+        client.subscribe(self.DESTINATION, headers)
         headers[StompSpec.DESTINATION_HEADER] = self.DESTINATION
-        stomp.sendFrame(StompFrame('DISCONNECT')) # DISCONNECT frame is out-of-band, as far as the session is concerned -> unexpected disconnect
-        self.assertRaises(StompConnectionError, stomp.receiveFrame)
-        stomp.connect()
-        stomp.ack(stomp.receiveFrame())
-        stomp.unsubscribe(('id', 'bla'))
-        stomp.disconnect()
-        
+        client.sendFrame(StompFrame('DISCONNECT')) # DISCONNECT frame is out-of-band, as far as the session is concerned -> unexpected disconnect
+        self.assertRaises(StompConnectionError, client.receiveFrame)
+        client.connect()
+        client.send(self.DESTINATION, 'test message 2')
+        client.ack(client.receiveFrame())
+        client.unsubscribe(('id', 'bla'))
+        client.disconnect()
+
     def test_4_integration_stomp_1_1(self):
-        stomp = Stomp(StompConfig(uri='tcp://localhost:61613', version='1.1'))
-        stomp.connect()
-        if stomp.session.version == '1.0':
+        client = Stomp(StompConfig(uri='tcp://localhost:61613', version='1.1'))
+        client.connect()
+        if client.session.version == '1.0':
             print 'Broker localhost:61613 does not support STOMP protocol version 1.1'
-            stomp.disconnect()
+            client.disconnect()
             return
-        stomp.send(self.DESTINATION, 'test message 1')
-        stomp.send(self.DESTINATION, 'test message 2')
-        self.assertFalse(stomp.canRead(self.TIMEOUT))
-        token = stomp.subscribe(self.DESTINATION, {StompSpec.ID_HEADER: 4711, StompSpec.ACK_HEADER: 'client-individual'})
-        self.assertTrue(stomp.canRead(self.TIMEOUT))
-        stomp.ack(stomp.receiveFrame())
-        self.assertTrue(stomp.canRead(self.TIMEOUT))
-        stomp.ack(stomp.receiveFrame())
-        self.assertFalse(stomp.canRead(self.TIMEOUT))
-        stomp.unsubscribe(token)
-        stomp.send(self.DESTINATION, 'test message 3', receipt='4711')
-        self.assertTrue(stomp.canRead(self.TIMEOUT))
-        self.assertEquals(stomp.receiveFrame(), StompFrame(StompSpec.RECEIPT, {'receipt-id': '4711'}))
-        self.assertFalse(stomp.canRead(self.TIMEOUT))
-        stomp.subscribe(self.DESTINATION, {StompSpec.ID_HEADER: 4711, StompSpec.ACK_HEADER: 'client-individual'})
-        self.assertTrue(stomp.canRead(self.TIMEOUT))
-        stomp.ack(stomp.receiveFrame())
-        self.assertFalse(stomp.canRead(self.TIMEOUT))
-        stomp.disconnect(receipt='4712')
-        self.assertEquals(stomp.receiveFrame(), StompFrame(StompSpec.RECEIPT, {'receipt-id': '4712'}))
-        self.assertTrue(stomp.canRead(self.TIMEOUT))
-        self.assertRaises(StompConnectionError, stomp.receiveFrame)
-        stomp.connect()
-        stomp.disconnect(receipt='4711')
-        self.assertEquals(stomp.receiveFrame(), StompFrame(StompSpec.RECEIPT, {'receipt-id': '4711'}))
-        self.assertTrue(stomp.canRead(self.TIMEOUT))
-        stomp.close()
-        self.assertRaises(StompConnectionError, stomp.canRead, self.TIMEOUT)
-        
+        client.send(self.DESTINATION, 'test message 1')
+        client.send(self.DESTINATION, 'test message 2')
+        self.assertFalse(client.canRead(self.TIMEOUT))
+        token = client.subscribe(self.DESTINATION, {StompSpec.ID_HEADER: 4711, StompSpec.ACK_HEADER: 'client-individual'})
+        self.assertTrue(client.canRead(self.TIMEOUT))
+        client.ack(client.receiveFrame())
+        self.assertTrue(client.canRead(self.TIMEOUT))
+        client.ack(client.receiveFrame())
+        self.assertFalse(client.canRead(self.TIMEOUT))
+        client.unsubscribe(token)
+        client.send(self.DESTINATION, 'test message 3', receipt='4711')
+        self.assertTrue(client.canRead(self.TIMEOUT))
+        self.assertEquals(client.receiveFrame(), StompFrame(StompSpec.RECEIPT, {'receipt-id': '4711'}))
+        self.assertFalse(client.canRead(self.TIMEOUT))
+        client.subscribe(self.DESTINATION, {StompSpec.ID_HEADER: 4711, StompSpec.ACK_HEADER: 'client-individual'})
+        self.assertTrue(client.canRead(self.TIMEOUT))
+        client.ack(client.receiveFrame())
+        self.assertFalse(client.canRead(self.TIMEOUT))
+        client.disconnect(receipt='4712')
+        self.assertEquals(client.receiveFrame(), StompFrame(StompSpec.RECEIPT, {'receipt-id': '4712'}))
+        self.assertTrue(client.canRead(self.TIMEOUT))
+        self.assertRaises(StompConnectionError, client.receiveFrame)
+        client.connect()
+        client.disconnect(receipt='4711')
+        self.assertEquals(client.receiveFrame(), StompFrame(StompSpec.RECEIPT, {'receipt-id': '4711'}))
+        self.assertTrue(client.canRead(self.TIMEOUT))
+        client.close()
+        self.assertRaises(StompConnectionError, client.canRead, self.TIMEOUT)
+
 if __name__ == '__main__':
     unittest.main()

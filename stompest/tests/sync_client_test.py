@@ -19,8 +19,9 @@ import unittest
 
 from mock import Mock
 
+from stompest.config import StompConfig
 from stompest.error import StompConnectionError, StompProtocolError
-from stompest.protocol import StompConfig, StompFrame, StompSpec, commands
+from stompest.protocol import StompFrame, StompSpec, commands
 from stompest.sync import Stomp
 
 logging.basicConfig(level=logging.DEBUG)
@@ -40,8 +41,8 @@ class SimpleStompTest(unittest.TestCase):
     
     def _get_connect_mock(self, receive=None, config=None):
         stomp = Stomp(config or CONFIG)
-        stomp.factory = Mock()
-        transport = stomp.factory.return_value = Mock()
+        stomp._transportFactory = Mock()
+        transport = stomp._transportFactory.return_value = Mock()
         transport.host = 'mock'
         transport.port = 0
         if receive:
@@ -95,11 +96,11 @@ class SimpleStompTest(unittest.TestCase):
         sentFrame = args[0]
         self.assertEquals(StompFrame('CONNECT', {'login': login, 'passcode': passcode}), sentFrame)
     
-    def _test_send_writes_correct_frame(self):
+    def test_send_writes_correct_frame(self):
         destination = '/queue/foo'
         message = 'test message'
         headers = {'foo': 'bar', 'fuzz': 'ball'}
-        stomp = self._get_send_mock()
+        stomp = self._get_transport_mock()
         stomp.send(destination, message, headers)
         args, _ = stomp._transport.send.call_args
         sentFrame = args[0]

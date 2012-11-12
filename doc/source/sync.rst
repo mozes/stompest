@@ -1,11 +1,7 @@
-``sync``
-=========
+.. _sync:
 
-.. automodule:: stompest.sync
-   :members:
-
-``sync.client``
----------------
+Synchronous Client
+==================
 
 .. automodule:: stompest.sync.client
-   :members:
+	:members:

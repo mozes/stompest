@@ -11,15 +11,17 @@
 # All configuration values have a default; values that are commented out
 # serve to show the default.
 
-import sys, os
+import os, sys
 sys.path.insert(0, '../..')
 
 import stompest
-import stompest.examples.async
+import stompest.sync
 import stompest.examples.sync
 import stompest.async
+import stompest.examples.async
+import stompest.config
 import stompest.protocol
-import stompest.sync
+import stompest.error
 
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
@@ -33,7 +35,7 @@ import stompest.sync
 
 # Add any Sphinx extension module names here, as strings. They can be extensions
 # coming with Sphinx (named 'sphinx.ext.*') or your custom ones.
-extensions = ['sphinx.ext.autodoc', 'sphinx.ext.todo']
+extensions = ['sphinx.ext.autodoc', 'sphinx.ext.todo', 'sphinx.ext.intersphinx']
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
@@ -236,7 +238,7 @@ man_pages = [
 #  dir menu entry, description, category)
 texinfo_documents = [
   ('index', 'stompest', u'stompest Documentation',
-   u'Roger Hoover, Jan Müller', 'stompest', 'STOMP bindings for Python 2.6+',
+   u'Roger Hoover, Jan Müller', 'stompest', 'STOMP bindings for Python 2.6 and higher',
    'Messaging'),
 ]
 
