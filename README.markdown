@@ -1,6 +1,6 @@
 NOTE: Stompest has [a new home](https://github.com/nikipore/stompest)
 ========
-Thanks to Dr. Jan Muller, stompest has been upgraded to support both STOMP 1.0 and 1.1, along with transactions, receipt handling, and more.  Version 1.x will no longer be maintained.
+Thanks to Jan Müller, stompest has been upgraded to support both STOMP 1.0 and 1.1, along with transactions, receipt handling, and more.  Version 1.x will no longer be maintained.
 
 Version 1.x docs
 ========
