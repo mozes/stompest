@@ -75,6 +75,21 @@ class Stomp(object):
         :param connectTimeout: This is the time (in seconds) to wait for the wire-level connection to be established. If :obj:`None`, we will wait indefinitely.
         :param connectedTimeout: This is the time (in seconds) to wait for the STOMP connection to be established (that is, the broker's **CONNECTED** frame to arrive). If :obj:`None`, we will wait indefinitely.
         
+        **Example:**
+        
+        >>> client = Stomp(StompConfig('tcp://localhost:61613', version='1.1'))
+        >>> client.connect()
+        >>> client.session.version
+        '1.1'
+        >>> client.disconnect()
+        >>> from stompest.protocol import StompSpec
+        >>> client.connect(versions=[StompSpec.VERSION_1_0])
+        >>> client.session.version
+        '1.0'
+        >>> client.disconnect()
+        >>> client.session.version
+        '1.1'
+        
         .. seealso :: The :mod:`.protocol.failover` and :mod:`.protocol.session` modules for the details of subscription replay and failover transport.
         """
         try: # preserve existing connection
