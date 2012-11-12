@@ -22,7 +22,7 @@ from twisted.trial import unittest
 from stompest import async, sync
 from stompest.async.util import sendToErrorDestinationAndRaise
 from stompest.config import StompConfig
-from stompest.error import StompConnectionError
+from stompest.error import StompConnectionError, StompProtocolError
 from stompest.protocol import StompSpec
 
 logging.basicConfig(level=logging.DEBUG)
@@ -119,8 +119,15 @@ class HandlerExceptionWithErrorQueueIntegrationTestCase(AsyncClientBaseTestCase)
         config = StompConfig(uri='tcp://%s:%d' % (HOST, PORT), version=version)
         client = async.Stomp(config)
 
-        #Connect
-        client = yield client.connect()
+        try:
+            client = yield client.connect()
+            if client.session.version == '1.0':
+                yield client.disconnect()
+                raise StompProtocolError('Broker chose STOMP protocol 1.0')
+
+        except StompProtocolError as e:
+            print 'Broker does not support STOMP protocol 1.1. Skipping this test case. [%s]' % e
+            defer.returnValue(None)
 
         if client.session.version != version:
             print 'Broker does not support STOMP protocol %s. Skipping this test case.' % version
@@ -347,11 +354,14 @@ class NackTestCase(AsyncClientBaseTestCase):
     def test_nack(self):
         config = StompConfig(uri='tcp://%s:%d' % (HOST, PORT), version='1.1')
         client = async.Stomp(config)
+        try:
+            client = yield client.connect()
+            if client.session.version == '1.0':
+                yield client.disconnect()
+                raise StompProtocolError('Broker chose STOMP protocol 1.0')
 
-        client = yield client.connect()
-        if client.session.version == '1.0':
-            print 'Broker does only support STOMP protocol 1.0. Skipping this test case.'
-            yield client.disconnect()
+        except StompProtocolError as e:
+            print 'Broker does not support STOMP protocol 1.1. Skipping this test case. [%s]' % e
             defer.returnValue(None)
 
         client.subscribe(self.queue, self._nackFrame, {StompSpec.ACK_HEADER: 'client-individual', 'activemq.prefetchSize': '1', 'id': '4711'}, ack=False)

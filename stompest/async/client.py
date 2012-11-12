@@ -359,16 +359,16 @@ class Stomp(object):
             self.log.info('[%s] Ignoring message (disconnecting)' % messageId)
             try:
                 self.nack(frame)
-            except:
+            except StompProtocolError:
                 pass
-            return
+            defer.returnValue(None)
 
         try:
             token = self.session.message(frame)
             subscription = self._subscriptions[token]
         except:
-            self.log.warning('[%s] Ignoring message (no handler found): %s' % (messageId, frame.info()))
-            return
+            self.log.error('[%s] Ignoring message (no handler found): %s' % (messageId, frame.info()))
+            defer.returnValue(None)
 
         with self._messages(messageId, self.log) as finished:
             finished.addErrback(lambda _: None)
